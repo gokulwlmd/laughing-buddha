@@ -1,0 +1,359 @@
+{
+  "repository": "wlmd-stripe-test-0f89b1bb",
+  "image": "registry.fly.io/wlmd-stripe-test-0f89b1bb@sha256:2ec6bcdd92b4e22f40ebdb5f1f377bf3b3da9268fc54d0c3aac84ce13d940b72",
+  "manifest_verified": true,
+  "config_digest": "sha256:e23af5c2b481409ec6cc8fff3fd3082c4d0ef16880a234b3046139a3eaab7974",
+  "layer_count": 9,
+  "deployed_at_date": "2026-10-22",
+  "app": "wlmd-stripe-test-0f89b1bb",
+  "machine": "84e117f290dd38",
+  "volume": "vol_40o3gdk37mo7zy24",
+  "admin_url": "https://wlmd-stripe-test-0f89b1bb.fly.dev/admin",
+  "master_url": "https://wlmd-stripe-test-0f89b1bb.fly.dev/admin#master",
+  "offline_tests_passed": 122,
+  "browser_scenarios_passed": 12,
+  "browser_skipped": 0,
+  "browser_flaky": 0,
+  "browser_payment_provider": "fake Sticky and Stripe.js contract stub",
+  "qa_report": "docs/QA_REPORT.md",
+  "container_smoke_passed": true,
+  "mobile_no_horizontal_overflow": true,
+  "new_live_payment_submitted": false,
+  "sticky_config_write_submitted": false,
+  "deployed_image_verified": true,
+  "hosted_validation": {
+    "prepaid_assets_available": true,
+    "plain_language_purchase_assets_available": true,
+    "brand_category_browser_assets_available": true,
+    "brand_design_assets_available": true,
+    "master_assets_available": true,
+    "master_data_requires_owner": true,
+    "production_test_hooks_absent": true,
+    "friendly_private_page": 401,
+    "friendly_missing_link": 404,
+    "deployed_assets_updated": true,
+    "public_admin": 200,
+    "unauthenticated_admin_data": 401,
+    "owner_configured": true,
+    "setup_token_cannot_grant_access": true,
+    "owner_created_by_automation": false,
+    "legacy_receipt": "505015",
+    "existing_checkout_ready": true,
+    "admin_config_count": 14,
+    "admin_review_statuses": {
+      "applied": 5
+    },
+    "payment_writes": 0,
+    "sticky_config_writes": 0,
+    "existing_link_owner_preserved": true,
+    "customer_config_matches_saved_brand_color": true,
+    "saved_color": "#245844",
+    "customer_color": "#245844",
+    "payment_or_config_writes": 0
+  },
+  "hosted_browser_validation": [
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "status": 200,
+      "sign_in_visible": true,
+      "no_horizontal_overflow": true,
+      "page_errors": 0
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "status": 200,
+      "sign_in_visible": true,
+      "no_horizontal_overflow": true,
+      "page_errors": 0
+    }
+  ],
+  "owner_and_admin_records_preserved": true,
+  "master_preset": {
+    "sku": "TIRZ-1M",
+    "source_product_id": 2856,
+    "default_price": "449.00",
+    "currency": "USD",
+    "billing_model_ids": [
+      3,
+      4,
+      5,
+      7,
+      6
+    ],
+    "interval_days": [
+      30,
+      90,
+      180,
+      270,
+      360
+    ],
+    "hosted_save_and_campaign_assignment": "Owner records preserved. No master or campaign changes applied by deployment automation.",
+    "read_only_campaign_preview": "docs/test-campaign-master-preview.json"
+  },
+  "campaigns_url": "https://wlmd-stripe-test-0f89b1bb.fly.dev/admin#campaigns",
+  "simplified_admin": {
+    "primary_screens": [
+      "Brands",
+      "Master SKUs",
+      "Campaigns",
+      "Checkout links"
+    ],
+    "optional_existing_product_id": true,
+    "existing_or_new_campaign_single_approval": true,
+    "automatic_private_links": true,
+    "automatic_link_choices_title_and_identifier": true
+  },
+  "checkout_campaign_selector": {
+    "source": "accessible Sticky campaign index plus saved mappings",
+    "mapping_created_only_on_link_approval": "Legacy API fallback; UI selects a saved brand",
+    "live_campaign_index_count": 408,
+    "campaign_422_in_index": true,
+    "sticky_config_writes": 0,
+    "requires_brand_selection_in_ui": true,
+    "unattached_campaign_setup_shortcut": true,
+    "lists_campaigns_without_local_brands": true
+  },
+  "brands_url": "https://wlmd-stripe-test-0f89b1bb.fly.dev/admin#brands",
+  "brand_owned_checkouts": {
+    "multiple_campaigns_per_brand": true,
+    "explicit_campaign_per_link_and_offer": true,
+    "shared_logo_colors_font_layout_support": true,
+    "live_design_preview": true,
+    "legacy_primary_campaign_preserved": true,
+    "brand_and_campaign_price_isolation": true,
+    "custom_domains": "Pending separate DNS/HTTPS configuration"
+  },
+  "deployment_preflight": {
+    "owner_confirmed_only_opened_expired_payment_form": true,
+    "pending_attempt_preserved_without_reset": true,
+    "campaign_id": 422,
+    "sku": "TIRZ-1M",
+    "amount": "449.00",
+    "currency": "USD",
+    "new_payment_or_capture_submitted": false,
+    "processor_cancellation_or_settlement_not_claimed": true
+  },
+  "checkout_browser": {
+    "brand_directory": true,
+    "links_scoped_to_selected_brand": true,
+    "categories": "Editable master catalog labels",
+    "existing_uncategorized_fallback": true,
+    "category_edits_preserve_billing_revision_and_links": true,
+    "owning_brand_design_shortcut": true,
+    "brand_assignments_preserved_as_requested": true
+  },
+  "plain_language_purchase_setup": {
+    "duration_metadata_only": true,
+    "one_time_and_subscription": true,
+    "separate_prices": true,
+    "exact_day_frequency": true,
+    "sticky_mappings_preserved": true,
+    "pay_upfront": true
+  },
+  "prepaid_hosted_validation": {
+    "prepaid_setup_imported": true,
+    "private_checkout_ready": true,
+    "sku": "WLMD-PREPAY-cfef3de8",
+    "link_id": "master-3587a717dac01f9a2b3c5c1b",
+    "campaign_id": 422,
+    "brand_preserved": true,
+    "prepaid_cycles": 4,
+    "interval_days": 90,
+    "upfront_amount": 120000,
+    "currency": "usd",
+    "auto_renewal": false,
+    "bulk_assignment_enabled": false,
+    "owner_unchanged": true,
+    "legacy_order_preserved": true,
+    "admin_config_count": 14,
+    "admin_review_statuses": {
+      "applied": 5
+    },
+    "payment_writes": 0,
+    "sticky_config_writes": 0
+  },
+  "prepaid_import": {
+    "imported": true,
+    "sku": "WLMD-PREPAY-cfef3de8",
+    "campaign_id": 422,
+    "product_id": 55098,
+    "offer_id": 712,
+    "private_link_id": "master-3587a717dac01f9a2b3c5c1b",
+    "created_records": 5,
+    "bulk_assignment_enabled": false,
+    "upfront_amount": 120000,
+    "sticky_writes": 0,
+    "payment_writes": 0,
+    "owner_session_created": false
+  },
+  "prepaid_test_results": {
+    "campaign_id": 422,
+    "sku": "WLMD-PREPAY-cfef3de8",
+    "product_id": 55098,
+    "offer_id": 712,
+    "billing_model_id": 4,
+    "interval_days": 90,
+    "cycles": 4,
+    "coverage_days": 360,
+    "upfront_total": "1200.00",
+    "currency": "USD",
+    "automatic_renewal": false,
+    "orders": [
+      {
+        "cycle": 1,
+        "order_id": "506291",
+        "total": "1200",
+        "test": true,
+        "gateway_id": 1,
+        "parent_order_id": "506291",
+        "ancestor_order_id": "506291",
+        "recurring": true,
+        "next_recurring_date": "2027-01-19"
+      },
+      {
+        "cycle": 2,
+        "order_id": "506295",
+        "total": "0",
+        "test": true,
+        "gateway_id": 1,
+        "parent_order_id": "506291",
+        "ancestor_order_id": "506291",
+        "recurring": true,
+        "next_recurring_date": "2027-01-19"
+      },
+      {
+        "cycle": 3,
+        "order_id": "506299",
+        "total": "0",
+        "test": true,
+        "gateway_id": 1,
+        "parent_order_id": "506295",
+        "ancestor_order_id": "506291",
+        "recurring": true,
+        "next_recurring_date": "2027-01-19"
+      },
+      {
+        "cycle": 4,
+        "order_id": "506300",
+        "total": "0",
+        "test": true,
+        "gateway_id": 1,
+        "parent_order_id": "506299",
+        "ancestor_order_id": "506291",
+        "recurring": false,
+        "next_recurring_date": "0000-00-00"
+      }
+    ],
+    "single_subscription_verified": true,
+    "physical_shipments": 0,
+    "real_card_charges": 0,
+    "execution": "Initial dry-run order plus three manually advanced cycles using order_force_bill and forced Dry Run Testing gateway 1. Scheduled time elapse and live Stripe v2 prepaid processing were not tested."
+  },
+  "prepaid_scope": {
+    "fixed_term_no_renewal": true,
+    "test_products_only": true,
+    "physical_medication_release_enabled": false,
+    "live_stripe_prepaid_verified": false,
+    "upfront_price_separate_from_shipment_interval": true,
+    "quote_and_capture_cycles_verified": true,
+    "bulk_assignment_of_fixture": false,
+    "shippable_catalog_planning": true
+  },
+  "prepaid_product_shortcut": {
+    "product_card_shortcut": true,
+    "existing_plan_edit_without_duplicate": true,
+    "default_deliveries": 4,
+    "default_interval_days": 90,
+    "default_price": "Owner enters total upfront price",
+    "no_renewal": true,
+    "live_delivery_timeline": true,
+    "existing_purchase_options_preserved": true,
+    "shippable_catalog_planning": true,
+    "shippable_campaign_activation": false,
+    "live_stripe_prepaid_verified": false,
+    "configuration_and_checkout_records_preserved": true,
+    "hosted_checks": {
+      "health": 200,
+      "admin": 200,
+      "tested_assets_match": {
+        "master.js": true,
+        "admin.js": true,
+        "admin.css": true
+      },
+      "owner_configured": true,
+      "anonymous_admin_data_blocked": true,
+      "test_hooks_absent": true,
+      "payment_writes": 0,
+      "sticky_config_writes": 0
+    }
+  },
+  "deployed": true,
+  "browser_test_scope": "Affected category grouping and master-catalog workflows",
+  "combined_purchase_choices": {
+    "one_time_and_subscription_checkboxes": true,
+    "both_selectable": true,
+    "shared_price_explicit": true,
+    "separate_options_allow_different_prices": true,
+    "existing_intervals_preserved": true,
+    "preset_loading_guard": true,
+    "browser_scenarios_passed": 26,
+    "browser_scope": [
+      "plans",
+      "prepaid",
+      "master",
+      "simple"
+    ],
+    "backend_changed": false,
+    "backend_rerun": false,
+    "previous_full_suite": {
+      "backend": 122,
+      "browser": 55
+    },
+    "hosted_checks": {
+      "health": 200,
+      "admin": 200,
+      "tested_assets_match": {
+        "master.js": true,
+        "admin.js": true,
+        "admin.css": true
+      },
+      "owner_configured": true,
+      "anonymous_admin_data_blocked": true,
+      "test_hooks_absent": true,
+      "payment_writes": 0,
+      "sticky_config_writes": 0
+    },
+    "saved_records_unchanged": true,
+    "sticky_writes": 0,
+    "payment_writes": 0
+  },
+  "category_dropdown": {
+    "existing_category_dropdown": true,
+    "uncategorized": true,
+    "add_new_category": true,
+    "category_only_preserves_billing_and_links": true,
+    "browser_scenarios_passed": 12,
+    "backend_changed": false,
+    "saved_records_preserved": true,
+    "hosted_checks": {
+      "health": 200,
+      "admin": 200,
+      "tested_assets_match": {
+        "master.js": true,
+        "admin.js": true,
+        "admin.css": true
+      },
+      "owner_configured": true,
+      "anonymous_admin_data_blocked": true,
+      "test_hooks_absent": true,
+      "payment_writes": 0,
+      "sticky_config_writes": 0
+    }
+  }
+}

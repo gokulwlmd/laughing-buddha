@@ -1,0 +1,49 @@
+{
+  "order_id": "506327",
+  "order_status": "2",
+  "order_total": "1200",
+  "is_test_cc": "1",
+  "gateway_id": "1",
+  "campaign_id": "422",
+  "is_recurring": "1",
+  "recurring_date": "2027-01-19",
+  "parent_id": "506327",
+  "ancestor_id": "506327",
+  "products": [
+    {
+      "product_id": "55098",
+      "sku": "WLMD-PREPAY-cfef3de8",
+      "price": "1200.00",
+      "product_qty": "1",
+      "is_recurring": "1",
+      "is_shippable": "0",
+      "recurring_date": "2027-01-19",
+      "next_subscription_product_price": "300.00",
+      "forecasted_revenue": "0.00",
+      "on_hold": "0",
+      "subscription_desc": "Bills every 90 days",
+      "prepaid": [
+        {
+          "is_renew": "0",
+          "total_cycles": "4",
+          "current_cycle": "1"
+        }
+      ],
+      "billing_model": {
+        "id": "4",
+        "name": "90 days Subscription",
+        "description": "Bills every 90 days"
+      },
+      "offer": {
+        "id": "712",
+        "name": "WLMD-PREPAY-cfef3de8 - Pay upfront 4 shipments / 90 days / stop"
+      }
+    }
+  ],
+  "verification": {
+    "initial_order_only": true,
+    "remaining_cycles": 3,
+    "remaining_cycles_manually_advanced": 0,
+    "real_card_charged": false
+  }
+}

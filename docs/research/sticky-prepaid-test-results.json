@@ -1,0 +1,63 @@
+{
+  "campaign_id": 422,
+  "sku": "WLMD-PREPAY-cfef3de8",
+  "product_id": 55098,
+  "offer_id": 712,
+  "billing_model_id": 4,
+  "interval_days": 90,
+  "cycles": 4,
+  "coverage_days": 360,
+  "upfront_total": "1200.00",
+  "currency": "USD",
+  "automatic_renewal": false,
+  "orders": [
+    {
+      "cycle": 1,
+      "order_id": "506291",
+      "total": "1200",
+      "test": true,
+      "gateway_id": 1,
+      "parent_order_id": "506291",
+      "ancestor_order_id": "506291",
+      "recurring": true,
+      "next_recurring_date": "2027-01-19"
+    },
+    {
+      "cycle": 2,
+      "order_id": "506295",
+      "total": "0",
+      "test": true,
+      "gateway_id": 1,
+      "parent_order_id": "506291",
+      "ancestor_order_id": "506291",
+      "recurring": true,
+      "next_recurring_date": "2027-01-19"
+    },
+    {
+      "cycle": 3,
+      "order_id": "506299",
+      "total": "0",
+      "test": true,
+      "gateway_id": 1,
+      "parent_order_id": "506295",
+      "ancestor_order_id": "506291",
+      "recurring": true,
+      "next_recurring_date": "2027-01-19"
+    },
+    {
+      "cycle": 4,
+      "order_id": "506300",
+      "total": "0",
+      "test": true,
+      "gateway_id": 1,
+      "parent_order_id": "506299",
+      "ancestor_order_id": "506291",
+      "recurring": false,
+      "next_recurring_date": "0000-00-00"
+    }
+  ],
+  "single_subscription_verified": true,
+  "physical_shipments": 0,
+  "real_card_charges": 0,
+  "execution": "Initial dry-run order plus three manually advanced cycles using order_force_bill and forced Dry Run Testing gateway 1. Scheduled time elapse and live Stripe v2 prepaid processing were not tested."
+}

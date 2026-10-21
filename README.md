@@ -1,0 +1,26 @@
+# WLMD Core
+
+Master SKU catalog, branded campaign setup, and Sticky.io Stripe Connect v2 checkout administration.
+
+The current application lives in [`tools/stripe-v2-checkout`](tools/stripe-v2-checkout). It uses FastAPI, SQLite, and a browser-based admin panel, with Stripe Elements handling card entry. It is deployed on Fly.io.
+
+## Current workflows
+
+- Maintain master SKUs, editable catalog categories, product duration, and purchase options.
+- Offer one-time purchases and subscriptions together or with separate prices.
+- Configure fixed prepaid test plans with an upfront price, delivery interval, and completion after the selected number of cycles.
+- Assign master presets to existing or new brand campaigns after preview and approval.
+- Manage branded public/private checkout links, grouped by category.
+
+The project remains an integration harness. Medication fulfillment, trial flows, and other unverified payment configurations retain the limitations described in the application documentation.
+
+## Start here
+
+- [Application setup and payment architecture](tools/stripe-v2-checkout/README.md)
+- [Admin workflows and supported features](tools/stripe-v2-checkout/ADMIN.md)
+- [Fly deployment and persistent-state requirements](tools/stripe-v2-checkout/FLY.md)
+- [Deployment version and verification evidence](tools/stripe-v2-checkout/deployment.json)
+- [QA baseline](docs/QA_REPORT.md), [combined purchase choices](docs/COMBINED_PURCHASE_OPTIONS_QA.md), and [category dropdown](docs/CATEGORY_DROPDOWN_QA.md)
+- [Reusable project skills](.agents/skills)
+
+Credentials are supplied through environment variables or Fly secrets. Runtime databases, private invitations, installed dependencies, and generated browser artifacts are excluded from version control. Test fixtures use synthetic credentials and fake payment providers.

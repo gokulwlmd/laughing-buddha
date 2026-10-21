@@ -1,0 +1,153 @@
+{
+  "mode": "read-only preview in disposable local state",
+  "campaign_id": 422,
+  "sku": "TIRZ-1M",
+  "default_price": "449.00",
+  "currency": "USD",
+  "billing_models": [
+    3,
+    4,
+    5,
+    7,
+    6
+  ],
+  "entries": [
+    {
+      "sku": "TIRZ-1M",
+      "revision": 1,
+      "offers": [
+        {
+          "name": "Standard subscription",
+          "price": "449.00",
+          "currency": "USD",
+          "billing_models": [
+            3,
+            4,
+            5,
+            7,
+            6
+          ],
+          "billing_days": [
+            30,
+            90,
+            180,
+            270,
+            360
+          ],
+          "action": "Create managed offer",
+          "price_source": "Master default"
+        }
+      ],
+      "checkout_link": "master-adacfd7a3ab63a1edbcbe8cc",
+      "checkout_action": "Create private checkout with all master choices"
+    }
+  ],
+  "proposed_operations": [
+    {
+      "method": "POST",
+      "path": "/api/v2/products",
+      "body": {
+        "name": "WLMD Test / Compounded Tirzepatide - 1 month supply / Standard subscription",
+        "sku": "TIRZ-1M",
+        "category_id": 10,
+        "description": "Compounded Tirzepatide  - 1 month supply BM:3",
+        "price": 449.0,
+        "cost_of_goods": 0.0,
+        "restocking_fee": 0.0,
+        "max_quantity": 1,
+        "is_shippable": 1,
+        "is_taxable": 0,
+        "auto_create_variants": 0,
+        "attributes": [],
+        "weight": 0,
+        "weight_unit_id": 1
+      },
+      "save": "product_0_0",
+      "verify": {
+        "kind": "product",
+        "sku": "TIRZ-1M",
+        "price": "449.00",
+        "contract": {
+          "sku": "TIRZ-1M",
+          "category_id": 10,
+          "is_shippable": 1,
+          "taxable": 0,
+          "max_quantity": 1,
+          "is_variant_enabled": 0,
+          "is_bundle": 0,
+          "weight": "0",
+          "weight_unit_id": 1,
+          "tax_code": null,
+          "shipping_restrictions": []
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v2/offers",
+      "body": {
+        "type_id": 1,
+        "is_trial": 0,
+        "recurring": {
+          "cycle_type_id": 1,
+          "terminating_cycle_type_id": 2
+        },
+        "name": "WLMD Test / Standard subscription",
+        "products": [
+          {
+            "id": {
+              "$ref": "product_0_0"
+            }
+          }
+        ],
+        "billing_models": [
+          {
+            "id": 3
+          },
+          {
+            "id": 4
+          },
+          {
+            "id": 5
+          },
+          {
+            "id": 7
+          },
+          {
+            "id": 6
+          }
+        ]
+      },
+      "save": "offer_0_0",
+      "verify": {
+        "kind": "offer",
+        "product": {
+          "$ref": "product_0_0"
+        },
+        "models": [
+          3,
+          4,
+          5,
+          7,
+          6
+        ]
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v2/campaigns/422",
+      "body": {
+        "offers": [
+          705,
+          706,
+          {
+            "$ref": "offer_0_0"
+          }
+        ]
+      }
+    }
+  ],
+  "sticky_writes_submitted": 0,
+  "payments_submitted": 0,
+  "hosted_owner_data_changed": false
+}

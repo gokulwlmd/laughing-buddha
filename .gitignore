@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.pyc
+*.sqlite3
+*.sqlite3-*
+*.log
+.DS_Store
+tools/stripe-v2-checkout/.state/
+tools/stripe-v2-checkout/qa/node_modules/
+tools/stripe-v2-checkout/qa/results/

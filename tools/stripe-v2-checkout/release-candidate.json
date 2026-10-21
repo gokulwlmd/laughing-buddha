@@ -1,0 +1,132 @@
+{
+  "repository": "wlmd-stripe-test-0f89b1bb",
+  "image": "registry.fly.io/wlmd-stripe-test-0f89b1bb@sha256:2ec6bcdd92b4e22f40ebdb5f1f377bf3b3da9268fc54d0c3aac84ce13d940b72",
+  "manifest_verified": true,
+  "config_digest": "sha256:e23af5c2b481409ec6cc8fff3fd3082c4d0ef16880a234b3046139a3eaab7974",
+  "layer_count": 9,
+  "feature": "Fixed prepaid test plans with four shipment orders",
+  "deployed": true,
+  "status": "deployed_verified_category_dropdown",
+  "container_smoke_passed": true,
+  "browser_payment_provider": "fake Sticky and Stripe.js contract stub",
+  "payment_writes": 0,
+  "sticky_config_writes": 0,
+  "offline_tests_passed": 122,
+  "browser_scenarios_passed": 12,
+  "dry_run_order_writes": 0,
+  "live_processor_payment_writes": 0,
+  "hosted_fixture_imported": false,
+  "prepaid_product_shortcut": {
+    "product_card_shortcut": true,
+    "existing_plan_edit_without_duplicate": true,
+    "default_deliveries": 4,
+    "default_interval_days": 90,
+    "default_price": "Owner enters total upfront price",
+    "no_renewal": true,
+    "live_delivery_timeline": true,
+    "existing_purchase_options_preserved": true,
+    "shippable_catalog_planning": true,
+    "shippable_campaign_activation": false,
+    "live_stripe_prepaid_verified": false,
+    "configuration_and_checkout_records_preserved": true,
+    "hosted_checks": {
+      "health": 200,
+      "admin": 200,
+      "tested_assets_match": {
+        "master.js": true,
+        "admin.js": true,
+        "admin.css": true
+      },
+      "owner_configured": true,
+      "anonymous_admin_data_blocked": true,
+      "test_hooks_absent": true,
+      "payment_writes": 0,
+      "sticky_config_writes": 0
+    }
+  },
+  "deployed_at_date": "2026-10-22",
+  "browser_test_scope": "Affected category grouping and master-catalog workflows",
+  "combined_purchase_choices": {
+    "one_time_and_subscription_checkboxes": true,
+    "both_selectable": true,
+    "shared_price_explicit": true,
+    "separate_options_allow_different_prices": true,
+    "existing_intervals_preserved": true,
+    "preset_loading_guard": true,
+    "browser_scenarios_passed": 26,
+    "browser_scope": [
+      "plans",
+      "prepaid",
+      "master",
+      "simple"
+    ],
+    "backend_changed": false,
+    "backend_rerun": false,
+    "previous_full_suite": {
+      "backend": 122,
+      "browser": 55
+    },
+    "hosted_checks": {
+      "health": 200,
+      "admin": 200,
+      "tested_assets_match": {
+        "master.js": true,
+        "admin.js": true,
+        "admin.css": true
+      },
+      "owner_configured": true,
+      "anonymous_admin_data_blocked": true,
+      "test_hooks_absent": true,
+      "payment_writes": 0,
+      "sticky_config_writes": 0
+    },
+    "saved_records_unchanged": true,
+    "sticky_writes": 0,
+    "payment_writes": 0
+  },
+  "hosted_browser_validation": [
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "status": 200,
+      "sign_in_visible": true,
+      "no_horizontal_overflow": true,
+      "page_errors": 0
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "status": 200,
+      "sign_in_visible": true,
+      "no_horizontal_overflow": true,
+      "page_errors": 0
+    }
+  ],
+  "category_dropdown": {
+    "existing_category_dropdown": true,
+    "uncategorized": true,
+    "add_new_category": true,
+    "category_only_preserves_billing_and_links": true,
+    "browser_scenarios_passed": 12,
+    "backend_changed": false,
+    "saved_records_preserved": true,
+    "hosted_checks": {
+      "health": 200,
+      "admin": 200,
+      "tested_assets_match": {
+        "master.js": true,
+        "admin.js": true,
+        "admin.css": true
+      },
+      "owner_configured": true,
+      "anonymous_admin_data_blocked": true,
+      "test_hooks_absent": true,
+      "payment_writes": 0,
+      "sticky_config_writes": 0
+    }
+  }
+}

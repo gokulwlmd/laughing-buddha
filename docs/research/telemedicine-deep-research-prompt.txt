@@ -1,0 +1,47 @@
+Research US telemedicine brands for WLMD’s product catalog. Produce a CURRENT, SOURCED market survey covering how the products below are sold, their billing/subscription models, their advertised dose/strength models, and their refill processes. Use official product pages, pricing/checkout terms, help centers and published care/refill documentation. Include exact source URLs and access dates. Do not substitute a research plan for the findings.
+
+Products/categories from our list:
+1. Weight loss, including relevant branded/compounded GLP-1 products and other observed offerings.
+2. Erectile dysfunction.
+3. NAD/NAD+.
+4. “Serm” — likely sermorelin, but unconfirmed.
+5. “4 in 1” — ingredient combination/indication unconfirmed; do not invent it.
+6. Urgent care.
+7. Metformin.
+8. Glutathione.
+9. PT-141/bremelanotide.
+10. Testosterone replacement therapy.
+11. Enclomiphene.
+12. Propranolol.
+13. Prescription skin care.
+14. Hair loss.
+15. “Microdosing” — drug/indication unconfirmed; do not automatically equate this with GLP-1 treatment.
+16. Copper peptide — likely GHK-Cu, formulation unconfirmed.
+17. Estriol + vitamin C + hydrolyzed hyaluronic acid.
+18. Tretinoin + niacinamide + vitamin C (working transcription; exact compound unconfirmed).
+19. Hydroquinone + kojic acid + niacinamide.
+20. Minoxidil and finasteride, including single-ingredient and combination products.
+21. Sertraline.
+22. Progesterone.
+
+Start with Ro, Hims/Hers, Mochi, Henry Meds, LifeMD, OrderlyMeds, BlueChew, Rex MD, RedBox Rx, Kick, AgelessRx, Hone Health, Maximus, TRT Nation, Peter MD, Defy Medical, Musely, Curology, Dermatica, Keeps, Happy Head, Alloy, Midi, Winona, Evernow, Brightside, Cerebral, Talkiatry, Amazon One Medical, Sesame, Teladoc, GoodRx Care and PlushCare. These are research leads, not assertions that each currently offers a particular product. Add directly relevant brands when evidenced. Aim for at least two relevant competitors per confirmed therapy where public information exists.
+
+For each brand/product, record:
+A. Product ingredients, formulation/route, strength/concentration, package size, total active amount and stated days of supply. Separate branded, compounded and nonprescription products; do not assume they are equivalent.
+B. Actual upfront charge, promotional price/duration, renewal price, billing cadence, minimum commitment and cancellation/refund rules. Distinguish a displayed monthly equivalent from an actual multi-month upfront charge. Separate medication, membership, clinician/visit, laboratory, shipping and supply fees.
+C. Subscription structure: recurring medication, membership plus separate medicine, prepaid multi-month treatment, one-time course, per-visit or per-refill purchase. Record when payment is taken relative to clinician approval, pharmacy release and shipment, and the published policy if prescribing is declined.
+D. Advertised dose/strength models: fixed formulation, clinician-selected dose, starter versus maintenance, one price across doses, dose-based price tiers, or other evidenced structures. Show whether price/package/supply changes with dose. Record mg, mL, syringe units, concentration and dose count separately as published; do not convert these into patient dosing instructions.
+E. Dose-change workflow: whether it requires clinician review/new prescription, price-tier change, new product/SKU, additional charge or shipment adjustment. Describe public policies, not an invented titration protocol.
+F. Refill workflow: automatic shipment versus patient request, questionnaire/check-in, clinician approval, prescription refill count/validity and early/late refill handling. Separate billing frequency, medicine supply, shipping, prescription authorization and clinical review.
+G. Published monitoring/lab/check-in requirements and timing, plus pauses, failed-payment/cancellation consequences and restart policies. Mark anything not publicly documented. A billing date is not evidence of medical approval.
+
+Deliver:
+1. A detailed competitor table organized by therapy, with source links for material claims.
+2. A short comparison of the observed billing/subscription/dose models and actual refill workflows.
+3. A clear list of unanswered or account-only questions; do not fabricate exact prices or clinical policies.
+4. A proposed WLMD master SKU/offer/billing/refill data model, clearly separated from competitor facts and from clinician-owned decisions.
+5. A practical recommendation for implementing the catalog, showing which rules belong to SKU identity/formulation, brand/offer pricing, subscription billing, fulfillment, and independent refill review.
+
+WLMD decisions to retain: stable SKUs with editable prices per brand/offer; customers choose owner-enabled offers; all configuration changes are previewed and owner-approved. WLMD plans to charge first. Individual SKUs have independent refill rules, without therapy-level inheritance or overrides. Billing/subscription state controls commercial/refill access and does not itself issue a medication-discontinuation or dose-change instruction. Do not turn a 30/90/180/270/360-day billing model into an assumed medicine-supply or refill interval. No purchases, patient accounts, clinician outreach, production changes or payment tests are authorized by this research request.
+
+Proceed with the confirmed items while flagging ambiguous photo labels; do not stop the whole survey to guess an unclear compound. Do not provide personalized dosing/treatment recommendations.
