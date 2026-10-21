@@ -41,6 +41,8 @@ class MasterSKU(BaseModel):
     sku: str = Field(min_length=1,max_length=200)
     name: str = Field(min_length=1,max_length=150)
     category: str = Field(default='',max_length=80)
+    therapy_id: str = Field(default='',max_length=61)
+    treatment_id: str = Field(default='',max_length=61)
     product_duration_months: int | None = Field(default=None,ge=1,le=36,strict=True)
     product_id: int | None = Field(default=None,gt=0)
     fulfillment_product_id: int = Field(default=2856,gt=0)
@@ -140,7 +142,7 @@ def assignment_id(brand,campaign,sku):
 
 class MasterCatalog:
     def local_fingerprint(self):
-        return fingerprint([self.records(k) for k in ('brand','sku','link','offering','master','assignment')])
+        return fingerprint([self.records(k) for k in ('brand','sku','link','offering','master','assignment','therapy','plan_checkout')])
 
     def prepare_setup(self,payload):
         request=CampaignSetup.model_validate(payload).model_dump(mode='json')
@@ -214,16 +216,22 @@ class MasterCatalog:
                         raise HTTPException(422,'Master provisioning currently supports standard one-time and day-based recurring models')
             data['billing_terms']={str(mid):billing_terms(available[mid]) for o in data['offers'] for mid in o['billing_models']}
             before=self.get('master',data['sku'])
-            presentation=('category','product_duration_months')
+            presentation=('category','product_duration_months','therapy_id','treatment_id')
             for field in presentation:
-                if before and field not in payload:data[field]=before.get(field,'' if field=='category' else None)
-            defaults={'fulfillment_product_id':2856,'category':'','product_duration_months':None}
+                if before and field not in payload:data[field]=before.get(field,None if field=='product_duration_months' else '')
+            defaults={'fulfillment_product_id':2856,'category':'','product_duration_months':None,'therapy_id':'','treatment_id':''}
+            if data['therapy_id']:
+                therapy=self.get('therapy',data['therapy_id'])
+                if not therapy or not therapy['enabled'] or data['treatment_id'] not in {t['id'] for t in therapy['treatments']}:raise HTTPException(422,'Choose an active therapy and one of its treatments')
+            elif data['treatment_id']:raise HTTPException(422,'Choose a therapy before its treatment')
             old=dict(defaults,**(before or {}))
             metadata_only=bool(before) and any(old[k]!=data[k] for k in presentation) and all(old.get(k)==v for k,v in data.items() if k not in presentation)
             data['revision']=(before or {}).get('revision',0)+(0 if metadata_only else 1)
             preview={'before':before,'after':data,'stickyWrites':[],
                 'impact':'Category and product duration describe the catalog; they do not change charges, quantities, doses or refill rules. Saves this master preset and its source SKU mapping only. Existing campaigns, prices and subscriptions stay on their approved setup until a campaign assignment is separately reviewed.',
                 'affectedCampaigns':[a['campaign_id'] for a in self.records('assignment') if a['sku']==data['sku']]}
+            if before and any(before.get(k)!=data.get(k) for k in ('therapy_id','treatment_id','product_duration_months')):
+                preview['affectedCheckoutLinks']=[l['id'] for l in self.records('link') if l['sku']==data['sku'] and l.get('plan_checkout_id')]
             if any(o.get('prepaid_cycles') for o in data['offers']) and (enabled(p.get('is_shippable')) or enabled(p.get('taxable',p.get('is_taxable')))):
                 preview['readinessNote']='This prepaid plan can be saved in your catalog. Campaign assignment is blocked until prepaid shipping and tax support is verified for this product. Existing checkouts keep their approved options.'
         else:

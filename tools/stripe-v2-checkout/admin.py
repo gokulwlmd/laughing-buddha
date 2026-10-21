@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator, ValidationError
 from catalog import resolve, enabled, money
 from prepaid import cycles_for, unit_price
+from plans import PlanCatalog
 from master import MasterCatalog, clone_product, model_rows, offer_models, product_contract, source_product, brand_campaigns, attach_campaign, record_campaign
 
 LOCK = threading.RLock()
@@ -119,7 +120,7 @@ class Campaign(Form):
 
 
 class Proposal(Form):
-    kind: str = Field(pattern=r'^(brand|sku|link|offer|campaign|master|provision|campaign_setup)$')
+    kind: str = Field(pattern=r'^(brand|sku|link|offer|campaign|master|provision|campaign_setup|therapy|plan_checkout)$')
     data: dict
 
 
@@ -133,7 +134,7 @@ def branding(brand):
     return {k:brand.get(k,defaults.get(k,'')) for k in ('name','logo_url','color','support_email','support_phone',*defaults)}
 
 
-class Admin(MasterCatalog):
+class Admin(MasterCatalog,PlanCatalog):
     def __init__(self,store,cfg,api,invite,payment_lock=None):
         self.store,self.cfg,self.api,self.invite=store,cfg,api,invite
         self.payment_lock=payment_lock or threading.RLock()
@@ -200,6 +201,10 @@ class Admin(MasterCatalog):
         link=self.get('link',key)
         if not link or not link.get('enabled'):
             raise HTTPException(404,'This checkout link is unavailable')
+        if link.get('plan_checkout_id'):
+            plan,_,_=self.plan_record(link['plan_checkout_id'])
+            if link['sku'] not in {e['sku'] for e in plan['entries']} or link['brand_id']!=plan['brand_id'] or link.get('campaign_id')!=plan['campaign_id']:raise HTTPException(404,'This plan is unavailable')
+            self.therapy_for(self.get('master',link['sku']) or {},plan['therapy_id'])
         brand=self.get('brand',link['brand_id'])
         cid=record_campaign(link,brand)
         if not brand or cid not in brand_campaigns(brand):
@@ -236,8 +241,10 @@ class Admin(MasterCatalog):
         return data['sku'] if kind=='sku' else data['id']
 
     def prepare(self,kind,data):
-        if kind in ('master','provision','campaign_setup'):
-            try:return self.prepare_setup(data) if kind=='campaign_setup' else self.prepare_master(kind,data)
+        if kind in ('master','provision','campaign_setup','therapy','plan_checkout'):
+            try:
+                if kind in ('therapy','plan_checkout'):return self.prepare_plan(kind,data)
+                return self.prepare_setup(data) if kind=='campaign_setup' else self.prepare_master(kind,data)
             except ValidationError as exc:
                 fields=', '.join(sorted({str(e['loc'][0]).replace('_',' ') for e in exc.errors() if e['loc']}))
                 raise HTTPException(422,'Please check: '+fields) from None
@@ -271,6 +278,7 @@ class Admin(MasterCatalog):
                 if product.get('sku')!=data['sku']:raise HTTPException(422,'The Sticky product does not match this exact SKU')
                 if enabled(product.get('archived_flag')):raise HTTPException(422,'Select an active product')
             if kind=='link':
+                if before and before.get('plan_checkout_id'):raise HTTPException(422,'Edit this choice through its plan checkout builder')
                 brand=self.get('brand',data['brand_id'])
                 cid=data.get('campaign_id') or record_campaign(before or {},brand)
                 if cid:
@@ -362,6 +370,7 @@ class Admin(MasterCatalog):
             return db.execute('SELECT preview FROM admin_reviews WHERE id=?',(key,)).fetchone()[0]
 
     def attach(self,app):
+        self.attach_plans(app)
         @app.get('/admin')
         def page(req:Request):
             setup=req.query_params.get('setup')
@@ -421,14 +430,14 @@ class Admin(MasterCatalog):
         @app.get('/api/admin/state')
         def state(req:Request):
             self.authenticated(req)
-            links=self.records('link')
+            links=[l for l in self.records('link') if not l.get('plan_checkout_id')]
             for link in links:
                 link['url']=self.cfg.public_url+'/c/'+link['id']
                 if link['visibility']=='private':link['url']+='?access='+self.private_token(link)
             with self.store.db() as db:
                 reviews=[{'id':r[0],'kind':r[1],'status':r[2],'created':r[3],'preview':json.loads(r[4]),'result':json.loads(r[5]) if r[5] else None}
                     for r in db.execute('SELECT id,kind,status,created,preview,result FROM admin_reviews ORDER BY created DESC LIMIT 30')]
-            return {'masters':self.records('master'),'assignments':self.records('assignment'),'brands':self.records('brand'),'skus':self.records('sku'),'offers':self.records('offering'),'links':links,'reviews':reviews,'owner':self.owner()[0]}
+            return {'therapies':self.records('therapy'),'planCheckouts':self.plan_state(),'masters':self.records('master'),'assignments':self.records('assignment'),'brands':self.records('brand'),'skus':self.records('sku'),'offers':self.records('offering'),'links':links,'reviews':reviews,'owner':self.owner()[0]}
 
         @app.get('/api/admin/campaigns')
         def campaigns(req:Request):
@@ -556,7 +565,7 @@ class Admin(MasterCatalog):
                             if db.execute("SELECT 1 FROM checkouts WHERE campaign=? AND status NOT IN ('new','captured') LIMIT 1",(campaign_id,)).fetchone():
                                 raise HTTPException(409,'This campaign has an open payment; reconcile it before changing its offers or mapping')
                 affected_links=[data['id']] if kind=='link' else [l['id'] for l in self.records('link') if l['brand_id']==data['id']] if kind=='brand' else []
-                if kind in ('offer','provision','campaign_setup'):
+                if kind in ('offer','provision','campaign_setup','therapy','plan_checkout','master'):
                     affected_links=json.loads(self._review_preview(body.review_id)).get('affectedCheckoutLinks',[])
                 for affected_link in affected_links:
                     with self.store.db() as db:
@@ -610,6 +619,8 @@ class Admin(MasterCatalog):
                         if kind=='link' and data.get('_link_brand'):
                             brand=data.pop('_link_brand');self.put('brand',brand['id'],brand)
                         self.put(kind,self.identity(kind,data),data)
+                    elif kind in ('therapy','plan_checkout'):
+                        self.finalize_plan(kind,data)
                     elif kind=='offer':
                         old=self.get('offering',data['id'])
                         if old:

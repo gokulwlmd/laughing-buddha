@@ -1,11 +1,11 @@
 # Admin and checkout QA report
 
-Run: 22 October 2026, 12:44 AM IST.
+Run: 22 October 2026, 02:52 AM IST.
 
 Status: **Passed** for the implemented workflows below.
 
-- Backend: **122 tests**, 0 failures, 0 errors.
-- Browser: **55 passed**, 0 failed, 0 skipped, 0 flaky.
+- Backend: **133 tests**, 0 failures, 0 errors.
+- Browser: **61 passed**, 0 failed, 0 skipped, 0 flaky.
 - Browser engine: Chromium; desktop 1440×1000 and mobile 390×844.
 - Environment: disposable loopback server, synthetic owner/customer data, fake Sticky API and a Stripe.js contract stub. Production credentials are removed from the test process. External browser requests are blocked except the locally fulfilled Stripe stub.
 - No real card, processor authorization/capture, live refund, or live Sticky configuration write is made by this suite.
@@ -21,6 +21,7 @@ Status: **Passed** for the implemented workflows below.
 | GRP-02 | category edit regroups existing checkouts without reassignment or URL changes | Pass |
 | GRP-03 | design shortcut targets the owning brand and existing links retain independent colors | Pass |
 | GRP-04 | mobile brand directory and grouped checkout links fit the viewport | Pass |
+| GRP-05 | master category dropdown selects existing groups, clears to Uncategorized and validates new names on mobile | Pass |
 | MST-01 | agreed preset saves five intervals without a Sticky write | Pass |
 | MST-02 | test brand, assignment preview, private link and repeated assignment | Pass |
 | MST-03 | quote validation checks each assigned billing choice without charging | Pass |
@@ -31,6 +32,8 @@ Status: **Passed** for the implemented workflows below.
 | PLAN-01 | product duration, one-time price and subscription price map without naming offers | Pass |
 | PLAN-02 | legacy five intervals retain IDs, names and exact schedules when duration changes | Pass |
 | PLAN-03 | mobile purchase setup needs no offer labels and changing type clears incompatible schedules | Pass |
+| PLAN-04 | both purchase checkboxes retain all subscription intervals through save, edit, assignment and checkout | Pass |
+| PLAN-05 | neither purchase type prevents save and selecting both restores a valid choice | Pass |
 | PRE-01 | prepaid setup shows upfront price, produces a private link and captures the whole term once | Pass |
 | PRE-02 | changing prepaid type preserves one interval and validates cent-exact total | Pass |
 | PRE-03 | mobile prepaid setup displays total and fixed shipment count without overflow | Pass |
@@ -38,13 +41,16 @@ Status: **Passed** for the implemented workflows below.
 | PRE-05 | mobile prepaid shortcut keeps unsaved product fields and updates schedule and currency | Pass |
 | PRE-06 | physical product saves a prepaid catalog option with an explicit assignment limitation | Pass |
 | PRE-07 | missing 90-day model never substitutes a different schedule or erases the draft | Pass |
-| SIM-01 | four primary screens, local master and one-review existing campaign assignment | Pass |
+| SIM-01 | five primary screens, local master and one-review existing campaign assignment | Pass |
 | SIM-02 | new campaign name and template include every master SKU and ready links | Pass |
 | SIM-03 | automatically selected choices and generated link address with public/private control | Pass |
 | SIM-04 | uncertain campaign creation cannot duplicate through a fresh setup | Pass |
 | SIM-05 | mobile master campaign and links need no advanced settings | Pass |
 | SIM-06 | choose a brand before checkout creation and retain all accessible campaign choices | Pass |
 | SIM-07 | existing Sticky SKU creates a checkout under the selected brand | Pass |
+| PLN-01 | configure both treatments and purchase types, select one-time plan and complete one synthetic order | Pass |
+| PLN-02 | private plan invitation, mobile comparison, subscription handoff and edit persistence | Pass |
+| PLN-03 | changing therapy clears options; disabled collections do not remain payable | Pass |
 | AUTH-01 | first setup needs its invitation and matching passwords | Pass |
 | AUTH-02 | wrong password is recoverable and sign-out clears workspace | Pass |
 | AUTH-03 | expired session returns to login and preserves the unapplied draft | Pass |
@@ -101,7 +107,7 @@ The suite covers owner setup/sign-in/session storage, CSRF/origin checks, exact 
 
 ## Hosted release checks
 
-Deployed on 2026-10-22 to [the owner admin](https://wlmd-stripe-test-0f89b1bb.fly.dev/admin). The running Fly machine uses the verified immutable image recorded in `deployment.json` and the existing encrypted volume.
+Deployed on 2026-10-21 to [the owner admin](https://wlmd-stripe-test-0f89b1bb.fly.dev/admin). The running Fly machine uses the verified immutable image recorded in `deployment.json` and the existing encrypted volume.
 
 Read-only checks passed: health/admin pages, current assets, configured owner, anonymous admin-data rejection, friendly private/missing-link pages, absent test hooks, and the existing campaign/SKU configuration. The owner's account, admin records and original receipt were preserved. The live sign-in page passed desktop and mobile Chromium checks with no page errors or horizontal overflow. Browser verification pinned the public keys of the environment's installed proxy CA certificates; HTTPS checks also passed with the system trust store.
 

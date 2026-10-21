@@ -6,7 +6,8 @@ The current application lives in [`tools/stripe-v2-checkout`](tools/stripe-v2-ch
 
 ## Current workflows
 
-- Maintain master SKUs, editable catalog categories, product duration, and purchase options.
+- Group master SKUs by therapy and treatment, with editable categories, product duration, and purchase options.
+- Build one branded checkout where customers choose treatment, duration and payment terms.
 - Offer one-time purchases and subscriptions together or with separate prices.
 - Configure fixed prepaid test plans with an upfront price, delivery interval, and completion after the selected number of cycles.
 - Assign master presets to existing or new brand campaigns after preview and approval.
@@ -17,6 +18,7 @@ The project remains an integration harness. Medication fulfillment, trial flows,
 ## Start here
 
 - [Application setup and payment architecture](tools/stripe-v2-checkout/README.md)
+- [Therapy and multi-SKU checkout setup](docs/THERAPY_PLAN_CHECKOUTS.md)
 - [Admin workflows and supported features](tools/stripe-v2-checkout/ADMIN.md)
 - [Fly deployment and persistent-state requirements](tools/stripe-v2-checkout/FLY.md)
 - [Deployment version and verification evidence](tools/stripe-v2-checkout/deployment.json)

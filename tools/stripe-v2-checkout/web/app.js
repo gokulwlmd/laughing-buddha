@@ -117,7 +117,9 @@ async function initialize() {
     }
     const available = config.options.filter(o => !o.blockedReason);
     if (!available.length) throw new Error('No plans are currently available for online payment. Please contact the brand.');
-    select.value = available.length === 1 ? available[0].key : '';
+    const requestedSelection = query.get('selection');
+    select.value = available.some(o => o.key === requestedSelection) ? requestedSelection : available.length === 1 ? available[0].key : '';
+    if (requestedSelection) history.replaceState({}, '', location.pathname);
     select.addEventListener('change', () => {
       const option = config.options.find(o => o.key === select.value);
       $('option-note').textContent = option?.blockedReason ? 'This plan is not currently available online.' : '';

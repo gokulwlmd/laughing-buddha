@@ -9,3 +9,5 @@
 !web/
 !web/**
 !prepaid.py
+
+!plans.py

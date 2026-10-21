@@ -1,17 +1,17 @@
 {
   "repository": "wlmd-stripe-test-0f89b1bb",
-  "image": "registry.fly.io/wlmd-stripe-test-0f89b1bb@sha256:2ec6bcdd92b4e22f40ebdb5f1f377bf3b3da9268fc54d0c3aac84ce13d940b72",
+  "image": "registry.fly.io/wlmd-stripe-test-0f89b1bb@sha256:e738da0d8346455d397a664af727af5ab49072292b106e05c6f564bfb886b5ea",
   "manifest_verified": true,
-  "config_digest": "sha256:e23af5c2b481409ec6cc8fff3fd3082c4d0ef16880a234b3046139a3eaab7974",
+  "config_digest": "sha256:5d75967ea2f605f7555299f2c286346995baeac2ae9d58bd02257dd4b6415628",
   "layer_count": 9,
-  "deployed_at_date": "2026-10-22",
+  "deployed_at_date": "2026-10-21",
   "app": "wlmd-stripe-test-0f89b1bb",
   "machine": "84e117f290dd38",
   "volume": "vol_40o3gdk37mo7zy24",
   "admin_url": "https://wlmd-stripe-test-0f89b1bb.fly.dev/admin",
   "master_url": "https://wlmd-stripe-test-0f89b1bb.fly.dev/admin#master",
-  "offline_tests_passed": 122,
-  "browser_scenarios_passed": 12,
+  "offline_tests_passed": 133,
+  "browser_scenarios_passed": 61,
   "browser_skipped": 0,
   "browser_flaky": 0,
   "browser_payment_provider": "fake Sticky and Stripe.js contract stub",
@@ -294,7 +294,7 @@
     }
   },
   "deployed": true,
-  "browser_test_scope": "Affected category grouping and master-catalog workflows",
+  "browser_test_scope": "Full backend and Chromium regression suite including therapy plan selection",
   "combined_purchase_choices": {
     "one_time_and_subscription_checkboxes": true,
     "both_selectable": true,
@@ -355,5 +355,61 @@
       "payment_writes": 0,
       "sticky_config_writes": 0
     }
+  },
+  "deployed_at_utc": "2026-10-21T21:27:42.671236+00:00",
+  "therapies_url": "https://wlmd-stripe-test-0f89b1bb.fly.dev/admin#therapies",
+  "therapy_plan_selection": {
+    "therapy_treatment_catalog": true,
+    "both_treatments_in_weight_loss_draft": true,
+    "explicit_product_duration": true,
+    "brand_campaign_collection_builder": true,
+    "public_private_invitations": true,
+    "selected_options_only": true,
+    "pending_payment_guards": true,
+    "listed_prices_final_quote_at_checkout": true,
+    "live_catalog_seeded": false,
+    "saved_records_unchanged": true,
+    "hosted_checks": {
+      "health": 200,
+      "admin": 200,
+      "tested_assets_match": {
+        "master.js": true,
+        "admin.js": true,
+        "admin.css": true,
+        "therapy-admin.js": true,
+        "plans.js": true,
+        "plans.css": true,
+        "app.js": true
+      },
+      "owner_configured": true,
+      "anonymous_admin_data_blocked": true,
+      "test_hooks_absent": true,
+      "payment_writes": 0,
+      "sticky_config_writes": 0
+    },
+    "hosted_browser": [
+      {
+        "viewport": {
+          "width": 1440,
+          "height": 1000
+        },
+        "status": 200,
+        "sign_in_visible": true,
+        "no_horizontal_overflow": true,
+        "page_errors": 0
+      },
+      {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "status": 200,
+        "sign_in_visible": true,
+        "no_horizontal_overflow": true,
+        "page_errors": 0
+      }
+    ],
+    "payment_writes": 0,
+    "sticky_config_writes": 0
   }
 }

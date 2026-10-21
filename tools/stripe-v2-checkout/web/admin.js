@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);
-const titles={overview:'Overview',master:'Master SKUs',campaigns:'Campaigns',brands:'Brands',skus:'SKU catalog',offers:'Prices & purchase options',links:'Checkout links',reviews:'Review queue'};
+const titles={therapies:'Therapies',overview:'Overview',master:'Master SKUs',campaigns:'Campaigns',brands:'Brands',skus:'SKU catalog',offers:'Prices & purchase options',links:'Checkout links',reviews:'Review queue'};
 let auth={},state={brands:[],skus:[],offers:[],links:[],reviews:[]},currentReview=null;
 let checkoutBrand='',activeBrand='',campaigns=[],models=[],campaignLoading=null,modelLoading=null,linkEpoch=0,lookupEpoch=0,applying=false,reviewRefreshing=false;
 const pendingForms=new Set();
@@ -95,6 +95,7 @@ async function loadModels(force=false){
   try{await modelLoading;}finally{modelLoading=null;$('load-models').disabled=false;}
 }
 function render(){
+  if(typeof renderTherapies==='function')renderTherapies();
   if(typeof renderMaster==='function')renderMaster();
   if(!activeBrand&&state.brands.length===1)activeBrand=state.brands[0].id;
   renderSetup();
@@ -114,6 +115,10 @@ async function refresh(){state=await api('state');state.offers||=[];render();}
 const fieldNames={id:'Identifier',name:'Name',category:'Checkout category',product_duration_months:'Product duration',campaign_id:'Sticky campaign',brand_id:'Brand',sku:'SKU',product_id:'Source product',price:'Price',billing_models:'Billing options',configuration:'Offer settings',logo_url:'Logo',color:'Brand color',support_email:'Support email',support_phone:'Support phone',custom_domain:'Custom domain',title:'Checkout title',visibility:'Access',options:'Customer choices',enabled:'Active',offers:'Purchase options',skus:'Master SKUs',currency:'Price currency',assigned_skus:'Assigned SKUs',billing_terms:'Verified billing intervals'};
 function display(key,value){
   if(value===null||value===undefined||value==='')return '—';
+  if(key==='therapy_id')return (state.therapies||[]).find(t=>t.id===value)?.name||String(value);
+  if(key==='treatment_id')return (state.therapies||[]).flatMap(t=>t.treatments).find(t=>t.id===value)?.name||String(value);
+  if(key==='treatments')return value.map(t=>t.name).join(', ');
+  if(key==='entries')return value.map(e=>e.sku+' · '+e.options.length+' enabled purchase options').join('\n');
   if(key==='product_duration_months')return value+'-month product';
   if(key==='brand_id')return state.brands.find(b=>b.id===value)?.name||String(value);
   if(key==='billing_terms')return Object.entries(value).map(([id,t])=>'Model '+id+': '+(t.days?'every '+t.days+' days':'one-time')).join('\n');
@@ -142,7 +147,7 @@ function showReview(r){
   if(r.status==='reconcile')$('review-result').append(element('p','This change needs reconciliation. The recorded object IDs are shown below; do not submit it again.','readiness-warning'));
   if(r.result&&Object.keys(r.result.created||{}).length){const ids=Object.entries(r.result.created).map(([kind,id])=>kind.charAt(0).toUpperCase()+kind.slice(1)+' '+id);$('review-result').append(element('p','Recorded Sticky objects: '+ids.join(' · '),'status-note'));}
   if(r.status==='applied'){
-    const next={brand:['campaigns','Manage brand campaigns'],sku:['offers','Continue to offers'],offer:['links','Configure checkout link'],link:['links','Open checkout links'],campaign:['master','Apply master to this campaign'],master:['campaigns','Assign SKUs to a campaign'],provision:['links','Copy checkout links'],campaign_setup:['links','Copy checkout links']}[r.kind];
+    const next={therapy:['master','Assign treatments to master SKUs'],plan_checkout:['links','Open plan checkouts'],brand:['campaigns','Manage brand campaigns'],sku:['offers','Continue to offers'],offer:['links','Configure checkout link'],link:['links','Open checkout links'],campaign:['master','Apply master to this campaign'],master:['campaigns','Assign SKUs to a campaign'],provision:['links','Copy checkout links'],campaign_setup:['links','Copy checkout links']}[r.kind];
     if(next)action($('review-result'),next[1],()=>page(next[0]));
     if(r.result?.validation&&typeof renderMasterValidation==='function')renderMasterValidation(r.result.validation,$('review-result'));
   }
@@ -236,7 +241,7 @@ submit('setup-form',f=>f.get('mode')==='new'?{brand_id:f.get('brand_id'),name:f.
 function brandSlug(name){return (name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,45)||'brand')+'-'+crypto.randomUUID().slice(0,6);}
 function chooseBrand(id){activeBrand=id;$('setup-brand').value=id;$('link-brand').value=id;renderLinkCampaigns(true);}
 function renderBrandPreview(){const f=$('brand-form'),b=Object.fromEntries(new FormData(f));BrandDesign.apply($('brand-preview'),b);$('preview-name').textContent=b.name||'Your brand';$('preview-support').textContent=[b.support_email,b.support_phone].filter(Boolean).join(' · ');const logo=$('preview-logo');logo.hidden=!b.logo_url;if(/^https:\/\//.test(b.logo_url))logo.src=b.logo_url;else logo.removeAttribute('src');}
-function renderBrands(){list('brand-list',state.brands,b=>{const ids=brandCampaigns(b),e=card(b.name,ids.length+' campaign'+(ids.length===1?'':'s')+' · '+state.links.filter(l=>l.brand_id===b.id).length+' checkout links');const swatch=element('span',b.color||'#245844','brand-swatch');swatch.style.borderColor=b.color||'#245844';e.append(swatch);if(ids.length)e.append(element('p','Campaigns: '+ids.join(', ')));if(b.custom_domain)e.append(element('p',b.custom_domain+' · DNS/HTTPS pending'));action(e,'Edit brand',async()=>{fill('brand-form',b);$('brand-form').scrollIntoView({block:'start'});await loadCampaigns();});action(e,'Manage campaigns',()=>{chooseBrand(b.id);page('campaigns');});action(e,'Checkout links',()=>{openBrandCheckouts(b.id);});return e;},'Create your first brand. Its design will be shared by every campaign and checkout link.');}
+function renderBrands(){list('brand-list',state.brands,b=>{const ids=brandCampaigns(b),e=card(b.name,ids.length+' campaign'+(ids.length===1?'':'s')+' · '+(state.links.filter(l=>l.brand_id===b.id).length+(state.planCheckouts||[]).filter(p=>p.brand_id===b.id).length)+' checkout links');const swatch=element('span',b.color||'#245844','brand-swatch');swatch.style.borderColor=b.color||'#245844';e.append(swatch);if(ids.length)e.append(element('p','Campaigns: '+ids.join(', ')));if(b.custom_domain)e.append(element('p',b.custom_domain+' · DNS/HTTPS pending'));action(e,'Edit brand',async()=>{fill('brand-form',b);$('brand-form').scrollIntoView({block:'start'});await loadCampaigns();});action(e,'Manage campaigns',()=>{chooseBrand(b.id);page('campaigns');});action(e,'Checkout links',()=>{openBrandCheckouts(b.id);});return e;},'Create your first brand. Its design will be shared by every campaign and checkout link.');}
 $('brand-form').addEventListener('input',()=>{const f=$('brand-form');if(!f.elements.id.readOnly&&!f.elements.id.value&&f.elements.name.value)f.elements.id.value=brandSlug(f.elements.name.value);renderBrandPreview();});
 $('brand-form').addEventListener('change',renderBrandPreview);
 $('setup-brand').addEventListener('change',()=>{activeBrand=$('setup-brand').value;});
@@ -255,8 +260,9 @@ function categoryForLink(link){return (state.masters||[]).find(m=>m.sku===link.s
 function openBrandCheckouts(id){checkoutBrand=id;chooseBrand(id);resetForm('link');page('links');}
 function renderCheckoutBrowser(){
  const brand=state.brands.find(b=>b.id===checkoutBrand);
+ if(typeof renderPlans==='function')renderPlans();
  $('checkout-brand-directory').hidden=!!brand;$('brand-checkout-workspace').hidden=!brand;
- list('checkout-brand-list',state.brands,b=>{const links=state.links.filter(l=>l.brand_id===b.id),cats=new Set(links.map(categoryForLink)),e=card(b.name,links.length+' checkout links · '+cats.size+' categories');const swatch=element('p','Saved brand color: '+(b.color||'#245844'),'brand-swatch');swatch.style.borderColor=b.color||'#245844';e.append(swatch);const button=action(e,'View checkouts →',()=>openBrandCheckouts(b.id));button.dataset.brandOpen=b.id;button.setAttribute('aria-label','View '+b.name+' checkouts');return e;},'Create a brand to organize its checkout links.');
+ list('checkout-brand-list',state.brands,b=>{const links=state.links.filter(l=>l.brand_id===b.id),cats=new Set(links.map(categoryForLink)),e=card(b.name,(links.length+(state.planCheckouts||[]).filter(p=>p.brand_id===b.id).length)+' checkout links · '+cats.size+' categories');const swatch=element('p','Saved brand color: '+(b.color||'#245844'),'brand-swatch');swatch.style.borderColor=b.color||'#245844';e.append(swatch);const button=action(e,'View checkouts →',()=>openBrandCheckouts(b.id));button.dataset.brandOpen=b.id;button.setAttribute('aria-label','View '+b.name+' checkouts');return e;},'Create a brand to organize its checkout links.');
  if(!brand){$('link-list').replaceChildren();return;}
  $('checkout-brand-name').textContent=brand.name;
  $('checkout-brand-theme').textContent='All links here use '+brand.name+'’s saved design · '+(brand.color||'#245844');
