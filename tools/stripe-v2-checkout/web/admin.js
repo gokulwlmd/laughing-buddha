@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);
-const titles={therapies:'Therapies',overview:'Overview',master:'Master SKUs',campaigns:'Campaigns',brands:'Brands',skus:'SKU catalog',offers:'Prices & purchase options',links:'Checkout links',reviews:'Review queue'};
+const titles={'purchase-options':'Purchase options',therapies:'Therapies',overview:'Overview',master:'Master SKUs',campaigns:'Campaigns',brands:'Brands',skus:'SKU catalog',offers:'Prices & billing',links:'Checkout links',reviews:'Review queue'};
 let auth={},state={brands:[],skus:[],offers:[],links:[],reviews:[]},currentReview=null;
 let checkoutBrand='',activeBrand='',campaigns=[],models=[],campaignLoading=null,modelLoading=null,linkEpoch=0,lookupEpoch=0,applying=false,reviewRefreshing=false;
 const pendingForms=new Set();
@@ -56,7 +56,7 @@ function fill(id,data){
   const kind=id.split('-')[0],key=kind==='sku'?'sku':'id';
   const exists=kind==='offer'?state.offers.some(o=>o.id===data.id):(state[{brand:'brands',sku:'skus',link:'links'}[kind]]||[]).some(o=>o[key]===data[key]);
   if(form.elements[key]&&kind!=='offer')form.elements[key].readOnly=exists;
-  if($(kind+'-mode'))$(kind+'-mode').textContent=exists?'Edit '+({brand:'brand',sku:'SKU mapping',offer:'purchase option price and terms',link:'checkout link'}[kind]):'New '+({brand:'brand',sku:'SKU',offer:'purchase option',link:'checkout link'}[kind]);
+  if($(kind+'-mode'))$(kind+'-mode').textContent=exists?'Edit '+({brand:'brand',sku:'SKU mapping',offer:'payment choice price and terms',link:'checkout link'}[kind]):'New '+({brand:'brand',sku:'SKU',offer:'payment choice',link:'checkout link'}[kind]);
 }
 function resetForm(kind){
   if(kind==='master'){resetMaster();return;}
@@ -66,7 +66,7 @@ function resetForm(kind){
   if(kind==='link'){form.elements.brand_id.value=activeBrand;renderLinkCampaigns();}
   if(kind==='offer'){form.elements.id.value='';renderOfferCampaigns();$('billing-models').querySelectorAll('input').forEach(e=>e.checked=false);}
   if(kind==='link'){linkEpoch++;$('link-options').replaceChildren(element('p','Choose a campaign and SKU. Billing choices load automatically.','hint'));form.elements.title.value='';form.elements.id.value='';}
-  if($(kind+'-mode'))$(kind+'-mode').textContent='New '+({brand:'brand',sku:'SKU',offer:'purchase option',link:'checkout link'}[kind]);
+  if($(kind+'-mode'))$(kind+'-mode').textContent='New '+({brand:'brand',sku:'SKU',offer:'payment choice',link:'checkout link'}[kind]);
 }
 function renderCampaigns(){
   document.querySelectorAll('[data-campaigns]').forEach(select=>{
@@ -112,11 +112,15 @@ function render(){
   list('review-list',state.reviews,r=>{const e=card(r.kind.charAt(0).toUpperCase()+r.kind.slice(1)+' change · '+(r.preview.after?.name||r.preview.after?.title||r.preview.after?.sku||''),r.status+' · '+new Date(r.created*1000).toLocaleString());if(r.result&&Object.keys(r.result.created||{}).length)e.append(element('p','Recorded Sticky objects: '+JSON.stringify(r.result.created)));action(e,r.status==='draft'?'Open review':'View details',()=>showReview(r));return e;},'Changes appear here once you prepare a preview.');
 }
 async function refresh(){state=await api('state');state.offers||=[];render();}
-const fieldNames={id:'Identifier',name:'Name',category:'Checkout category',product_duration_months:'Product duration',campaign_id:'Sticky campaign',brand_id:'Brand',sku:'SKU',product_id:'Source product',price:'Price',billing_models:'Billing options',configuration:'Offer settings',logo_url:'Logo',color:'Brand color',support_email:'Support email',support_phone:'Support phone',custom_domain:'Custom domain',title:'Checkout title',visibility:'Access',options:'Customer choices',enabled:'Active',offers:'Purchase options',skus:'Master SKUs',currency:'Price currency',assigned_skus:'Assigned SKUs',billing_terms:'Verified billing intervals'};
+const fieldNames={id:'Identifier',name:'Name',category:'Checkout category',product_duration_months:'Product duration',campaign_id:'Sticky campaign',brand_id:'Brand',sku:'SKU',product_id:'Source product',price:'Price',billing_models:'Billing options',configuration:'Offer settings',logo_url:'Logo',color:'Brand color',support_email:'Support email',support_phone:'Support phone',custom_domain:'Custom domain',title:'Checkout title',visibility:'Access',options:'Customer choices',enabled:'Active',offers:'Payment choices',skus:'Master SKUs',currency:'Price currency',assigned_skus:'Assigned SKUs',billing_terms:'Verified billing intervals'};
 function display(key,value){
   if(value===null||value===undefined||value==='')return '—';
   if(key==='therapy_id')return (state.therapies||[]).find(t=>t.id===value)?.name||String(value);
   if(key==='treatment_id')return (state.therapies||[]).flatMap(t=>t.treatments).find(t=>t.id===value)?.name||String(value);
+  if(key==='purchase_option_ids')return value.map(id=>(state.purchaseOptions||[]).find(p=>p.id===id)?.name||id).join('\n');
+  if(key==='payment_types')return value.map(t=>({once:'One-time purchase',subscription:'Subscription',prepaid:'Pay upfront'}[t])).join(', ');
+  if(key==='purchase_options')return value.map(p=>p.name+' · '+p.duration_months+' months · '+p.skus.join(', ')).join('\n');
+  if(key==='duration_months')return value+' months';
   if(key==='treatments')return value.map(t=>t.name).join(', ');
   if(key==='entries')return value.map(e=>e.sku+' · '+e.options.length+' enabled purchase options').join('\n');
   if(key==='product_duration_months')return value+'-month product';
@@ -147,7 +151,7 @@ function showReview(r){
   if(r.status==='reconcile')$('review-result').append(element('p','This change needs reconciliation. The recorded object IDs are shown below; do not submit it again.','readiness-warning'));
   if(r.result&&Object.keys(r.result.created||{}).length){const ids=Object.entries(r.result.created).map(([kind,id])=>kind.charAt(0).toUpperCase()+kind.slice(1)+' '+id);$('review-result').append(element('p','Recorded Sticky objects: '+ids.join(' · '),'status-note'));}
   if(r.status==='applied'){
-    const next={therapy:['master','Assign treatments to master SKUs'],plan_checkout:['links','Open plan checkouts'],brand:['campaigns','Manage brand campaigns'],sku:['offers','Continue to offers'],offer:['links','Configure checkout link'],link:['links','Open checkout links'],campaign:['master','Apply master to this campaign'],master:['campaigns','Assign SKUs to a campaign'],provision:['links','Copy checkout links'],campaign_setup:['links','Copy checkout links']}[r.kind];
+    const next={therapy:['purchase-options','Create purchase options'],purchase_option:['links','Build a checkout'],plan_checkout:['links','Open plan checkouts'],brand:['campaigns','Manage brand campaigns'],sku:['offers','Continue to offers'],offer:['links','Configure checkout link'],link:['links','Open checkout links'],campaign:['master','Apply master to this campaign'],master:['campaigns','Assign SKUs to a campaign'],provision:['links','Copy checkout links'],campaign_setup:['links','Copy checkout links']}[r.kind];
     if(next)action($('review-result'),next[1],()=>page(next[0]));
     if(r.result?.validation&&typeof renderMasterValidation==='function')renderMasterValidation(r.result.validation,$('review-result'));
   }

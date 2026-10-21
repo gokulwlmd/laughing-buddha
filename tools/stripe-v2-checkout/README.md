@@ -37,7 +37,7 @@ npm --cache /workspace/.cache/npm --prefix qa ci --ignore-scripts
 /workspace/.venvs/stripe-v2-checkout/bin/python qa/run.py
 ```
 
-All 133 backend tests and 61 Chromium browser scenarios pass without real payment or Sticky configuration writes. Browser cases use a fake Sticky service and Stripe.js contract stub; see [the QA report](../../docs/QA_REPORT.md). The backend tests make no external requests. They include buying twice through the same link with distinct intents/orders, preserving the first receipt, repeat-click idempotency, persistence, independent first visits, and rejecting stale tabs or replacement of an unresolved attempt. They cover campaign access, exact and duplicate SKU resolution, configured selections, authoritative prices/taxes, changed configuration, recurring consent, secret/card-data boundaries, session isolation, legacy receipt migration, repeated capture and uncertain/3DS holds.
+144 backend tests and 62 Chromium browser scenarios are verified without real payment or Sticky configuration writes. Browser cases use a fake Sticky service and Stripe.js contract stub; see [the QA report](../../docs/QA_REPORT.md). The backend tests make no external requests. They include buying twice through the same link with distinct intents/orders, preserving the first receipt, repeat-click idempotency, persistence, independent first visits, and rejecting stale tabs or replacement of an unresolved attempt. They cover campaign access, exact and duplicate SKU resolution, configured selections, authoritative prices/taxes, changed configuration, recurring consent, secret/card-data boundaries, session isolation, legacy receipt migration, repeated capture and uncertain/3DS holds.
 
 ## Start and persist
 
@@ -69,4 +69,4 @@ Fixed-term prepaid test plans are supported: [setup, verified orders and limits]
 
 ## Therapy plan selection
 
-Use Therapies to group master SKUs by treatment, then create a combined checkout inside a brand’s Checkout links workspace. Customers can compare treatments and durations and select an enabled purchase option. See [the owner workflow](../../docs/THERAPY_PLAN_CHECKOUTS.md). Configuration still requires owner preview and approval; no example SKU prices are automatically created.
+Use Therapies → Purchase options to define duration plans and assign matching SKUs. Build a brand checkout from one option or several; customers see each treatment’s price, choose a duration and SKU, then a configured payment choice. See [the owner workflow](../../docs/THERAPY_PLAN_CHECKOUTS.md). Configuration still requires owner preview and approval; no example SKU prices are automatically created.

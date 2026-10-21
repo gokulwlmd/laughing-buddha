@@ -1,14 +1,16 @@
 # Admin and checkout QA report
 
-Run: 22 October 2026, 02:52 AM IST.
+Run: 22 October 2026, 03:11 AM IST.
 
-Status: **Passed** for the implemented workflows below.
+Status: **Passed after the targeted fixture correction described below** for the implemented workflows.
 
-- Backend: **133 tests**, 0 failures, 0 errors.
-- Browser: **61 passed**, 0 failed, 0 skipped, 0 flaky.
+- Backend: **144 tests**, 0 failures, 0 errors.
+- Browser: **62 distinct scenarios verified**, 0 unresolved failures. The initial full run had 61 passes and one test-readiness failure; the two affected sign-in/private-link checks passed on targeted rerun.
 - Browser engine: Chromium; desktop 1440×1000 and mobile 390×844.
 - Environment: disposable loopback server, synthetic owner/customer data, fake Sticky API and a Stripe.js contract stub. Production credentials are removed from the test process. External browser requests are blocked except the locally fulfilled Stripe stub.
 - No real card, processor authorization/capture, live refund, or live Sticky configuration write is made by this suite.
+
+The sign-in helper now waits for the owner workspace to finish rendering before navigating to a brand’s links. No runtime application change was needed for this test correction. AUTH-01 and LINK-01 both passed on rerun. See [the detailed verification receipt](PURCHASE_OPTIONS_QA_RESULTS.json).
 
 ## Browser test cases
 
@@ -41,16 +43,17 @@ Status: **Passed** for the implemented workflows below.
 | PRE-05 | mobile prepaid shortcut keeps unsaved product fields and updates schedule and currency | Pass |
 | PRE-06 | physical product saves a prepaid catalog option with an explicit assignment limitation | Pass |
 | PRE-07 | missing 90-day model never substitutes a different schedule or erases the draft | Pass |
-| SIM-01 | five primary screens, local master and one-review existing campaign assignment | Pass |
+| SIM-01 | six primary screens, local master and one-review existing campaign assignment | Pass |
 | SIM-02 | new campaign name and template include every master SKU and ready links | Pass |
 | SIM-03 | automatically selected choices and generated link address with public/private control | Pass |
 | SIM-04 | uncertain campaign creation cannot duplicate through a fresh setup | Pass |
 | SIM-05 | mobile master campaign and links need no advanced settings | Pass |
 | SIM-06 | choose a brand before checkout creation and retain all accessible campaign choices | Pass |
 | SIM-07 | existing Sticky SKU creates a checkout under the selected brand | Pass |
-| PLN-01 | configure both treatments and purchase types, select one-time plan and complete one synthetic order | Pass |
-| PLN-02 | private plan invitation, mobile comparison, subscription handoff and edit persistence | Pass |
-| PLN-03 | changing therapy clears options; disabled collections do not remain payable | Pass |
+| PLN-01 | duration cards show each treatment price before selection and complete exactly one synthetic order | Pass |
+| PLN-02 | private plan invitation, mobile price comparison, subscription handoff and edit persistence | Pass |
+| PLN-03 | checkout can open one purchase option; matching SKU assignment and disabled checkout | Pass |
+| PLN-04 | purchase option changes are flagged for republication and inactive options stop checkout | Pass |
 | AUTH-01 | first setup needs its invitation and matching passwords | Pass |
 | AUTH-02 | wrong password is recoverable and sign-out clears workspace | Pass |
 | AUTH-03 | expired session returns to login and preserves the unapplied draft | Pass |
@@ -72,7 +75,7 @@ Status: **Passed** for the implemented workflows below.
 | PAY-06 | unavailable session secret holds payment instead of creating another | Pass |
 | PAY-07 | price change requires a fresh reviewed total | Pass |
 | PAY-08 | uncertain capture stays held after refresh and is never repeated | Pass |
-| LINK-01 | private invitation is scoped and revocation is visible | Pass |
+| LINK-01 | private invitation is scoped and revocation is visible | Pass after fixture correction |
 | LINK-02 | inactive link cannot be opened and can be reactivated with approval | Pass |
 | UX-01 | mobile setup, review and catalog fit without horizontal overflow | Pass |
 
@@ -84,9 +87,10 @@ The suite covers owner setup/sign-in/session storage, CSRF/origin checks, exact 
 
 ## Usability and correctness changes
 
-- Use four primary screens: Brands, Master SKUs, Campaigns and Checkout links. Preview a shared brand design; attach multiple campaigns while preserving existing checkout destinations.
+- Use six primary screens: Brands, Therapies, Purchase options, Master SKUs, Campaigns and Checkout links. Preview a shared brand design; attach multiple campaigns while preserving existing checkout destinations.
 - Apply brand logo, colors, font and layout to checkout, payment and receipt screens; scope offer price edits to the intended campaign.
-- Set product duration independently from one-time/subscription purchase options, per-payment prices and exact charge frequencies; generate internal names/IDs and preserve legacy billing mappings.
+- Define reusable duration purchase options, assign matching SKUs, and show each treatment’s price before selection.
+- Set product duration independently from one-time/subscription payment choices, per-payment prices and exact charge frequencies; generate internal names/IDs and preserve legacy billing mappings.
 - Maintain versioned master SKU presets, apply reviewed assignments to campaigns without duplicate objects, and validate each assigned billing choice and optional server quote.
 - Browse checkout links by brand, then by editable master-catalog category; retain Uncategorized for legacy SKUs. Category-only edits regroup existing URLs without changing billing revisions or Sticky settings.
 - Show the owning brand’s saved color and an Edit brand design shortcut; separate brands sharing a campaign retain independent presentation.

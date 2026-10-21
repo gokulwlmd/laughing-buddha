@@ -6,14 +6,19 @@ from pathlib import Path
 from urllib.parse import urlencode
 from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from catalog import resolve, CatalogError
 from master import brand_campaigns
 
 HERE=Path(__file__).resolve().parent
 
 def fingerprint(value):return hashlib.sha256(json.dumps(value,sort_keys=True).encode()).hexdigest()
-def choice_id(plan_id,sku):return 'choice-'+hashlib.sha256((plan_id+'\0'+sku).encode()).hexdigest()[:32]
+def choice_id(plan_id,sku,purchase_option_id=''):
+    value=plan_id+'\0'+sku+('\0'+purchase_option_id if purchase_option_id else '')
+    return 'choice-'+hashlib.sha256(value.encode()).hexdigest()[:32]
+
+def payment_type(option):
+    return 'prepaid' if option.get('prepaidCycles') else 'subscription' if option['recurring'] else 'once'
 
 class Form(BaseModel):
     model_config=ConfigDict(extra='forbid',str_strip_whitespace=True)
@@ -30,7 +35,27 @@ class Therapy(Form):
     def unique(cls,items):
         if len({x.id for x in items})!=len(items):raise ValueError('Treatment identifiers must be unique')
         return items
+class PurchaseOption(Form):
+    id:str=Field(pattern=r'^[a-z0-9][a-z0-9-]{0,80}$')
+    name:str=Field(min_length=1,max_length=100)
+    therapy_id:str=Field(min_length=1,max_length=61)
+    duration_months:int=Field(ge=1,le=36,strict=True)
+    skus:list[str]=Field(default_factory=list,max_length=20)
+    payment_types:list[str]=Field(min_length=1,max_length=3)
+    enabled:bool=True
+    @field_validator('skus','payment_types')
+    @classmethod
+    def unique(cls,items):
+        if len(set(items))!=len(items):raise ValueError('Choose each item once')
+        return items
+    @field_validator('payment_types')
+    @classmethod
+    def valid_types(cls,items):
+        if not set(items).issubset({'once','subscription','prepaid'}):raise ValueError('Choose supported payment types')
+        return items
+
 class PlanEntry(Form):
+    purchase_option_id:str=Field(default='',max_length=81)
     sku:str=Field(min_length=1,max_length=200)
     options:list[str]=Field(min_length=1,max_length=100)
     @field_validator('options')
@@ -46,12 +71,19 @@ class PlanCheckout(Form):
     title:str=Field(min_length=1,max_length=150)
     visibility:str=Field(pattern=r'^(public|private)$')
     enabled:bool=True
-    entries:list[PlanEntry]=Field(min_length=1,max_length=20)
+    purchase_option_ids:list[str]=Field(default_factory=list,max_length=20)
+    entries:list[PlanEntry]=Field(default_factory=list,max_length=100)
     @field_validator('entries')
     @classmethod
     def unique(cls,items):
-        if len({x.sku for x in items})!=len(items):raise ValueError('Choose each SKU once')
+        if len({(x.purchase_option_id,x.sku) for x in items})!=len(items):raise ValueError('Choose each SKU once per purchase option')
         return items
+
+    @model_validator(mode='after')
+    def source(self):
+        if not self.entries and not self.purchase_option_ids:raise ValueError('Select at least one purchase option')
+        if len(set(self.purchase_option_ids))!=len(self.purchase_option_ids):raise ValueError('Choose each purchase option once')
+        return self
 
 class ReadCache:
     """Request-local catalog reuse across SKUs, never a cross-request price cache."""
@@ -88,15 +120,43 @@ class PlanCatalog:
         plans=self.records('plan_checkout')
         for plan in plans:
             # Managed price replacement updates child choices; expose their current mappings.
-            plan['entries']=[{'sku':entry['sku'],'options':(self.get('link',choice_id(plan['id'],entry['sku'])) or entry)['options']} for entry in plan['entries']]
+            plan['entries']=[dict(entry,options=(self.get('link',choice_id(plan['id'],entry['sku'],entry.get('purchase_option_id',''))) or entry)['options']) for entry in plan['entries']]
+            plan['purchaseOptionsCurrent']=all((self.get('purchase_option',o['id']) or {}).get('revision')==o.get('revision') for o in plan.get('purchase_options',[]))
             plan['url']=self.cfg.public_url+'/plans/'+plan['id']
             if plan['visibility']=='private':plan['url']+='?access='+self.plan_token(plan)
         return plans
 
+    def managed_choices(self,brand_id,campaign_id,sku,catalog,payment_types):
+        assignment=next((a for a in self.records('assignment') if a['brand_id']==brand_id and a['campaign_id']==campaign_id and a['sku']==sku),None)
+        allowed=set()
+        for slot in (assignment or {}).get('offers',[]):
+            current=self.get('offering',slot['id']) or {}
+            if current.get('brand_id')!=brand_id or current.get('sku')!=sku or current.get('campaign_id',campaign_id)!=campaign_id:continue
+            allowed.update(f"{current['offer_id']}:{current['product_id']}:{mid}" for mid in current['billing_models'])
+        return [o for o in catalog['options'] if o['key'] in allowed and payment_type(o) in payment_types and not o['blockedReason']]
+
     def prepare_plan(self,kind,payload):
-        data=(Therapy if kind=='therapy' else PlanCheckout).model_validate(payload).model_dump(mode='json')
+        data={'therapy':Therapy,'purchase_option':PurchaseOption,'plan_checkout':PlanCheckout}[kind].model_validate(payload).model_dump(mode='json')
         before=self.get(kind,data['id']);guards=[];children=[]
-        if kind=='therapy':
+        if kind=='purchase_option':
+            therapy=self.get('therapy',data['therapy_id'])
+            if not therapy or not therapy['enabled']:raise HTTPException(422,'Choose an active therapy')
+            if before and before['therapy_id']!=data['therapy_id']:raise HTTPException(422,'Create a new purchase option to change its therapy')
+            for sku in data['skus']:
+                master=self.get('master',sku)
+                self.therapy_for(master or {},data['therapy_id'])
+                if master['product_duration_months']!=data['duration_months']:raise HTTPException(422,sku+': product duration must match the purchase option')
+                supported=set()
+                for offer in master['offers']:
+                    if offer.get('prepaid_cycles'):supported.add('prepaid')
+                    else:
+                        if 2 in offer['billing_models']:supported.add('once')
+                        if any(mid!=2 for mid in offer['billing_models']):supported.add('subscription')
+                if not supported.intersection(data['payment_types']):raise HTTPException(422,sku+': no configured payment choice matches this purchase option')
+            data['revision']=(before or {}).get('revision',0)+1
+            affected=[l['id'] for l in self.records('link') if l.get('purchase_option_id')==data['id']]
+            impact='Saves a reusable duration purchase option and its assigned SKU alternatives. SKU prices and billing rules are retained. Existing checkouts keep their published selection until you review and publish them again. Disabling this purchase option immediately disables its choices in existing checkouts.'
+        elif kind=='therapy':
             wanted={t['id'] for t in data['treatments']}
             if any(m.get('therapy_id')==data['id'] and m.get('treatment_id') not in wanted for m in self.records('master')):raise HTTPException(422,'A treatment is used by a master SKU. Reassign that SKU before removing it.')
             affected=[l['id'] for l in self.records('link') if l.get('plan_checkout_id') and (self.get('plan_checkout',l['plan_checkout_id']) or {}).get('therapy_id')==data['id']]
@@ -108,6 +168,28 @@ class PlanCatalog:
             if before and any(before[k]!=data[k] for k in ('brand_id','campaign_id')):raise HTTPException(422,'Create a new plan checkout to change its brand or campaign')
             cache=ReadCache(self.api)
             data['revision']=(before or {}).get('revision',0)+1
+            if data['purchase_option_ids']:
+                if payload.get('entries'):raise HTTPException(422,'Select purchase options; their assigned SKUs and payment choices are resolved by the server')
+                data['purchase_options']=[];data['entries']=[]
+                for pid in data['purchase_option_ids']:
+                    purchase=self.get('purchase_option',pid)
+                    if not purchase or not purchase['enabled'] or purchase['therapy_id']!=data['therapy_id']:raise HTTPException(422,'Choose active purchase options belonging to this therapy')
+                    if not purchase['skus']:raise HTTPException(422,purchase['name']+': assign matching-duration SKUs first')
+                    data['purchase_options'].append(purchase)
+                    for sku in purchase['skus']:
+                        master=self.get('master',sku) or {}
+                        self.therapy_for(master,data['therapy_id'])
+                        if master['product_duration_months']!=purchase['duration_months']:raise HTTPException(422,sku+': product duration must match the purchase option')
+                        try:c=resolve(cache,data['campaign_id'],sku)
+                        except CatalogError:raise HTTPException(422,sku+': assign this SKU to the campaign before publishing') from None
+                        choices=[o['key'] for o in self.managed_choices(data['brand_id'],data['campaign_id'],sku,c,purchase['payment_types'])]
+                        if c['blockedReason'] or not choices:raise HTTPException(422,sku+': no supported payment choices are available on this campaign')
+                        data['entries'].append({'purchase_option_id':pid,'sku':sku,'options':choices})
+            elif before and before.get('purchase_option_ids'):
+                raise HTTPException(422,'Select purchase options for this checkout')
+            elif any(e.get('purchase_option_id') for e in data['entries']):
+                raise HTTPException(422,'Select saved purchase options before assigning their choices')
+            if len(data['entries'])>100:raise HTTPException(422,'Choose at most 100 SKU alternatives per checkout')
             for entry in data['entries']:
                 master=self.get('master',entry['sku'])
                 if not master:raise HTTPException(422,'Save this master SKU first: '+entry['sku'])
@@ -118,19 +200,19 @@ class PlanCatalog:
                 if not set(entry['options']).issubset(available):raise HTTPException(422,'Choose purchase options belonging to '+entry['sku'])
                 if data['enabled'] and (c['blockedReason'] or any(available[k]['blockedReason'] for k in entry['options'])):raise HTTPException(422,entry['sku']+': one or more selected purchase options are not ready for checkout')
                 guards.append({'catalog':[data['campaign_id'],entry['sku']],'hash':c['fingerprint']})
-                key=choice_id(data['id'],entry['sku']);old=self.get('link',key)
+                key=choice_id(data['id'],entry['sku'],entry.get('purchase_option_id',''));old=self.get('link',key)
                 if old and old.get('plan_checkout_id')!=data['id']:raise HTTPException(409,'The generated checkout identifier is already in use')
                 children.append({'id':key,'brand_id':data['brand_id'],'campaign_id':data['campaign_id'],'sku':entry['sku'],
                     'title':(data['title']+' · '+master['name'])[:150],'visibility':'private','enabled':data['enabled'],'options':entry['options'],
-                    'revision':(old or {}).get('revision',0)+1,'plan_checkout_id':data['id']})
+                    'revision':(old or {}).get('revision',0)+1,'plan_checkout_id':data['id'],'purchase_option_id':entry.get('purchase_option_id','')})
             affected=[l['id'] for l in self.records('link') if l.get('plan_checkout_id')==data['id']]
-            impact='Publishes one branded plan-selection link for these SKUs and purchase options. Customers choose a treatment, product duration and payment option, then enter secure checkout. A public link makes all selected choices publicly accessible. Existing standalone links, Sticky prices, subscriptions and clinical rules are unchanged.'
+            impact='Publishes one branded plan-selection link for these SKUs and purchase options. Customers compare duration purchase options with each treatment’s price, choose one SKU and a payment choice, then enter secure checkout. A public link makes all selected choices publicly accessible. Existing standalone links, Sticky prices, subscriptions and clinical rules are unchanged.'
         preview={'before':before,'after':dict(data),'stickyWrites':[],'affectedCheckoutLinks':affected,'impact':impact}
         if children:data['_children']=children
         return data,guards,preview,[],self.local_fingerprint()
 
     def finalize_plan(self,kind,data):
-        if kind=='therapy':self.put(kind,data['id'],data);return
+        if kind in ('therapy','purchase_option'):self.put(kind,data['id'],data);return
         data=dict(data);children=data.pop('_children');wanted={c['id'] for c in children}
         # Local records are committed atomically; no partially published collections.
         with self.store.db() as db:
@@ -144,18 +226,18 @@ class PlanCatalog:
         from admin import branding
         cache=ReadCache(self.api);entries=[]
         for entry in plan['entries']:
-            master=self.get('master',entry['sku']);item={'sku':entry['sku'],'available':False,'reason':'This plan is temporarily unavailable.'}
+            master=self.get('master',entry['sku']);item={'sku':entry['sku'],'purchaseOptionId':entry.get('purchase_option_id',''),'available':False,'reason':'This plan is temporarily unavailable.'}
             try:
                 _,treatment=self.therapy_for(master or {},therapy['id'])
                 item.update(name=master['name'],durationMonths=master['product_duration_months'],treatmentId=treatment['id'])
-                child,_=self.link(choice_id(plan['id'],entry['sku']))
+                child,_=self.link(choice_id(plan['id'],entry['sku'],entry.get('purchase_option_id','')))
                 c=resolve(cache,plan['campaign_id'],entry['sku'])
                 options=[{k:o[k] for k in ('key','recurring','days','basePrice','blockedReason','prepaidCycles','upfrontPrice') if k in o} for o in c['options'] if o['key'] in child['options'] and not o['blockedReason']]
                 if c['blockedReason'] or not options:raise ValueError('Not ready')
                 item.update(available=True,reason='',currency=c['currency'],options=options)
             except (HTTPException,CatalogError,ValueError):pass
             entries.append(item)
-        return {'id':plan['id'],'title':plan['title'],'therapy':therapy['name'],'treatments':therapy['treatments'],'branding':branding(brand),'entries':entries}
+        return {'id':plan['id'],'title':plan['title'],'therapy':therapy['name'],'treatments':therapy['treatments'],'branding':branding(brand),'entries':entries,'purchaseOptions':[{'id':p['id'],'name':p['name'],'durationMonths':p['duration_months']} for p in plan.get('purchase_options',[])]}
 
     def attach_plans(self,app):
         @app.get('/api/admin/plan-options')
@@ -174,7 +256,21 @@ class PlanCatalog:
                     item.update(options=c['options'],currency=c['currency'],reason=c['blockedReason'])
                 except (HTTPException,CatalogError):item['reason']='Set treatment and duration, assign the SKU to this campaign, then verify its checkout options.'
                 entries.append(item)
-            return {'entries':entries}
+            purchases=[]
+            for purchase in self.records('purchase_option'):
+                if purchase['therapy_id']!=therapy_id:continue
+                items=[]
+                for sku in purchase['skus']:
+                    entry=next((e for e in entries if e['sku']==sku),None)
+                    if not entry:items.append({'sku':sku,'reason':'Reassign this SKU to the therapy','options':[]});continue
+                    entry=dict(entry)
+                    entry['options']=self.managed_choices(brand_id,campaign_id,sku,entry,purchase['payment_types'])
+                    if entry['durationMonths']!=purchase['duration_months']:entry['reason']='Product duration must match the purchase option'
+                    if not entry['options']:entry['reason']=entry.get('reason') or 'Assign this master SKU and its payment choices to the campaign first'
+                    items.append(entry)
+                ready=purchase['enabled'] and bool(items) and all(not e.get('reason') and e['options'] for e in items)
+                purchases.append(dict(purchase,entries=items,ready=ready))
+            return {'entries':entries,'purchaseOptions':purchases}
 
         @app.get('/plans/{key}')
         def page(req:Request,key:str):
@@ -191,11 +287,11 @@ class PlanCatalog:
         def config(req:Request,key:str):return self.plan_options(*self.plan_access(req,key))
 
         @app.get('/plans/{key}/choose')
-        def choose(req:Request,key:str,sku:str,option:str):
+        def choose(req:Request,key:str,sku:str,option:str,purchase_option_id:str=''):
             plan,brand,therapy=self.plan_access(req,key)
-            if sku not in {e['sku'] for e in plan['entries']}:raise HTTPException(404,'Plan not found')
+            if (purchase_option_id,sku) not in {(e.get('purchase_option_id',''),e['sku']) for e in plan['entries']}:raise HTTPException(404,'Plan not found')
             master=self.get('master',sku);self.therapy_for(master or {},therapy['id'])
-            child,_=self.link(choice_id(key,sku))
+            child,_=self.link(choice_id(key,sku,purchase_option_id))
             if option not in child['options']:raise HTTPException(422,'Choose an enabled purchase option')
             c=resolve(self.api,plan['campaign_id'],sku)
             selected=next((o for o in c['options'] if o['key']==option),None)

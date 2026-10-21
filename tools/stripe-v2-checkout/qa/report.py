@@ -46,9 +46,10 @@ The suite covers owner setup/sign-in/session storage, CSRF/origin checks, exact 
 
 ## Usability and correctness changes
 
-- Use four primary screens: Brands, Master SKUs, Campaigns and Checkout links. Preview a shared brand design; attach multiple campaigns while preserving existing checkout destinations.
+- Use six primary screens: Brands, Therapies, Purchase options, Master SKUs, Campaigns and Checkout links. Preview a shared brand design; attach multiple campaigns while preserving existing checkout destinations.
 - Apply brand logo, colors, font and layout to checkout, payment and receipt screens; scope offer price edits to the intended campaign.
-- Set product duration independently from one-time/subscription purchase options, per-payment prices and exact charge frequencies; generate internal names/IDs and preserve legacy billing mappings.
+- Define reusable duration purchase options, assign matching SKUs, and show each treatment’s price before selection.
+- Set product duration independently from one-time/subscription payment choices, per-payment prices and exact charge frequencies; generate internal names/IDs and preserve legacy billing mappings.
 - Maintain versioned master SKU presets, apply reviewed assignments to campaigns without duplicate objects, and validate each assigned billing choice and optional server quote.
 - Browse checkout links by brand, then by editable master-catalog category; retain Uncategorized for legacy SKUs. Category-only edits regroup existing URLs without changing billing revisions or Sticky settings.
 - Show the owning brand’s saved color and an Edit brand design shortcut; separate brands sharing a campaign retain independent presentation.

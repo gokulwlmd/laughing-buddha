@@ -142,7 +142,7 @@ def assignment_id(brand,campaign,sku):
 
 class MasterCatalog:
     def local_fingerprint(self):
-        return fingerprint([self.records(k) for k in ('brand','sku','link','offering','master','assignment','therapy','plan_checkout')])
+        return fingerprint([self.records(k) for k in ('brand','sku','link','offering','master','assignment','therapy','purchase_option','plan_checkout')])
 
     def prepare_setup(self,payload):
         request=CampaignSetup.model_validate(payload).model_dump(mode='json')
@@ -224,6 +224,9 @@ class MasterCatalog:
                 therapy=self.get('therapy',data['therapy_id'])
                 if not therapy or not therapy['enabled'] or data['treatment_id'] not in {t['id'] for t in therapy['treatments']}:raise HTTPException(422,'Choose an active therapy and one of its treatments')
             elif data['treatment_id']:raise HTTPException(422,'Choose a therapy before its treatment')
+            for purchase in self.records('purchase_option'):
+                if data['sku'] in purchase['skus'] and (data['therapy_id']!=purchase['therapy_id'] or data['product_duration_months']!=purchase['duration_months']):
+                    raise HTTPException(422,'Remove this SKU from purchase option '+purchase['name']+' before changing its therapy or duration')
             old=dict(defaults,**(before or {}))
             metadata_only=bool(before) and any(old[k]!=data[k] for k in presentation) and all(old.get(k)==v for k,v in data.items() if k not in presentation)
             data['revision']=(before or {}).get('revision',0)+(0 if metadata_only else 1)

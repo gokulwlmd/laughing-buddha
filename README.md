@@ -7,7 +7,7 @@ The current application lives in [`tools/stripe-v2-checkout`](tools/stripe-v2-ch
 ## Current workflows
 
 - Group master SKUs by therapy and treatment, with editable categories, product duration, and purchase options.
-- Build one branded checkout where customers choose treatment, duration and payment terms.
+- Define duration purchase options, assign matching SKUs, and build branded checkouts showing each treatment’s price.
 - Offer one-time purchases and subscriptions together or with separate prices.
 - Configure fixed prepaid test plans with an upfront price, delivery interval, and completion after the selected number of cycles.
 - Assign master presets to existing or new brand campaigns after preview and approval.

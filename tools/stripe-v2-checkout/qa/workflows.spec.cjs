@@ -1,7 +1,7 @@
 const {test,expect,PASSWORD,setupOwner,nav,approve,brand,sku,offer,link,checkout,authorize,stats,control}=require('./fixtures.cjs');
 const SKU='WLMD-CORE-2USD-0f89b1bb';
 async function prepare(page){await brand(page);await sku(page);await link(page);}
-async function login(page,app){await page.goto(app.origin+'/admin');await page.locator('#auth-form [name=email]').fill('qa-owner@example.com');await page.locator('#auth-password').fill(PASSWORD);await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.locator('#workspace')).toBeVisible();}
+async function login(page,app){await page.goto(app.origin+'/admin');await page.locator('#auth-form [name=email]').fill('qa-owner@example.com');await page.locator('#auth-password').fill(PASSWORD);await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.locator('#workspace')).toBeVisible();await expect(page.locator('#owner-email')).toHaveText('qa-owner@example.com');}
 async function pay(page){await page.locator('#pay').click();await expect(page.locator('#success')).toBeVisible();}
 
 test('AUTH-01 first setup needs its invitation and matching passwords',async({page,app})=>{

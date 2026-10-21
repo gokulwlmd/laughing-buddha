@@ -1,0 +1,22 @@
+{
+  "backend_tests_passed": 144,
+  "full_browser_run": {
+    "passed": 61,
+    "failed": 1,
+    "failed_case": "LINK-01",
+    "cause": "Test helper navigated before the workspace finished loading"
+  },
+  "targeted_rerun": {
+    "passed": [
+      "AUTH-01",
+      "LINK-01"
+    ],
+    "failed": []
+  },
+  "distinct_browser_scenarios_verified": 62,
+  "note": "Initial full run: 61 passed, one test readiness race after sign-in. The login helper now waits for the rendered owner workspace. AUTH-01 and LINK-01 passed on targeted rerun; runtime application code was unchanged by the test fix.",
+  "image": "registry.fly.io/wlmd-stripe-test-0f89b1bb@sha256:e17c2de1417bd5ebf75ffc5d0d88ad5b75dccca423b1d5365c97faced5d88a14",
+  "saved_records_unchanged": true,
+  "live_sticky_writes": 0,
+  "live_payment_writes": 0
+}

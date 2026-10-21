@@ -6,8 +6,8 @@ async function master(page,sku='NEW-THERAPY'){
  await go(page,'master');await page.locator('#master-new').click();await page.locator('#master-form [name=sku]').fill(sku);await page.locator('#master-form [name=name]').fill('New therapy');await page.locator('#master-offer-editor [data-field=price]').fill('99.00');await page.locator('#master-form button[type=submit]').click();await expect(page.locator('#review-summary')).toContainText('Requires shipping');await approve(page);
 }
 async function assign(page){await go(page,'campaigns');await page.locator('#setup-campaign').selectOption('422');await page.locator('#setup-form button[type=submit]').click();await approve(page);}
-test('SIM-01 five primary screens, local master and one-review existing campaign assignment',async({ownerPage:page,app})=>{
- await expect(page.locator('#page-title')).toHaveText('Brands');await expect(page.locator('#navigation>button')).toHaveCount(5);await expect(page.locator('#master-advanced')).not.toHaveAttribute('open','');
+test('SIM-01 six primary screens, local master and one-review existing campaign assignment',async({ownerPage:page,app})=>{
+ await expect(page.locator('#page-title')).toHaveText('Brands');await expect(page.locator('#navigation>button')).toHaveCount(6);await expect(page.locator('#master-advanced')).not.toHaveAttribute('open','');
  await master(page);expect((await stats(page,app)).counts.products).toBe(0);await assign(page);await go(page,'links');await expect(page.locator('#link-list')).toContainText('NEW-THERAPY');await expect(page.locator('#link-list a')).toHaveCount(1);const counts=(await stats(page,app)).counts;expect(counts.products).toBe(1);expect(counts.offers).toBe(1);expect(counts.authorize_payment).toBe(0);
  await assign(page);expect((await stats(page,app)).counts.products).toBe(1);
 });

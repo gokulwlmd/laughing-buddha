@@ -1,35 +1,42 @@
-# Therapy plan checkouts
+# Therapy purchase options and checkouts
 
-The catalog now groups master SKUs under **Therapy → Treatment**, with product duration independent of billing frequency. A brand can publish a combined checkout where customers see Tirzepatide and Semaglutide, select a configured duration, and choose one-time, subscription or an otherwise supported prepaid option.
+The owner-defined hierarchy is **Therapy → Purchase option → Assigned SKUs → Branded checkout**.
+
+A purchase option represents a product duration, such as a **3-month plan**, and contains treatment alternatives such as TIRZ-3M and SEMA-3M. The customer chooses **one SKU**, then one of its configured payment choices: one-time, subscription or supported prepaid. SKU duration must match the purchase option exactly. Product duration remains independent of billing frequency and clinical/refill rules.
 
 ## Owner workflow
 
-1. Open **Therapies → Start Weight Loss setup**. This fills a draft containing Tirzepatide and Semaglutide. Review and approve it.
-2. In **Master SKUs**, assign each product to its therapy and treatment and set its product duration. Configure the actual approved prices and purchase options. Therapy grouping does not establish dose, clinical eligibility, fulfillment quantity or refill policy.
-3. Assign the master products to the brand's campaign using **Campaigns**. Existing brand prices remain separate.
-4. Open **Checkout links → brand → New plan checkout**. Select its campaign and therapy, load available plans, and enable the purchase options customers may choose. Choose public or private access, review, and approve.
-5. Copy the combined link. Customers choose a treatment, duration and payment option before the existing secure checkout quotes the final amount.
+1. Create a therapy in **Therapies**. The Weight Loss starter fills a reviewable draft with Tirzepatide and Semaglutide.
+2. Open **Purchase options**, choose the therapy and duration, name the plan, and select its allowed payment types. You can save it before assigning SKUs.
+3. Assign matching-duration SKUs in the purchase-option editor. If a SKU is missing, use the Master SKUs shortcut to add it with its therapy, treatment, duration and billing configuration, then return to assign it.
+4. Apply the master SKUs to the brand campaign in **Campaigns**. Each SKU retains its own rules, and each brand retains its configured prices.
+5. Open **Checkout links → brand → New plan checkout**. Select the campaign and therapy, then load purchase options. Choose one option for a dedicated checkout, or several for comparison. Their assigned SKUs and supported payment choices are included automatically. Review and approve publication.
+6. Copy the public or private link. Duration cards show **each treatment's price and payment terms before selection**. The customer selects a duration option, one treatment/SKU, and a payment choice. A checkout containing one duration option preselects that duration.
 
-The eight proposed TIRZ/SEMA 1/3/6/12-month products are not automatically seeded or priced. Only real configured campaign choices can be published. Unavailable treatments stay visible with an availability message. Listed prices are not final totals: shipping, taxes and applicable billing adjustments are calculated by Sticky at checkout. Unsupported trials and complex billing configurations remain blocked by the existing payment capability checks.
+“Purchase option” means the duration-level catalog record. Master-SKU one-time, subscription and prepaid configurations are labelled **payment choices** to distinguish them.
 
-## Implementation and boundaries
+No example products, durations or prices are automatically added to production. Only configured master assignments for the selected brand/campaign supply checkout prices; unrelated Sticky offers with the same SKU are excluded. Trial and complex billing flows retain their existing capability restrictions. Listed prices are product prices; Sticky calculates final totals, shipping, taxes and billing adjustments at checkout.
 
-- `plans.py` stores `therapy` and `plan_checkout` records in the existing configuration table. No schema migration or existing data rewrite is needed.
-- Plan links use `/plans/{id}`. Private invitations exchange a revision-bound token for an HttpOnly cookie and remove the token from the address bar.
-- Each selected SKU has an internal private managed child link. Children are hidden from the ordinary standalone checkout list. Their purchase choices are allowlisted and checked against current campaign data.
-- `/plans/{id}/choose` validates access, SKU membership and the selected option, then grants access only to that child. It does not authorize or capture payment. The existing quote/authorization/capture state machine handles payment and duplicate protection.
-- Editing a plan rotates invitations and child access. Disabling the parent or therapy also blocks child access. Removed members are disabled. Existing pending payments block affected configuration changes.
-- Brand design is read dynamically. Managed price replacement updates the selected child option mappings. Plan editors load those current mappings.
-- Therapy/treatment/duration-only master edits retain the billing revision. They cannot bypass an open child payment. Used treatments cannot be removed before reassignment.
-- New configuration kinds participate in stale-preview detection. Older draft approvals must be refreshed after this release.
-- Owner authentication, CSRF, server prices and clinical/refill separation remain in effect. No live treatment recommendation, prescription approval or new Sticky order is implied by browsing a plan.
+## Changes and publication
+
+Purchase options are reusable presets. Published checkouts retain the approved snapshot of assigned SKUs, payment types, name and duration. Editing a preset marks affected checkouts **Purchase option updates available**. Edit and publish the checkout again to adopt the new version. Managed brand price replacement continues updating existing child mappings through the established reviewed pricing workflow.
+
+Disabling a purchase option immediately makes its published choices unavailable. Disabling a therapy or parent checkout also blocks its children. All affected open payment attempts block these edits. Changing a master SKU's therapy or duration is rejected while it is assigned to an incompatible purchase option; remove the assignment first. Published choices also recheck current master duration at access time.
+
+## Implementation
+
+- `plans.py` stores `therapy`, `purchase_option` and `plan_checkout` records in the existing SQLite configuration table. This release does not migrate or rewrite saved configuration.
+- New checkout proposals provide purchase-option IDs. The server derives membership and exact offer/product/model keys from each approved master assignment and current managed offerings for the selected brand/campaign.
+- Every purchase-option/SKU combination has its own private child checkout. Different options sharing a SKU cannot grant access to each other's payment choices. The choose endpoint validates the complete option/SKU/payment combination before handoff.
+- Public/private `/plans/{id}` URLs reuse existing invitation, revision and payment safeguards. Browsing or selecting a plan never authorizes or captures payment.
+- Configuration fingerprints include purchase options. Stale owner previews require a fresh review. Published membership changes disable removed children and rotate parent/child invitations.
+- Existing standalone links and earlier manually configured multi-SKU links remain supported. Earlier multi-SKU customer pages are grouped by their explicit master duration; editing them retains their established SKU/payment selection workflow. There is no automatic conversion to new purchase-option records.
+- Customer preferences do not establish clinical eligibility, prescribing, dosage, medication benefits or refill approval.
 
 ## Verification
 
-`test_plans.py` covers local-only publication, public/private access, isolated child grants, invalid membership, exact SKU/model payment handoff and idempotent capture, invitation rotation, removal/disable behavior, pending payment guards, metadata revisions, stale previews and price replacement.
+`test_purchase_options.py` covers matching duration, incompatible later master edits, empty draft options, server-derived prices and choices, injected membership rejection, isolated access when two options share a SKU, publication snapshots, disabling, open-payment guards, excluding unrelated same-SKU offers, brand-price replacement, missing assignments and stale previews.
 
-`qa/therapy.spec.cjs` creates both treatments through the admin UI, assigns fixture products to a campaign, publishes public/private plan links, checks mobile layout and editing, and completes one synthetic one-time payment. The subscription path verifies the selected recurring model reaches checkout. Fake Sticky and Stripe services are used; no real payment or production catalog write is performed by these tests.
+`qa/therapy.spec.cjs` uses the actual admin UI to create therapy and master records, assign SKUs to duration options, provision a fixture campaign, publish one or multiple purchase options, compare per-treatment prices, edit and republish, and exercise private access, mobile layout and payment handoff. A synthetic one-time order is captured once; the recurring choice reaches checkout with the correct model. All payment tests use fake Sticky and Stripe services.
 
-Full regression result: **133 backend tests and 61 Chromium browser scenarios passed**. The container smoke test also confirmed startup, non-root execution, restricted state permissions, absence of runtime credentials in the image, and persistence across restart.
-
-Hosted verification: the new assets match the tested source; health and admin return 200; admin data and plan configuration endpoints require owner authentication; test hooks are absent. Desktop/mobile sign-in checks pass. The running machine uses the recorded immutable image and existing volume. Before/after hashes match for owner, configuration, reviews, checkout attempts and purchase-successor records. No live catalog or payment writes were made.
+Latest verification: 144 backend tests passed; all 62 browser scenarios are verified across the full run and a targeted rerun after correcting a sign-in readiness wait in the test helper. See [the QA receipt](PURCHASE_OPTIONS_QA_RESULTS.json). The container startup/persistence checks and read-only hosted desktop/mobile sign-in checks passed. Served assets match the tested image. Owner, configuration, reviews, checkout attempts and purchase-successor records have identical before/after hashes; no live Sticky or payment writes were made.
