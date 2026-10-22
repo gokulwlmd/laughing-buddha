@@ -81,3 +81,12 @@ The owner separately approved two synthetic products, two prepaid offers, a new 
 Keep a server-owned activation record bound to each master fingerprint, so a planning save cannot grant processor readiness. Template/site setup may use a current verified non-fulfilling mapping; master edits invalidate it for future setup. Do not rewrite old subscriptions or automatically republish existing checkouts.
 
 The explicitly authorized operator attachment adds only new offers, checking original remote terms/routing before and after; it preserves the older held authorization without retrying, cancelling or capturing it. Normal owner review locks remain unchanged. The operator journal and separate setup audit must retain confirmed IDs and stop on uncertain writes.
+
+
+## Customer checkout presentation (22 October 2026)
+
+Use a customer-facing plan → treatment → payment-preference flow with clear upfront totals, concise renewal/delivery terms and a visible order summary. Distinct one-time/SUB SKUs can share one treatment card, but the selected payment retains its exact original SKU/offer/model and private child-link boundary. Keep technical catalog identifiers out of rendered customer copy. Hide redundant single-choice controls while retaining their submitted values.
+
+Use the reference's clear layout without inventing savings, included clinical services, outcomes or cancellation benefits. Preserve the explicit real-charge/no-medication notice for live payment-test checkouts. No change to prices, recurring consent, payment processing, clinical rules or access permissions follows from the design.
+
+For this release, publish versioned static files and atomically update HTML without restarting the worker because a customer authorization is open. Retain legacy assets for already-open pages. Store the matching immutable image for the next safe container deployment, with ordinary preflight/reconciliation required before a restart.

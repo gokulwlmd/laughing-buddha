@@ -76,7 +76,7 @@ test('PAY-04 Stripe-style redirect return removes secret and captures same inten
 });
 
 test('PAY-05 page refresh resumes the existing card authorization',async({ownerPage:page,app})=>{
- await prepare(page);await checkout(page,app);await authorize(page);await page.reload();await expect(page.locator('#payment')).toBeVisible();await expect(page.locator('#message')).toContainText('No new payment was created');await pay(page);expect((await stats(page,app)).counts.authorize_payment).toBe(1);
+ await prepare(page);await checkout(page,app);await authorize(page);await page.reload();await expect(page.locator('#payment')).toBeVisible();await expect(page.locator('#message')).toContainText('Your payment is ready to continue');await pay(page);expect((await stats(page,app)).counts.authorize_payment).toBe(1);
 });
 
 test('PAY-06 unavailable session secret holds payment instead of creating another',async({ownerPage:page,app})=>{
