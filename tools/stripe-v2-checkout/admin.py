@@ -121,7 +121,7 @@ class Campaign(Form):
 
 
 class Proposal(Form):
-    kind: str = Field(pattern=r'^(brand|sku|link|offer|campaign|master|provision|campaign_setup|therapy|purchase_option|plan_checkout|checkout_template|site|site_checkout)$')
+    kind: str = Field(pattern=r'^(brand|sku|link|offer|campaign|master|provision|campaign_setup|therapy|purchase_option|plan_checkout|checkout_template|site|site_checkout|template_editor)$')
     data: dict
 
 
@@ -247,9 +247,9 @@ class Admin(MasterCatalog,PlanCatalog,SiteCatalog):
         return data['sku'] if kind=='sku' else data['id']
 
     def prepare(self,kind,data):
-        if kind in ('master','provision','campaign_setup','therapy','purchase_option','plan_checkout','checkout_template','site','site_checkout'):
+        if kind in ('master','provision','campaign_setup','therapy','purchase_option','plan_checkout','checkout_template','site','site_checkout','template_editor'):
             try:
-                if kind in ('checkout_template','site','site_checkout'):return self.prepare_site(kind,data)
+                if kind in ('checkout_template','site','site_checkout','template_editor'):return self.prepare_site(kind,data)
                 if kind=='plan_checkout' and (self.get('plan_checkout',data.get('id','')) or {}).get('site_id'):
                     raise HTTPException(422,'Customize this checkout from its Site to preserve template inheritance')
                 if kind in ('therapy','purchase_option','plan_checkout'):return self.prepare_plan(kind,data)
@@ -446,7 +446,7 @@ class Admin(MasterCatalog,PlanCatalog,SiteCatalog):
             with self.store.db() as db:
                 reviews=[{'id':r[0],'kind':r[1],'status':r[2],'created':r[3],'preview':json.loads(r[4]),'result':json.loads(r[5]) if r[5] else None}
                     for r in db.execute('SELECT id,kind,status,created,preview,result FROM admin_reviews ORDER BY created DESC LIMIT 30')]
-            return {'synthetic':self.cfg.synthetic,'sites':self.site_state(),'checkoutTemplates':self.records('checkout_template'),'therapies':self.records('therapy'),'purchaseOptions':self.records('purchase_option'),'planCheckouts':self.plan_state(),'masters':self.records('master'),'assignments':self.records('assignment'),'brands':self.records('brand'),'skus':self.records('sku'),'offers':self.records('offering'),'links':links,'reviews':reviews,'owner':self.owner()[0]}
+            return {'synthetic':self.cfg.synthetic,'sites':self.site_state(),'checkoutTemplates':self.template_state(),'templateDrafts':self.records('template_draft'),'siteDefaults':self.get('site_defaults','default'),'therapies':self.records('therapy'),'purchaseOptions':self.records('purchase_option'),'planCheckouts':self.plan_state(),'masters':self.records('master'),'assignments':self.records('assignment'),'brands':self.records('brand'),'skus':self.records('sku'),'offers':self.records('offering'),'links':links,'reviews':reviews,'owner':self.owner()[0]}
 
         @app.get('/api/admin/campaigns')
         def campaigns(req:Request):
@@ -630,6 +630,8 @@ class Admin(MasterCatalog,PlanCatalog,SiteCatalog):
                         self.put(kind,self.identity(kind,data),data)
                     elif kind in ('therapy','purchase_option','plan_checkout'):
                         self.finalize_plan(kind,data)
+                    elif kind=='template_editor':
+                        self.finalize_template_editor(data)
                     elif kind=='checkout_template':
                         self.put(kind,data['id'],data)
                     elif kind=='site_checkout':

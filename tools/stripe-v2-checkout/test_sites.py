@@ -145,4 +145,72 @@ class SiteTests(unittest.TestCase):
         self.assertEqual(response.json()['sites'][0]['checkouts'][0]['status'],'incomplete')
 
 
+
+    def editor(self, **changes):
+        plans = [{k:v for k,v in self.app.state.admin.get('purchase_option', p).items() if k != 'revision'} for p in ['monthly','quarterly']]
+        return {'id':'weight-loss','name':'Weight Loss','title':'Choose your plan','therapy_id':'weight-loss','plans':plans} | changes
+
+    def test_editor_saves_complete_template_without_touching_shared_plans(self):
+        self.seed(); before=copy.deepcopy(self.app.state.admin.get('purchase_option','monthly'))
+        payload=self.editor(); payload['plans'][0]['name']='Monthly care'
+        review=self.review('template_editor',payload)
+        self.assertEqual(self.app.state.admin.get('purchase_option','monthly'),before)
+        self.assertEqual(review['preview']['stickyWrites'],[])
+        self.assertEqual(self.apply(review).status_code,200)
+        self.assertEqual(self.app.state.admin.get('purchase_option','monthly'),before)
+        template=self.app.state.admin.get('checkout_template','weight-loss')
+        self.assertTrue(all(p.startswith('tpl-') for p in template['purchase_option_ids']))
+        self.save('site',self.site)
+        self.assertEqual(self.state()['sites'][0]['checkouts'][0]['status'],'ready')
+
+    def test_editor_draft_keeps_published_template_and_site_unchanged(self):
+        self.seed();self.save('site',self.site)
+        before=self.get_plan(); published=self.app.state.admin.get('checkout_template','weight-loss')
+        payload=self.editor(draft=True);payload['plans'][0]['skus']=[]
+        self.save('template_editor',payload)
+        self.assertEqual(self.app.state.admin.get('checkout_template','weight-loss'),published)
+        self.assertEqual(self.get_plan(),before)
+        self.assertEqual(len(self.state()['templateDrafts']),1)
+        r=self.post('reviews',{'kind':'template_editor','data':payload|{'draft':False}})
+        self.assertEqual(r.status_code,422);self.assertIn('choose at least one product',r.text)
+        self.save('template_editor',self.editor())
+        self.assertEqual(self.state()['templateDrafts'],[])
+
+    def test_editor_creates_new_therapy_draft_without_enabling_empty_checkout(self):
+        self.seed();payload={'id':'new-template','name':'New therapy','title':'Choose a plan','therapy_id':'new-therapy',
+            'new_therapy':{'id':'new-therapy','name':'New therapy','treatments':[{'id':'example','name':'Example'}]},'plans':[],'draft':True}
+        self.save('template_editor',payload)
+        self.assertIsNone(self.app.state.admin.get('checkout_template','new-template'))
+        self.assertEqual(self.app.state.admin.get('therapy','new-therapy')['name'],'New therapy')
+        self.assertEqual(self.state()['templateDrafts'][0]['new_therapy']['name'],'New therapy')
+
+    def test_editor_rejects_mismatch_and_stale_review_without_partial_saves(self):
+        self.seed();payload=self.editor();payload['plans'][0]['duration_months']=12
+        r=self.post('reviews',{'kind':'template_editor','data':payload})
+        self.assertEqual(r.status_code,422)
+        self.assertFalse(any(p['id'].startswith('tpl-') for p in self.app.state.admin.records('purchase_option')))
+        review=self.review('template_editor',self.editor())
+        self.save('template_editor',self.editor(draft=True))
+        self.assertEqual(self.apply(review).status_code,409)
+
+    def test_editor_plan_ids_survive_reordering_and_customized_site_updates(self):
+        self.seed();self.save('template_editor',self.editor());self.save('site',self.site)
+        template=self.app.state.admin.get('checkout_template','weight-loss');ids=template['purchase_option_ids']
+        self.save('site_checkout',self.override(purchase_option_ids=[ids[0]]))
+        old_url=self.get_plan()['url']
+        plans=[{k:v for k,v in self.app.state.admin.get('purchase_option',p).items() if k!='revision'} for p in reversed(ids)]
+        self.save('template_editor',self.editor(plans=plans,title='Updated'))
+        self.assertEqual(self.app.state.admin.get('checkout_template','weight-loss')['purchase_option_ids'],list(reversed(ids)))
+        self.assertEqual(self.get_plan()['url'],old_url)
+        self.save('site',self.site)
+        self.assertEqual(self.get_plan()['purchase_option_ids'],[ids[0]])
+        self.assertEqual(self.get_plan()['purchase_options'][0]['duration_months'],1)
+
+    def test_site_remembers_reviewed_connection_and_paused_is_not_ready(self):
+        self.seed();self.save('site',self.site|{'remember_connection':True})
+        self.assertEqual(self.state()['siteDefaults']['routing_template_id'],422)
+        self.save('site_checkout',self.override(enabled=False))
+        self.assertEqual(self.state()['sites'][0]['checkouts'][0]['status'],'paused')
+
+
 if __name__=='__main__':unittest.main()

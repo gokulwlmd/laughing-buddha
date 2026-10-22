@@ -142,7 +142,7 @@ def assignment_id(brand,campaign,sku):
 
 class MasterCatalog:
     def local_fingerprint(self):
-        return fingerprint([self.records(k) for k in ('brand','sku','link','offering','master','assignment','therapy','purchase_option','plan_checkout','checkout_template','site')])
+        return fingerprint([self.records(k) for k in ('brand','sku','link','offering','master','assignment','therapy','purchase_option','plan_checkout','checkout_template','site','template_draft','site_defaults')])
 
     def prepare_setup(self,payload,required_skus=None,site_brand=None):
         request=CampaignSetup.model_validate(payload).model_dump(mode='json')

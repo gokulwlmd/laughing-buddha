@@ -6,9 +6,11 @@ The brand design/multiple-campaign update is deployed and verified. The image an
 
 ## Sites and Checkout Templates
 
-The primary screens are Sites and Checkout Templates. Templates reuse the existing duration plans and assigned master SKUs. Add a site, select or create its brand, and choose an existing or new campaign. One review includes the required catalog provisioning and all enabled templates. After approval and read-back, ready checkouts offer Preview, Copy link and Customize. New links start private; public activation requires an explicit reviewed customization.
+Start in **Checkout Templates** to create a complete therapy checkout. Choose a therapy or create one inline, add duration plans, select matching products by name, and choose payment types. The customer preview shows selected products and catalog prices. Missing products appear beside the plan; Save draft preserves unfinished work without including it in site setup or changing a published template. Shared catalog product creation and detailed billing remain under Advanced.
 
-Template changes show Update available and require reviewed site setup to apply. Site titles, enabled plans, payment choices, campaign prices and stable URL paths are preserved. Missing gateways, campaign access failures and unavailable billing configurations show Incomplete. Advanced settings retains every existing brand, catalog, campaign and standalone link tool and its hash route.
+In **Sites → Add a site**, enter its name, logo, color and support email, then continue to the included checkouts. All enabled, valid templates are included automatically. Choose a payment setup for the first site; an approved setup can be reused for future sites with independent campaign prices. Existing branding and campaign connections remain optional settings. One review prepares the brand, campaign catalog and checkouts.
+
+The site dashboard opens after approval. Ready to preview means the link is private. Publish opens the checkout settings for an explicit publication review; Copy public link appears afterward. Paused and Needs attention are separate states. Synthetic staging labels public checkouts as test mode and always blocks payments. Template changes require reviewed site updates; saved site customizations, independent prices, subscriptions and stable URL paths are preserved.
 
 See [the current handoff](../../docs/PROJECT_HANDOFF.md), [decision record](../../docs/DECISIONS.md) and [local/staging setup](../../docs/COLLABORATION.md). The historical release notes below describe prior deployments; the new implementation is not automatically deployed to the live app.
 

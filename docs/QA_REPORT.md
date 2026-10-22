@@ -1,11 +1,14 @@
 # Admin and checkout QA report
 
-Run: 22 October 2026, 01:23 PM IST.
+Run: 22 October 2026, 02:13 PM IST.
 
 Status: **Passed** for the implemented workflows below.
 
-- Backend: **161 tests**, 0 failures, 0 errors.
-- Browser: **66 passed**, 0 failed, 0 skipped, 0 flaky.
+Validation includes a targeted rerun after fixing the legacy plan-list rendering regression. The initial full browser run passed 65 cases and failed 4; the subsequent rerun covered 11 affected site/template/plan cases (11 passed, 0 failed). The table reports the latest actual result for each distinct case.
+
+
+- Backend: **167 tests**, 0 failures, 0 errors.
+- Browser: **69 passed**, 0 failed, 0 skipped, 0 flaky.
 - Browser engine: Chromium; desktop 1440×1000 and mobile 390×844.
 - Environment: disposable loopback server, synthetic owner/customer data, fake Sticky API and a Stripe.js contract stub. Production credentials are removed from the test process. External browser requests are blocked except the locally fulfilled Stripe stub.
 - No real card, processor authorization/capture, live refund, or live Sticky configuration write is made by this suite.
@@ -52,6 +55,9 @@ Status: **Passed** for the implemented workflows below.
 | SITE-02 | mobile site creation with new brand, customization and reviewed template update | Pass |
 | SITE-03 | missing gateway is incomplete and does not offer a ready link | Pass |
 | SITE-04 | slow initial state loads before navigation becomes available | Pass |
+| SITE-05 | draft template can be resumed and completed without losing a published template | Pass |
+| SITE-06 | next site uses saved setup with no Advanced navigation and publication is explicit | Pass |
+| SITE-07 | new therapy and incomplete plans save together as a recoverable draft | Pass |
 | PLN-01 | duration cards show each treatment price before selection and complete exactly one synthetic order | Pass |
 | PLN-02 | private plan invitation, mobile price comparison, subscription handoff and edit persistence | Pass |
 | PLN-03 | checkout can open one purchase option; matching SKU assignment and disabled checkout | Pass |

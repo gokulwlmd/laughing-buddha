@@ -39,3 +39,11 @@ Ready means current configuration is available on a private hosted link. Live me
 Production continues using its existing app and database. Development and staging use `SyntheticSticky`, which has no network client, persists only demo catalog state, and rejects authorization and order creation. The staging environment forcibly disables payment processing even if an authorization flag or real credentials are accidentally supplied. No owner account, session or approval is seeded.
 
 GitHub runs tests on pull requests and relevant pushes. Fly staging deployment is manual, reruns tests, uses a staging-only config and app-scoped deploy token, and verifies the hosted synthetic/payment-block health flags. There is no automated production deploy.
+
+## Guided admin setup (22 October 2026)
+
+Use Checkout Template for a complete therapy experience, Plan for duration choices, and Payment choice for billing. The primary template editor combines plans, catalog product assignment and preview. Save drafts separately from the published template; publishing commits new therapy/owned plans/template in one SQLite transaction. Template-owned plan identifiers remain stable when plans are reordered. Shared legacy plans and existing published site snapshots remain intact.
+
+Site setup defaults to new branding and a separate campaign created from an explicitly selected or previously reviewed payment source. Remember the source only when its review is approved. The initial source must be chosen by the owner; synthetic staging may select its known demo campaign. Keep the campaign mapping immutable on existing sites. Ready preview, public publication, paused and incomplete are distinct states. Never label a synthetic checkout as accepting live payments.
+
+Catalog products and their billing rules remain managed under Advanced. The template editor selects existing matching products and displays their catalog prices; it does not invent medication SKUs or alter shared prices. Missing products are reported at the affected plan, with draft saving available.

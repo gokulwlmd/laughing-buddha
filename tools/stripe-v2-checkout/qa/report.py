@@ -1,5 +1,6 @@
 """Build a readable QA report from actual runner results."""
 import json
+import argparse
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 ROOT=Path(__file__).resolve().parents[1]
@@ -13,6 +14,27 @@ def specs(suites):
         yield from specs(suite.get('suites',[]))
 
 rows=[]
+parser=argparse.ArgumentParser()
+parser.add_argument('--recheck',type=Path,help='Actual Playwright JSON from a targeted rerun after fixes')
+args=parser.parse_args()
+recheck_note=''
+if args.recheck:
+    rerun=json.loads(args.recheck.read_text())
+    original={s['title']:s for s in specs(browser['suites'])}
+    revised=list(specs(rerun['suites']))
+    if any(s['title'] not in original for s in revised):
+        raise SystemExit('Recheck contains cases absent from the full run')
+    initial=dict(browser['stats'])
+    for spec in revised:
+        original[spec['title']]['tests']=spec['tests']
+    statuses=[t['status'] for s in original.values() for t in s['tests']]
+    for status in ('expected','unexpected','skipped','flaky'):
+        browser['stats'][status]=statuses.count(status)
+    recheck_note=(f"\nValidation includes a targeted rerun after fixing the legacy plan-list rendering regression. "
+        f"The initial full browser run passed {initial['expected']} cases and failed {initial['unexpected']}; "
+        f"the subsequent rerun covered {len(revised)} affected site/template/plan cases "
+        f"({rerun['stats']['expected']} passed, {rerun['stats']['unexpected']} failed). "
+        "The table reports the latest actual result for each distinct case.\n")
 for spec in specs(browser['suites']):
     tests=spec.get('tests',[])
     ok=all(t.get('status')=='expected' for t in tests)
@@ -25,6 +47,7 @@ report=f'''# Admin and checkout QA report
 Run: {started.strftime('%d %B %Y, %I:%M %p IST')}.
 
 Status: **{'Passed' if passed else 'Failed'}** for the implemented workflows below.
+{recheck_note}
 
 - Backend: **{backend['tests']} tests**, {backend['failures']} failures, {backend['errors']} errors.
 - Browser: **{browser['stats']['expected']} passed**, {browser['stats']['unexpected']} failed, {browser['stats']['skipped']} skipped, {browser['stats']['flaky']} flaky.

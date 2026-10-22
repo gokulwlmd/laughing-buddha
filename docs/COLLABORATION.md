@@ -36,7 +36,7 @@ flyctl ips allocate-v4 --shared --app wlmd-checkout-staging-0f89b1bb
 
 Check existing resources first; do not repeat creation blindly or replace the live infrastructure. Keep one staging worker and one machine because SQLite and payment intent handling are not designed for horizontal scaling. Staging can stop while idle. Volume storage remains billable while the app is stopped.
 
-Staging was provisioned and deployed on 22 October 2026. Hosted health, private admin access and tested asset hashes passed. See [the non-secret deployment record](../tools/stripe-v2-checkout/staging-deployment.json). The staging owner still needs to complete their own account setup.
+Staging was provisioned and deployed on 22 October 2026. Hosted health, private admin access and tested asset hashes passed. See [the non-secret deployment record](../tools/stripe-v2-checkout/staging-deployment.json). The owner has completed staging account setup. Use the existing staging account; do not recreate or seed it.
 
 ## Manual deployment button
 

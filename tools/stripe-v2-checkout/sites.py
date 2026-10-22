@@ -3,7 +3,7 @@ import copy
 import json
 from fastapi import HTTPException, Request
 from pydantic import Field, field_validator
-from plans import Form, fingerprint, ReadCache
+from plans import Form, Therapy, PurchaseOption, fingerprint, ReadCache
 from master import brand_campaigns
 from catalog import resolve, CatalogError
 
@@ -33,6 +33,18 @@ class Site(Form):
     routing_template_id: int = Field(default=422, gt=0)
     # A new brand can be reviewed together with site setup; existing brands are immutable here.
     new_brand: dict | None = None
+    remember_connection: bool = False
+
+
+class TemplateEditor(Form):
+    id: str = Field(pattern=r'^[a-z0-9][a-z0-9-]{1,60}$')
+    name: str = Field(min_length=1, max_length=100)
+    title: str = Field(min_length=1, max_length=150)
+    therapy_id: str = Field(min_length=1, max_length=61)
+    new_therapy: Therapy | None = None
+    plans: list[PurchaseOption] = Field(default_factory=list, max_length=20)
+    draft: bool = False
+    enabled: bool = True
 
 
 class SiteCheckout(Form):
@@ -64,6 +76,77 @@ def checkout_id(site_id, template_id):
 
 
 class SiteCatalog:
+    def template_state(self):
+        templates = self.records('checkout_template')
+        for template in templates:
+            try:
+                self.template_source(template)
+                template['ready'] = True
+            except HTTPException as exc:
+                template.update(ready=False, reason=str(exc.detail))
+        return templates
+
+    def prepare_template_editor(self, payload):
+        request = TemplateEditor.model_validate(payload).model_dump(mode='json')
+        before = self.get('checkout_template', request['id'])
+        if before and before['therapy_id'] != request['therapy_id']:
+            raise HTTPException(422, 'Create another template to change its therapy')
+        view = copy.copy(self)
+        original = self.get
+        therapy = request['new_therapy']
+        if therapy:
+            existing = original('therapy', therapy['id'])
+            if therapy['id'] != request['therapy_id'] or (existing and {k:v for k,v in existing.items() if k != 'revision'} != therapy):
+                raise HTTPException(422, 'Choose the existing therapy or use a new name')
+            therapy = existing or self.prepare_plan('therapy', therapy)[0]
+        elif not original('therapy', request['therapy_id']):
+            raise HTTPException(422, 'Choose a therapy or create one here')
+        plans = {}
+        def get(kind, key):
+            if kind == 'therapy' and therapy and key == therapy['id']:
+                return therapy
+            if kind == 'purchase_option' and key in plans:
+                return plans[key]
+            return original(kind, key)
+        view.get = get
+        if len({p['id'] for p in request['plans']}) != len(request['plans']):
+            raise HTTPException(422, 'Each plan must have a distinct identifier')
+        for plan in request['plans']:
+            if plan['therapy_id'] != request['therapy_id']:
+                raise HTTPException(422, 'All plans must belong to this template therapy')
+            # Template-owned copies keep edits away from other templates and live plans.
+            key = plan['id'] if plan['id'].startswith('tpl-') and plan['id'] in (before or {}).get('purchase_option_ids', []) else 'tpl-' + fingerprint([request['id'], plan['id']])[:40]
+            plan = dict(plan, id=key)
+            validated = view.prepare_plan('purchase_option', plan)[0]
+            old = original('purchase_option', key)
+            if old and {k:v for k,v in old.items() if k != 'revision'} == {k:v for k,v in validated.items() if k != 'revision'}:
+                validated['revision'] = old['revision']
+            plans[key] = validated
+        template = {'id':request['id'], 'name':request['name'], 'title':request['title'],
+            'therapy_id':request['therapy_id'], 'purchase_option_ids':list(plans),
+            'enabled':request['enabled'], 'revision':(before or {}).get('revision',0)+1}
+        if not request['draft']:
+            if not plans:
+                raise HTTPException(422, 'Add at least one plan, or save this template as a draft')
+            view.template_source(template)
+        data = {'request':request, 'template':template, 'therapy':therapy, 'plans':list(plans.values())}
+        preview = {'before':before, 'after':template, 'plans':list(plans.values()), 'stickyWrites':[],
+            'draft':request['draft'], 'impact':('Saves a draft. It is not included in new sites; the current published template stays unchanged.' if request['draft'] else 'Saves this complete checkout template. New sites inherit it. Existing site checkouts keep their published settings until you review their updates.')}
+        return data, [], preview, [], self.local_fingerprint()
+
+    def finalize_template_editor(self, data):
+        template = data['template']
+        # One transaction prevents half-saved therapy/plan/template combinations.
+        with self.store.db() as db:
+            records = (([('therapy', data['therapy']['id'], data['therapy'])] if data['therapy'] else []) + [('template_draft', template['id'], data['request'])]) if data['request']['draft'] else (
+                ([('therapy', data['therapy']['id'], data['therapy'])] if data['therapy'] else []) +
+                [('purchase_option', p['id'], p) for p in data['plans']] +
+                [('checkout_template', template['id'], template)])
+            for kind, key, record in records:
+                db.execute('INSERT INTO admin_config(kind,id,data) VALUES(?,?,?) ON CONFLICT(kind,id) DO UPDATE SET data=excluded.data', (kind,key,json.dumps(record)))
+            if not data['request']['draft']:
+                db.execute("DELETE FROM admin_config WHERE kind='template_draft' AND id=?", (template['id'],))
+
     def template_source(self, template):
         """Snapshot the approved plan and SKU metadata, with no gateway secrets."""
         therapy = self.get('therapy', template['therapy_id'])
@@ -72,8 +155,10 @@ class SiteCatalog:
         purchases, masters = [], {}
         for pid in template['purchase_option_ids']:
             purchase = self.get('purchase_option', pid)
-            if not purchase or not purchase['enabled'] or purchase['therapy_id'] != therapy['id'] or not purchase['skus']:
-                raise HTTPException(422, 'Each template plan needs active matching-duration master SKUs')
+            if not purchase or not purchase['enabled'] or purchase['therapy_id'] != therapy['id']:
+                raise HTTPException(422, 'Choose an active plan belonging to ' + therapy['name'])
+            if not purchase['skus']:
+                raise HTTPException(422, purchase['name'] + ': choose at least one product, or save the template as a draft')
             for sku in purchase['skus']:
                 master = self.get('master', sku) or {}
                 self.therapy_for(master, therapy['id'])
@@ -84,6 +169,8 @@ class SiteCatalog:
         return {'template': template, 'plans': purchases, 'masters': list(masters.values())}
 
     def prepare_site(self, kind, payload):
+        if kind == 'template_editor':
+            return self.prepare_template_editor(payload)
         if kind == 'checkout_template':
             data = CheckoutTemplate.model_validate(payload).model_dump(mode='json')
             before = self.get(kind, data['id'])
@@ -139,7 +226,7 @@ class SiteCatalog:
         site = {k: request[k] for k in ('id', 'name', 'brand_id')}
         site['campaign_id'] = data['campaign_id']
         site['revision'] = (before or {}).get('revision', 0) + 1
-        data.update(site=site, templates=templates)
+        data.update(site=site, templates=templates, remember_connection=request['remember_connection'], routing_template_id=request['routing_template_id'])
         preview.update(before=before, after=site, brand=brand, templates=templates,
             impact='Prepares every enabled therapy template for this site after approval. Inherits brand design and preserves existing campaign prices, URLs, site overrides and subscriptions. New links start private. Catalog read-back must pass before a checkout becomes ready; incomplete setup never activates a link.')
         affected = set(preview.get('affectedCheckoutLinks', []))
@@ -204,6 +291,9 @@ class SiteCatalog:
             except Exception:
                 results.append({'template_id': source['template']['id'], 'status': 'incomplete', 'reason': 'Check campaign access, assigned billing choices, matching SKU durations and site customizations before activating.'})
         self.put('site', site['id'], dict(site, checkouts=results))
+        if data.get('remember_connection'):
+            source = data['routing_template_id'] if isinstance(data['campaign_id'], dict) else site['campaign_id']
+            self.put('site_defaults', 'default', {'id':'default', 'routing_template_id':source})
         return dict(extra, site=site['id'], checkouts=results)
 
     def site_state(self):
@@ -220,6 +310,8 @@ class SiteCatalog:
                 if plan:
                     row['checkout_id'] = plan['id']
                     row['customized'] = bool(plan.get('site_override'))
+                    row['visibility'] = plan['visibility']
+                    row['enabled'] = plan['enabled']
                     try:
                         row['update_available'] = fingerprint(self.template_source(template)) != plan.get('template_source_hash')
                     except HTTPException:
@@ -230,6 +322,14 @@ class SiteCatalog:
                             row['status'] = 'live' if plan['visibility'] == 'public' and self.cfg.authorization_verified else 'ready'
                     except Exception:
                         pass
+                    if not plan['enabled']:
+                        row['status'] = 'paused'
+                if row['status'] == 'incomplete':
+                    try:
+                        self.template_source(template)
+                        row['reason'] = 'Check the payment connection and product availability, then review setup again.'
+                    except HTTPException as exc:
+                        row['reason'] = str(exc.detail)
                 rows.append(row)
             site['checkouts'] = rows
         return sites
