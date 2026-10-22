@@ -94,7 +94,7 @@ def metrics():
     with app.state.store.db() as db:
         statuses=dict(db.execute('SELECT status,count(*) FROM checkouts GROUP BY status'))
         owners=db.execute('SELECT count(*) FROM admin_owner').fetchone()[0]
-    return {'counts':counts,'orderCount':len(fake.orders),'states':statuses,'ownerCount':owners,'brands':len(app.state.admin.records('brand')),'skus':len(app.state.admin.records('sku')),'links':len(app.state.admin.records('link'))}
+    return {'authorizationStates':[[b.get('billingState'),b.get('shippingState')] for _,path,b in fake.calls if path.endswith('/authorize_payment')],'counts':counts,'orderCount':len(fake.orders),'states':statuses,'ownerCount':owners,'brands':len(app.state.admin.records('brand')),'skus':len(app.state.admin.records('sku')),'links':len(app.state.admin.records('link'))}
 
 @app.post('/__qa/confirm')
 def confirm(body:dict):

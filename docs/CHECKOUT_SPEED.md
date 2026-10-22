@@ -4,9 +4,9 @@ The owner reported roughly 40 seconds to card entry. Performance remains unresol
 
 ## Current payment interface
 
-checkout-v7.js restores the original Stripe Payment Element and Express Checkout. Continue to payment creates the intent through Sticky authorize_payment after quote/consent checks. Stripe confirmPayment confirms that same intent; Sticky new_order captures it and read-back verifies the result. Card data stays in Stripe's iframe. No independent Stripe charge or new gateway was introduced.
+checkout-v8.js retains the original Stripe Payment Element and Express Checkout. Continue to payment creates the intent through Sticky authorize_payment after quote/consent checks. Stripe confirmPayment confirms that same intent; Sticky new_order captures it and read-back verifies the result. Card data stays in Stripe's iframe. No independent Stripe charge or new gateway was introduced.
 
-The classic Card Element was briefly deployed in v5. It was an unnecessary widget change and is superseded. v6 was built but never deployed. The deferred Payment Element experiment in v4 did not finish rendering in the live browser, despite stub tests passing. Do not claim those tests established successful live rendering. v7 keeps the original intent-first interface, mounts it visibly, registers readiness before mounting, and shows load failures. Older deployed scripts remain for open pages. The backend's deferred capability remains for compatibility but the active frontend ignores it; future Fly config disables it.
+The classic Card Element was briefly deployed in v5. It was an unnecessary widget change and is superseded. v6 was built but never deployed. The deferred Payment Element experiment in v4 did not finish rendering in the live browser, despite stub tests passing. Do not claim those tests established successful live rendering. v8 keeps the original intent-first interface, mounts it visibly, registers readiness before mounting, and shows load failures. Older deployed scripts remain for open pages. The backend's deferred capability remains for compatibility but the active frontend ignores it; future Fly config disables it.
 
 ## Preserved improvements
 
@@ -21,3 +21,7 @@ Each fresh shared-link navigation starts its own anonymous visit. Reload/bank re
 The backend/session/catalog changes passed 196 offline backend tests before the widget correction; backend code is unchanged by v7. The v7 targeted browser checks use fake Sticky services and a Stripe contract stub. They cover the original widget, exact intent/capture behavior, incomplete input, declines, redirect, refresh, uncertainty, price drift, branding and fresh visits. They do not certify live card processing or speed.
 
 The earlier backend releases used the owner's approved restarts, preserving all pre-existing database rows and making on-volume backups. Existing unresolved attempts remain held; their old in-memory client secrets do not survive a restart. The v7 static correction preserves the payment worker and database. Release evidence is recorded in checkout-speed-deployment.json. No authorization/capture is submitted as a hosted health check. No new external credentials or setup are currently required; the remaining problem is checkout latency and end-to-end verification.
+
+## State input correction
+
+The US state dropdown shows full names and submits two-letter codes before quotes and authorization. All 50 states, DC, territories and military addresses are included. Other supported countries retain free-text regions. Three targeted fake-service browser checks passed; the state case verifies CA/NY in quotes and NY in both Sticky billingState/shippingState. The static update preserves the worker/database and existing held attempts. This input fix does not establish the original upstream error or live payment success.

@@ -42,3 +42,13 @@ test('CUS-04 a fresh shared-link visit works while the previous visit remains he
 test('CUS-05 incomplete payment details never confirm or capture the prepared intent',async({ownerPage:page,app})=>{
  await brand(page);await sku(page);await link(page);await checkout(page,app);await page.evaluate(()=>window.__qaIncompletePayment=true);await page.locator('#authorize').click();await page.locator('#pay').click();await expect(page.locator('#message')).toContainText('complete payment details');expect((await stats(page,app)).counts.authorize_payment).toBe(1);expect((await stats(page,app)).counts.new_order).toBe(0);
 });
+
+
+test('CUS-06 all US states are selectable and only state codes reach Sticky',async({ownerPage:page,app})=>{
+ await brand(page);await sku(page);await link(page);await checkout(page,app);await page.locator('#edit').click();
+ await expect(page.locator('#state option')).toHaveCount(60);await expect(page.locator('#state option[value=AK]')).toHaveText('Alaska');await expect(page.locator('#state option[value=HI]')).toHaveText('Hawaii');await expect(page.locator('#state option[value=DC]')).toHaveText('District of Columbia');
+ let posted;page.on('request',r=>{if(r.url().includes('/api/quote?'))posted=r.postDataJSON();});
+ await page.locator('#state').selectOption({label:'California'});await page.locator('#contact button').click();await expect(page.locator('#review')).toBeVisible();expect(posted.contact.region).toBe('CA');
+ await page.locator('#edit').click();await page.locator('#state').selectOption({label:'New York'});await page.locator('#contact button').click();await expect(page.locator('#review')).toBeVisible();expect(posted.contact.region).toBe('NY');
+ await page.locator('#authorize').click();await expect(page.locator('#payment')).toBeVisible();const state=await stats(page,app);expect(state.counts.authorize_payment).toBe(1);expect(state.authorizationStates).toEqual([['NY','NY']]);
+});

@@ -104,3 +104,7 @@ Resolve published choices against current campaign membership, fetch only attach
 ## Preserve the existing Stripe v2 checkout interface
 
 On 22 October 2026 the owner objected to the classic card box introduced during performance work. Restore the original Payment Element/Express Checkout and confirmPayment flow on Sticky-created intents. Do not substitute payment widgets as a performance workaround. The gateway has remained Sticky Stripe Connect v2 throughout. The earlier Card Element rollout is superseded; v6 was never deployed. Fast deferred authorization is not active in v7. The variable upstream delay and full customer experience still need verification; do not claim that passing fake-service tests proves live speed or processing.
+
+## US states are selected by name and sent by code
+
+Use a state dropdown for US billing addresses. Show full state names, submit only the two-letter values, and preserve the same code for Sticky billingState and shippingState. Include all 50 states, DC, territories and military addresses. Preserve free-text regions for other supported countries. Do not change existing held attempts to adopt corrected input.
