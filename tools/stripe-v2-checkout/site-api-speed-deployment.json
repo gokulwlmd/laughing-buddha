@@ -1,0 +1,308 @@
+{
+  "date": "2026-10-23",
+  "app": "wlmd-site-api-demo-0f89b1bb",
+  "machine": "8d96521b7d9768",
+  "volume": "vol_42kd0738ql56pj74",
+  "image": "registry.fly.io/wlmd-site-api-demo-0f89b1bb@sha256:bd56d0c6d26fbd5de18eb17772ce66d2ba541479c07982338264cc785be76db0",
+  "backend_tests": 255,
+  "financial_calls": 0,
+  "original_payment_worker_restarted": false,
+  "before": {
+    "measured_at": "2026-10-22T21:36:50.015575+00:00",
+    "rounds_requested": 1,
+    "financial_calls": 0,
+    "connection_reused": true,
+    "cache_note": "First plans request may already be cached; no cache purge is performed.",
+    "measurements": [
+      {
+        "round": 1,
+        "operation": "health",
+        "status_code": 200,
+        "elapsed_ms": 480.9
+      },
+      {
+        "round": 1,
+        "operation": "plans_first",
+        "status_code": 200,
+        "elapsed_ms": 6843.3
+      },
+      {
+        "round": 1,
+        "operation": "plans_repeat",
+        "status_code": 200,
+        "elapsed_ms": 306.8
+      },
+      {
+        "round": 1,
+        "operation": "create_session",
+        "status_code": 201,
+        "elapsed_ms": 453.0
+      },
+      {
+        "round": 1,
+        "operation": "configuration_first",
+        "status_code": 200,
+        "elapsed_ms": 5451.9
+      },
+      {
+        "round": 1,
+        "operation": "configuration_repeat",
+        "status_code": 200,
+        "elapsed_ms": 3850.8
+      },
+      {
+        "round": 1,
+        "operation": "quote",
+        "status_code": 200,
+        "elapsed_ms": 3679.7
+      },
+      {
+        "round": 1,
+        "operation": "status",
+        "status_code": 200,
+        "elapsed_ms": 360.7
+      }
+    ],
+    "quote": {
+      "amount": 24900,
+      "currency": "usd"
+    },
+    "rounds_completed": 1,
+    "ok": true,
+    "summary_ms": {
+      "health": {
+        "min": 480.9,
+        "median": 480.9,
+        "max": 480.9
+      },
+      "plans_first": {
+        "min": 6843.3,
+        "median": 6843.3,
+        "max": 6843.3
+      },
+      "plans_repeat": {
+        "min": 306.8,
+        "median": 306.8,
+        "max": 306.8
+      },
+      "create_session": {
+        "min": 453.0,
+        "median": 453.0,
+        "max": 453.0
+      },
+      "configuration_first": {
+        "min": 5451.9,
+        "median": 5451.9,
+        "max": 5451.9
+      },
+      "configuration_repeat": {
+        "min": 3850.8,
+        "median": 3850.8,
+        "max": 3850.8
+      },
+      "quote": {
+        "min": 3679.7,
+        "median": 3679.7,
+        "max": 3679.7
+      },
+      "status": {
+        "min": 360.7,
+        "median": 360.7,
+        "max": 360.7
+      }
+    }
+  },
+  "after": {
+    "measured_at": "2026-10-22T21:42:39.509996+00:00",
+    "rounds_requested": 2,
+    "financial_calls": 0,
+    "connection_reused": true,
+    "cache_note": "First plans request may already be cached; no cache purge is performed.",
+    "measurements": [
+      {
+        "round": 1,
+        "operation": "health",
+        "status_code": 200,
+        "server_ms": 0.6,
+        "elapsed_ms": 501.7
+      },
+      {
+        "round": 1,
+        "operation": "plans_first",
+        "status_code": 200,
+        "server_ms": 1.3,
+        "elapsed_ms": 335.0
+      },
+      {
+        "round": 1,
+        "operation": "plans_repeat",
+        "status_code": 200,
+        "server_ms": 0.8,
+        "elapsed_ms": 303.3
+      },
+      {
+        "round": 1,
+        "operation": "create_session",
+        "status_code": 201,
+        "server_ms": 56.0,
+        "elapsed_ms": 371.5
+      },
+      {
+        "round": 1,
+        "operation": "configuration_first",
+        "status_code": 200,
+        "server_ms": 3150.8,
+        "elapsed_ms": 3447.3
+      },
+      {
+        "round": 1,
+        "operation": "configuration_repeat",
+        "status_code": 200,
+        "server_ms": 14.5,
+        "elapsed_ms": 311.9
+      },
+      {
+        "round": 1,
+        "operation": "quote",
+        "status_code": 200,
+        "server_ms": 7335.1,
+        "elapsed_ms": 7643.1
+      },
+      {
+        "round": 1,
+        "operation": "status",
+        "status_code": 200,
+        "server_ms": 13.9,
+        "elapsed_ms": 319.0
+      },
+      {
+        "round": 2,
+        "operation": "health",
+        "status_code": 200,
+        "server_ms": 0.7,
+        "elapsed_ms": 310.0
+      },
+      {
+        "round": 2,
+        "operation": "plans_first",
+        "status_code": 200,
+        "server_ms": 0.8,
+        "elapsed_ms": 311.5
+      },
+      {
+        "round": 2,
+        "operation": "plans_repeat",
+        "status_code": 200,
+        "server_ms": 0.9,
+        "elapsed_ms": 306.6
+      },
+      {
+        "round": 2,
+        "operation": "create_session",
+        "status_code": 201,
+        "server_ms": 36.1,
+        "elapsed_ms": 331.4
+      },
+      {
+        "round": 2,
+        "operation": "configuration_first",
+        "status_code": 200,
+        "server_ms": 16.3,
+        "elapsed_ms": 320.8
+      },
+      {
+        "round": 2,
+        "operation": "configuration_repeat",
+        "status_code": 200,
+        "server_ms": 16.8,
+        "elapsed_ms": 320.5
+      },
+      {
+        "round": 2,
+        "operation": "quote",
+        "status_code": 200,
+        "server_ms": 2890.6,
+        "elapsed_ms": 3205.1
+      },
+      {
+        "round": 2,
+        "operation": "status",
+        "status_code": 200,
+        "server_ms": 15.1,
+        "elapsed_ms": 331.9
+      }
+    ],
+    "quote": {
+      "amount": 24900,
+      "currency": "usd"
+    },
+    "rounds_completed": 2,
+    "ok": true,
+    "summary_ms": {
+      "health": {
+        "min": 310.0,
+        "median": 405.9,
+        "max": 501.7
+      },
+      "plans_first": {
+        "min": 311.5,
+        "median": 323.2,
+        "max": 335.0
+      },
+      "plans_repeat": {
+        "min": 303.3,
+        "median": 305.0,
+        "max": 306.6
+      },
+      "create_session": {
+        "min": 331.4,
+        "median": 351.4,
+        "max": 371.5
+      },
+      "configuration_first": {
+        "min": 320.8,
+        "median": 1884.1,
+        "max": 3447.3
+      },
+      "configuration_repeat": {
+        "min": 311.9,
+        "median": 316.2,
+        "max": 320.5
+      },
+      "quote": {
+        "min": 3205.1,
+        "median": 5424.1,
+        "max": 7643.1
+      },
+      "status": {
+        "min": 319.0,
+        "median": 325.4,
+        "max": 331.9
+      }
+    }
+  },
+  "session_and_cors_verification": {
+    "wildcard_cors": true,
+    "cookie_credentials": false,
+    "bearer_required": true,
+    "session_survives_deployment": true,
+    "session_status": "new",
+    "amount": 24900,
+    "openapi_paths": 9,
+    "financial_calls": 0
+  },
+  "runtime_file_sha256": {
+    "demo/public.py": "5a8363a970c8370a68e719d9489ce5b37d3cf91d933fd762f65040110b4b6d63",
+    "demo/session_api.py": "c6501ced8d92554e3b6f4617ab64bdf2d5c1ac598492d60962e62cee6e149166",
+    "demo/entrypoint.py": "707e030dfae726657929aa797d9eda931993cab249790d3507307bda39638819",
+    "demo/Dockerfile": "583425674431cb3d3bb914828b1399691aaaa0faa6b54b6528e0a288635d7f4e",
+    "demo/Dockerfile.dockerignore": "b9e6b3039d0e927c1cfce9bbc5d59ffe20ac44db3c69d32a772e426473ebd0e6",
+    "fly-demo.toml": "db375559e2f65cd5aab1a8ec375b3b63a242c20ac54de2a7dad609b423d7ceaf"
+  },
+  "limitations": [
+    "Cold display configuration still waits for Sticky.",
+    "Fresh quote samples remain variable: 3.205\u20137.643 seconds after deployment.",
+    "Authorization and completion were not called in hosted verification.",
+    "Original engine catalog work and global financial-route lock remain unchanged."
+  ]
+}

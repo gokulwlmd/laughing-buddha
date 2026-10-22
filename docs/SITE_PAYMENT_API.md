@@ -174,3 +174,22 @@ Run the non-payment hosted smoke check from the repository root:
 ```sh
 .venv/bin/python scripts/check_site_payment_api.py --quote
 ```
+
+## Response speed
+
+The API keeps the plan display catalog warm in the background. Public display
+configuration is shared for at most 60 seconds by link and plan; each caller
+still passes a fresh session/link access check. Concurrent readers share one
+configuration load. An expired cache is never used to hide an upstream error.
+Quote, authorization, resume and capture continue using fresh authoritative
+checks. Use the publishable key returned by `/payment` when initializing Stripe.
+
+HTTPS connections are reused without sharing cookies. Connection failures never
+trigger automatic retries. Payment preparation fetches configuration and status
+concurrently, then waits for both before preparing or resuming the intent.
+`Server-Timing` reports application time without exposing payment details.
+
+Run `scripts/benchmark_site_payment_api.py` with the project virtualenv to measure
+plans, session creation, configuration and a synthetic draft quote. It makes no
+payment calls. See [measured speed evidence](SITE_API_SPEED.md) for current
+results and limits. No frontend integration changes are required.

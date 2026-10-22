@@ -5,6 +5,9 @@ credentials, card data, processor secrets or automatic financial retries.
 """
 import hashlib
 import hmac
+from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
+import http.client
 from http.cookies import SimpleCookie
 from html.parser import HTMLParser
 import json
@@ -13,9 +16,10 @@ from pathlib import Path
 import re
 import secrets
 import sqlite3
+import ssl
 import threading
 import time
-from urllib import error, parse, request
+from urllib import parse
 import weakref
 
 from fastapi import APIRouter, HTTPException, Request, Security
@@ -98,6 +102,45 @@ class Configuration(BaseModel):
     shipping: list[dict]
     plan: dict
     payment_test_only: bool
+
+
+class DisplayConfigurationCache:
+    """Short-lived public display data only; payment paths never consult this.
+
+    Each key has one loader. Followers still verify their own upstream visit
+    before using the shared result. Expired data is never served after failure.
+    """
+    def __init__(self,clock=time.monotonic,ttl=60,limit=1000):
+        self.clock,self.ttl,self.limit=clock,ttl,limit
+        self.entries=OrderedDict();self.guard=threading.Lock()
+        self.locks=weakref.WeakValueDictionary()
+
+    def get(self,key,loader,check_access):
+        with self.guard:
+            key_lock=self.locks.get(key)
+            if key_lock is None:
+                key_lock=threading.Lock();self.locks[key]=key_lock
+        with key_lock:
+            with self.guard:
+                entry=self.entries.get(key)
+                hit=entry is not None and entry[0]>self.clock()
+                if hit:payload=entry[1]
+                elif entry is not None:del self.entries[key]
+            if not hit:
+                # Serialize the explicit response model rather than storing an
+                # upstream response (which includes CSRF and attempt details).
+                payload=loader().model_dump_json()
+                with self.guard:
+                    now=self.clock()
+                    for expired in [k for k,v in self.entries.items() if v[0]<=now]:
+                        del self.entries[expired]
+                    while len(self.entries)>=self.limit:
+                        self.entries.popitem(last=False)
+                    self.entries[key]=(now+self.ttl,payload)
+        if hit:
+            check_access()
+        # Each caller receives its own value; mutation cannot pollute the cache.
+        return Configuration.model_validate_json(payload)
 
 class QuoteResult(BaseModel):
     quote_id: str
@@ -187,10 +230,6 @@ class UpstreamError(Exception):
     def __init__(self,status=None,detail='The checkout service did not return a confirmed result'):
         self.status=status;self.detail=detail
 
-class NoRedirect(request.HTTPRedirectHandler):
-    def redirect_request(self,*args):
-        raise UpstreamError(detail='Unexpected checkout service redirect')
-
 class CsrfParser(HTMLParser):
     def __init__(self):
         super().__init__();self.token=None
@@ -200,16 +239,61 @@ class CsrfParser(HTMLParser):
 
 
 class CheckoutTransport:
-    def __init__(self,upstream=PUBLIC_UPSTREAM):
+    """Bounded, exclusive-use TLS connections; checkout cookies stay on each row.
+
+    A failed request is never retried, including on a previously healthy socket.
+    Financial callers therefore retain their existing uncertain-result handling.
+    """
+    def __init__(self,upstream=PUBLIC_UPSTREAM,*,max_connections=8,idle_timeout=4.0,timeout=90.0):
         if upstream != PUBLIC_UPSTREAM:
             raise ValueError('Unexpected checkout upstream')
+        if max_connections<1 or idle_timeout<=0 or timeout<=0:
+            raise ValueError('Invalid checkout connection pool settings')
         self.upstream=upstream
+        self._host=parse.urlsplit(upstream).hostname
+        self._context=ssl.create_default_context()
+        self._max_connections=max_connections;self._idle_timeout=idle_timeout;self._timeout=timeout
+        self._condition=threading.Condition();self._idle=[];self._count=0;self._closed=False
+
+    def _acquire(self):
+        deadline=time.monotonic()+self._timeout
+        with self._condition:
+            while True:
+                if self._closed:raise UpstreamError()
+                while self._idle:
+                    connection,returned_at=self._idle.pop()
+                    if time.monotonic()-returned_at<self._idle_timeout:
+                        return connection
+                    connection.close();self._count-=1
+                if self._count<self._max_connections:
+                    # Construction does not perform network I/O. The first request
+                    # connects using the system trust store and hostname checking.
+                    connection=http.client.HTTPSConnection(self._host,timeout=self._timeout,context=self._context)
+                    self._count+=1
+                    return connection
+                remaining=deadline-time.monotonic()
+                if remaining<=0:raise UpstreamError()
+                self._condition.wait(remaining)
+
+    def _release(self,connection,reusable):
+        with self._condition:
+            if reusable and not self._closed:
+                self._idle.append((connection,time.monotonic()))
+            else:
+                connection.close();self._count-=1
+            self._condition.notify()
+
+    def close(self):
+        with self._condition:
+            self._closed=True
+            for connection,_ in self._idle:connection.close()
+            self._count-=len(self._idle);self._idle.clear();self._condition.notify_all()
 
     def call(self,row,method,path,body=None,client_ip=None):
         # Paths and link IDs come only from the server's published catalog.
         if not re.fullmatch(r'/c/choice-[a-f0-9]{32}|/api/(?:start-checkout|config|status|quote|authorize|resume|capture)',path):
             raise ValueError('Unexpected checkout path')
-        target=self.upstream+path
+        target=path
         if path.startswith('/api/'):
             target+='?'+parse.urlencode({'link_id':row['link_id']})
         cookies=json.loads(row['cookies'])
@@ -222,23 +306,32 @@ class CheckoutTransport:
             headers.update({'Content-Type':'application/json','Origin':PUBLIC_UPSTREAM,'X-CSRF-Token':row['csrf']})
         # Do not forward/spoof a customer IP through the public Fly proxy.
         # The unchanged engine attributes these calls to this API service.
-        req=request.Request(target,data=json.dumps(body).encode() if body is not None else None,headers=headers,method=method)
+        encoded=json.dumps(body).encode() if body is not None else None
+        connection=None;reusable=False
         try:
-            with request.build_opener(NoRedirect(),request.ProxyHandler({})).open(req,timeout=90) as response:
-                raw=response.read()
-                for value in response.headers.get_all('Set-Cookie',[]):
-                    parsed=SimpleCookie();parsed.load(value)
-                    for name,morsel in parsed.items():
-                        if name=='__Host-checkout-browser' or re.fullmatch(r'purchase_[a-f0-9]{20}',name):
-                            cookies[name]=morsel.value
-        except error.HTTPError as exc:
-            try:
-                detail=json.load(exc).get('detail')
-                if not isinstance(detail,str):detail='Checkout request was rejected'
-            except Exception:detail='Checkout request was rejected'
-            raise UpstreamError(exc.code,detail) from None
-        except (error.URLError,TimeoutError,OSError,ValueError):
+            connection=self._acquire()
+            connection.request(method,target,body=encoded,headers=headers)
+            response=connection.getresponse()
+            raw=response.read()  # Drain completely before another session uses the socket.
+            reusable=not response.will_close
+            if response.status in (301,302,303,307,308):
+                raise UpstreamError(detail='Unexpected checkout service redirect')
+            if not 200<=response.status<300:
+                try:
+                    detail=json.loads(raw).get('detail')
+                    if not isinstance(detail,str):detail='Checkout request was rejected'
+                except (ValueError,AttributeError):detail='Checkout request was rejected'
+                raise UpstreamError(response.status,detail)
+            for value in response.headers.get_all('Set-Cookie',[]):
+                parsed=SimpleCookie();parsed.load(value)
+                for name,morsel in parsed.items():
+                    if name=='__Host-checkout-browser' or re.fullmatch(r'purchase_[a-f0-9]{20}',name):
+                        cookies[name]=morsel.value
+        except (http.client.HTTPException,TimeoutError,OSError,ValueError):
+            reusable=False
             raise UpstreamError() from None
+        finally:
+            if connection is not None:self._release(connection,reusable)
         try:
             data=raw.decode() if path.startswith('/c/') else json.loads(raw)
         except (ValueError,UnicodeError):raise UpstreamError() from None
@@ -252,9 +345,10 @@ def terms(q):
     return f"Pay {total} today. "+(f"Renews every {o['days']} days." if o['recurring'] else 'One-time payment. No automatic renewal.')
 
 
-def install_session_api(app,site_check,catalog_loader,store,transport,origin,allowed_origins=()):
+def install_session_api(app,site_check,catalog_loader,store,transport,origin,allowed_origins=(),clock=time.monotonic):
     router=APIRouter(prefix='/api/v1/sites/{site_id}/sessions',tags=['On-page checkout API'])
     bearer=HTTPBearer(auto_error=False,scheme_name='CheckoutSession',description='Paste the session_token from POST sessions. This is scoped to one customer checkout, not an account key.')
+    display_configuration=DisplayConfigurationCache(clock=clock)
 
     def ready():
         if store is None:raise HTTPException(503,'Checkout session storage is not configured')
@@ -333,15 +427,19 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
     @router.get('/{session_id}/configuration',response_model=Configuration,summary='Load public Stripe configuration and allowed address/shipping choices')
     def configuration(site_id:str,session_id:str,req:Request,credentials:HTTPAuthorizationCredentials|None=Security(bearer)):
         row=auth(site_id,session_id,req,credentials)
-        try:cfg=call(row,'GET','/api/config',req=req)
+        def load():
+            cfg=call(row,'GET','/api/config',req=req)
+            option=next((o for o in cfg['options'] if o['key']==row['selection']),None)
+            if not cfg['ready'] or not option or option.get('blockedReason'):
+                raise HTTPException(409,'This plan is not currently available for payment')
+            # No upstream CSRF, purchase cookies, customer data or account secrets.
+            public_option={k:option[k] for k in ('recurring','days','basePrice','prepaidCycles','upfrontPrice','renewal','renewalDays','shippable') if k in option}
+            return Configuration(publishable_key=cfg['publishableKey'],currency=cfg['currency'],countries=cfg['countries'],shipping=cfg['shipping'],plan=public_option,payment_test_only=cfg.get('paymentTestOnly',False))
+        try:
+            value=display_configuration.get((row['link_id'],row['selection']),load,lambda:upstream_status(row,req))
         except UpstreamError as exc:raise translated(exc)
-        option=next((o for o in cfg['options'] if o['key']==row['selection']),None)
-        if not cfg['ready'] or not option or option.get('blockedReason'):
-            raise HTTPException(409,'This plan is not currently available for payment')
-        store.update(row['id'],publishable_key=cfg['publishableKey'])
-        # No upstream CSRF, purchase cookies, customer data or account secrets.
-        public_option={k:option[k] for k in ('recurring','days','basePrice','prepaidCycles','upfrontPrice','renewal','renewalDays','shippable') if k in option}
-        return Configuration(publishable_key=cfg['publishableKey'],currency=cfg['currency'],countries=cfg['countries'],shipping=cfg['shipping'],plan=public_option,payment_test_only=cfg.get('paymentTestOnly',False))
+        store.update(row['id'],publishable_key=value.publishable_key)
+        return value
 
     @router.post('/{session_id}/quote',response_model=QuoteResult,summary='Calculate the customer’s exact total')
     def quote(site_id:str,session_id:str,body:QuoteBody,req:Request,credentials:HTTPAuthorizationCredentials|None=Security(bearer)):
@@ -370,10 +468,16 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
             try:
                 # Return the public key for the exact current payment route. A
                 # route change after quoting is still rejected by the engine.
-                cfg=call(row,'GET','/api/config',req=req)
+                # These independent reads can overlap; neither a new intent nor
+                # a resume may start until both replies have been verified.
+                with ThreadPoolExecutor(max_workers=2) as reads:
+                    config_future=reads.submit(call,dict(row),'GET','/api/config',None,req)
+                    status_future=reads.submit(upstream_status,dict(row),req)
+                    cfg=config_future.result()
+                    current=status_future.result()
                 if not cfg['ready']:raise UpstreamError(409,'The payment route is unavailable')
                 public_key=cfg['publishableKey']
-                current=upstream_status(row,req)
+                row=store.read(row['id'])
                 if current['status']=='awaiting_card':
                     value=call(row,'POST','/api/resume',{},req)
                 else:

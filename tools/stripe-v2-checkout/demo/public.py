@@ -3,6 +3,8 @@
 No processor credentials, production DB, card widget or payment write client.
 Only the explicitly published demo parent can be read/selected.
 """
+import asyncio
+from contextlib import asynccontextmanager
 import hashlib
 import html
 import json
@@ -100,11 +102,29 @@ def map_catalog(data):
     return Catalog(site_id=SITE_ID,site_name='Master Therapy Payment Test',color=data['branding']['color'],plans=plans), routes
 
 
-def create_public_app(origin=None, read_catalog=read_live_catalog, clock=time.time, session_store=None, transport=None):
+def create_public_app(origin=None, read_catalog=read_live_catalog, clock=time.time, session_store=None, transport=None, warm_catalog=None):
     origin = origin or os.environ['DEMO_PUBLIC_ORIGIN']
     if not origin.startswith('https://') or origin.rstrip('/') != origin or '/' in origin[8:]:
         raise ValueError('DEMO_PUBLIC_ORIGIN must be an HTTPS origin')
-    app = FastAPI(title='Site API · live checkout demo',docs_url=None,redoc_url=None,openapi_url=None)
+    @asynccontextmanager
+    async def lifespan(app):
+        stop=threading.Event()
+        def maintain_catalog():
+            # Read-only display data. Keep the existing freshness/hard-age limits;
+            # an upstream outage never extends the lifetime of an old catalog.
+            while not stop.is_set():
+                refresh(background=True)
+                if stop.wait(15):break
+        enabled=warm_catalog if warm_catalog is not None else (read_catalog is read_live_catalog and session_store is not None)
+        worker=threading.Thread(target=maintain_catalog,daemon=True) if enabled else None
+        if worker:worker.start()
+        try:yield
+        finally:
+            stop.set()
+            if worker:await asyncio.to_thread(worker.join,30)
+            if hasattr(transport,'close'):transport.close()
+
+    app = FastAPI(title='Site API · live checkout demo',docs_url=None,redoc_url=None,openapi_url=None,lifespan=lifespan)
     app.mount('/assets',StaticFiles(directory=HERE/'web'),name='assets')
     cache = {}; sessions = {}; lock = threading.Lock(); refresh_lock = threading.Lock()
     state_dir=os.environ.get('DEMO_SESSION_STATE_DIR')
@@ -114,7 +134,7 @@ def create_public_app(origin=None, read_catalog=read_live_catalog, clock=time.ti
     for allowed in allowed_origins:
         if allowed != '*' and (not allowed.startswith('https://') or allowed.rstrip('/')!=allowed or '/' in allowed[8:]):
             raise ValueError('SITE_API_ALLOWED_ORIGINS must contain HTTPS origins or *')
-    app.add_middleware(CORSMiddleware,allow_origins=[origin,*allowed_origins],allow_methods=['GET','POST'],allow_headers=['Authorization','Content-Type'])
+    app.add_middleware(CORSMiddleware,allow_origins=[origin,*allowed_origins],allow_methods=['GET','POST'],allow_headers=['Authorization','Content-Type'],expose_headers=['Server-Timing'])
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(req,exc):
@@ -168,7 +188,9 @@ def create_public_app(origin=None, read_catalog=read_live_catalog, clock=time.ti
 
     @app.middleware('http')
     async def headers(req,call_next):
+        started=time.perf_counter()
         response = await call_next(req)
+        response.headers['Server-Timing']=f'app;dur={(time.perf_counter()-started)*1000:.1f}'
         response.headers.update({'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'})
         return response
 
@@ -243,5 +265,5 @@ def create_public_app(origin=None, read_catalog=read_live_catalog, clock=time.ti
         return get_swagger_ui_html(openapi_url=f'/sites/{SITE_ID}/openapi.json',title='Payment Test · API docs',
             swagger_favicon_url='data:,',swagger_ui_parameters={'defaultModelsExpandDepth':-1,'tryItOutEnabled':True,'persistAuthorization':False})
 
-    install_session_api(app,site,current,session_store,transport,origin,allowed_origins)
+    install_session_api(app,site,current,session_store,transport,origin,allowed_origins,clock=clock)
     return app

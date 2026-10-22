@@ -2,7 +2,7 @@
   "app": "wlmd-site-api-demo-0f89b1bb",
   "url": "https://wlmd-site-api-demo-0f89b1bb.fly.dev",
   "machine": "8d96521b7d9768",
-  "image": "registry.fly.io/wlmd-site-api-demo-0f89b1bb@sha256:4ddd6f039a678ea27e599666d11c7374f5599babbf39956093387dad28150f84",
+  "image": "registry.fly.io/wlmd-site-api-demo-0f89b1bb@sha256:bd56d0c6d26fbd5de18eb17772ce66d2ba541479c07982338264cc785be76db0",
   "mode": "on-page site payment API with legacy redirect compatibility",
   "processor_credentials_copied": false,
   "publication": {
@@ -13,7 +13,7 @@
     "all_existing_configuration_preserved": true
   },
   "verification": {
-    "full_backend_tests_passed": 233,
+    "full_backend_tests_passed": 255,
     "targeted_demo_tests_passed": 32,
     "hosted_frontend_and_fresh_contact_form": true,
     "financial_api_calls": 0,
@@ -31,8 +31,8 @@
     "financial_calls": 0
   },
   "runtime_file_sha256": {
-    "demo/public.py": "bb4c6388a6b76d9f2fc864da4e163576cd94e01b00f79a88c5dd32cb33d4113f",
-    "demo/session_api.py": "d9749f5c15d5d4baa6de5a650d8acfba8907eec91f70a0edc19e1ca10b7fa39d",
+    "demo/public.py": "5a8363a970c8370a68e719d9489ce5b37d3cf91d933fd762f65040110b4b6d63",
+    "demo/session_api.py": "c6501ced8d92554e3b6f4617ab64bdf2d5c1ac598492d60962e62cee6e149166",
     "demo/entrypoint.py": "707e030dfae726657929aa797d9eda931993cab249790d3507307bda39638819",
     "demo/publish.py": "34a4d5c30f993799c0d22e01dac6736ebf51588c0455e9444e4199f3ed26dd54",
     "demo/web/frontend.js": "41fb32e748165e6e1c3d119bef978586dd1479a51afc3f6fcbf0053266d7f13a",
@@ -74,5 +74,6 @@
     "Sticky sees the API service network IP.",
     "Existing upstream payment latency remains unresolved.",
     "Live verification did not prepare or complete a payment."
-  ]
+  ],
+  "performance_release": "site-api-speed-deployment.json"
 }

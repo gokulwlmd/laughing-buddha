@@ -182,3 +182,14 @@ any origin with session bearer authentication and no cross-origin cookie
 credentials. No frontend domain registration is required. Do not weaken live
 HTTPS or restart the payment worker to hide the IP limitation. No frontend
 changes are included in this API-only release.
+
+## Site API latency (23 October 2026)
+
+Keep public display data warm and share it briefly; do not cache financial
+verification or reuse a Stripe key from an older route. Display configuration
+may be shared for 60 seconds by link/selection only after each session passes
+fresh upstream access checks. Quotes, intent preparation, resume and completion
+retain their authoritative checks. Use bounded cookie-free HTTPS connections
+and overlap independent read-only preparation checks. Never retry writes after
+network uncertainty. Deploy these optimizations in the API app so the existing
+payment worker can retain the open card forms and process-local secrets.

@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from urllib import error
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -289,14 +288,15 @@ class TransportTests(unittest.TestCase):
         with self.assertRaises(ValueError):transport.call(row,'POST','/api/v1/new_order',{})
         class Broken:
             count=0
-            def open(self,req,timeout):
+            def request(self,method,path,body,headers):
                 self.count+=1
-                self.headers=dict(req.header_items())
-                raise error.URLError('unavailable')
+                self.headers=dict(headers)
+                raise OSError('unavailable')
+            def close(self):pass
         broken=Broken()
-        with patch('demo.session_api.request.build_opener',return_value=broken):
+        with patch('demo.session_api.http.client.HTTPSConnection',return_value=broken):
             with self.assertRaises(UpstreamError):transport.call(row,'POST','/api/authorize',{},'203.0.113.42')
         self.assertEqual(broken.count,1)
         self.assertEqual(broken.headers['Origin'],PUBLIC_UPSTREAM)
-        self.assertNotIn('Fly-client-ip',broken.headers)
+        self.assertNotIn('Fly-Client-IP',broken.headers)
         self.assertNotIn('Authorization',broken.headers)

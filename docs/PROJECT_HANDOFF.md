@@ -234,3 +234,16 @@ confirmation, capture or order creation is part of that smoke check. See
 scripts/check_site_payment_api.py and site-payment-api-deployment.json for the
 final hosted evidence and image. The earlier permanent site-setup backend fix
 remains undeployed on the payment worker.
+
+## Site API performance update (23 October 2026)
+
+The separate API app now warms its plan catalog, shares sanitized display
+configuration for 60 seconds with fresh per-session access checks, reuses
+cookie-free HTTPS connections and overlaps independent payment-preparation
+reads. Financial validation and no-retry behavior remain unchanged. No frontend
+integration change is needed; all 255 backend tests passed. Hosted plan loading
+measured 0.312–0.335 s versus 6.843 s before; cached configuration measured
+0.312–0.321 s versus 3.851 s. Fresh quotes still varied from 3.205 to 7.643 s;
+end-to-end live payment improvement is not established. See SITE_API_SPEED.md
+and tools/stripe-v2-checkout/site-api-speed-deployment.json. The API volume and
+existing sessions survived; the original payment worker was not restarted.
