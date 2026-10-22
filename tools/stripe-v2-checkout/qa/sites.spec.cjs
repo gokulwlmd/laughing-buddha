@@ -1,4 +1,4 @@
-const {test,expect,nav,approve,stats}=require('./fixtures.cjs');
+const {test,expect,nav,approve,stats,setupOwner}=require('./fixtures.cjs');
 async function save(page,kind,data){return page.evaluate(async({kind,data})=>{const auth=await (await fetch('/api/admin/auth')).json(),headers={'Content-Type':'application/json','X-CSRF-Token':auth.csrfToken};const r=await fetch('/api/admin/reviews',{method:'POST',headers,body:JSON.stringify({kind,data})});const review=await r.json();if(!r.ok)throw Error(JSON.stringify(review));const a=await fetch('/api/admin/apply',{method:'POST',headers,body:JSON.stringify({review_id:review.id,approve:true})});if(!a.ok)throw Error(JSON.stringify(await a.json()));return a.json();},{kind,data});}
 async function seed(page){
  await save(page,'brand',{id:'demo-brand',name:'Demo brand',color:'#6260c3'});
@@ -30,4 +30,10 @@ test('SITE-02 mobile site creation with new brand, customization and reviewed te
 });
 test('SITE-03 missing gateway is incomplete and does not offer a ready link',async({ownerPage:page,app})=>{
  await seed(page);await site(page);await page.request.post(app.origin+'/__qa/control',{data:{missing_gateway:true}});await page.locator('#refresh-workspace').click();await expect(page.locator('#site-list')).toContainText('Incomplete');await expect(page.locator('#site-list a')).toHaveCount(0);
+});
+test('SITE-04 slow initial state loads before navigation becomes available',async({page,app})=>{
+ let release,entered;const held=new Promise(resolve=>release=resolve),requested=new Promise(resolve=>entered=resolve);
+ await page.route(app.origin+'/api/admin/state',async route=>{entered();await held;await route.continue();});
+ const setup=setupOwner(page,app);await requested;await expect(page.locator('#workspace')).toBeHidden();release();await setup;
+ await expect(page.locator('#page-title')).toHaveText('Sites');await nav(page,'brands');await expect(page.locator('#brand-form')).toBeVisible();await expect(page.locator('#page-title')).toHaveText('Brands');
 });

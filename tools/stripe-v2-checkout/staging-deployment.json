@@ -5,11 +5,11 @@
   "volume": "vol_45857k6nemmejp84",
   "volume_name": "staging_data",
   "region": "iad",
-  "image_digest": "sha256:58de76778f310f1c546bb0b9c51d1b58927adba254622a2a99ac65ad1a3adfb0",
+  "image_digest": "sha256:8a250f335f1f85ace2b37280688c4a4b8fe0fdb3bd0ee281a14a42dbf481e7d0",
   "source_branch": "codex/sites-checkout-templates",
   "url": "https://wlmd-checkout-staging-0f89b1bb.fly.dev/admin",
   "backend_tests": 161,
-  "browser_scenarios": 65,
+  "browser_scenarios": 66,
   "health": {
     "synthetic": true,
     "payments_blocked": true,
@@ -24,7 +24,6 @@
   "owner_seeded": false,
   "remaining_setup": [
     "Owner completes staging account setup privately",
-    "Enter a staging-app-scoped Fly token in GitHub staging environment secret FLY_STAGING_API_TOKEN",
     "Review and merge the pull request to make the manual workflow available on the default branch"
   ],
   "source_base_commit": "b0d7672cf6385a319e7efe36254fc13a082c8225",
@@ -43,7 +42,7 @@
     "web/access.html": "52de242598443192c027994a8c2d3c0afda714345cbc9e3e3fa9cee6265e0190",
     "web/admin.css": "7afd0469b7a290b851f0b080feda1dd6f600307e6ebd8bb7a94aa0163065c577",
     "web/admin.html": "646c3a8951e8b4e11e2c4ebef06f006bcc610dfcd729bd4cf6033ce4708e9255",
-    "web/admin.js": "9621cf3eec29f28116ec1d20f3e1bb4198ae93a0e4d2a05f780b214776c69631",
+    "web/admin.js": "869bb70abb5e1c8657cbdfa582632377b13a6a3273b57af43cc490e7829248fe",
     "web/app.js": "f356fba2db56178b26c80615676e4791f4693d6322d29782aba8516e8f09bbee",
     "web/brand-design.js": "acf5176abcfcfc939e67088d585e2220543ccf37c6e18e8051e38045ea0fafa3",
     "web/index.html": "9059d9aabbe92d3bf71051081cfe2af800e20054f68b9129967dd6d2b3885fa7",
@@ -56,5 +55,6 @@
     "web/therapy-admin.js": "ad81913d6536119d36349ff4d74b0e2c6ba853fcba344ccb0802051f5be40a60",
     "web/unavailable.html": "b6265f3002f6bae5245da069522557f9c6f6894e69f8ccf0e64c66d2f150d656"
   },
-  "final_targeted_browser_scenarios": 3
+  "final_targeted_browser_scenarios": 4,
+  "github_staging_secret_present": true
 }

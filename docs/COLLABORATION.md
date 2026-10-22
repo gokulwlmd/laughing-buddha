@@ -16,7 +16,7 @@ git push -u origin HEAD
 
 Open a PR into `main`. The **Tests / Backend and browser tests** job runs without payment credentials on every PR and pushes to `main` or `codex/**`. Review the behavior, QA evidence and affected links before merging. Two collaborators were already visible in GitHub access settings during setup; no new invitation or access change was needed.
 
-Repository owners should require pull requests and the `Backend and browser tests` check for `main`, with at least one reviewer for shared changes. Branch protection is a GitHub setting, not something a committed workflow enforces. Avoid approving your own change as a substitute for collaborator review.
+`main` now has a GitHub branch protection rule requiring a pull request, one approval and the `Backend and browser tests` check from GitHub Actions. Force pushes and branch deletion remain disallowed. The standard administrator bypass setting remains unchanged. Branch protection is a GitHub setting, not something a committed workflow enforces. Avoid approving your own change as a substitute for collaborator review.
 
 ## Isolated staging configuration
 
@@ -40,7 +40,7 @@ Staging was provisioned and deployed on 22 October 2026. Hosted health, private 
 
 ## Manual deployment button
 
-In GitHub, configure an environment named **staging** and its secret **FLY_STAGING_API_TOKEN**, using a Fly deploy token scoped exclusively to the staging app. A local Fly login is not automatically a GitHub Actions secret. Supply the token directly to GitHub Secrets; never commit it or paste it in chat. Use a short expiry and renew deliberately. Do not use the live app's deploy token or an account-wide token.
+In GitHub, configure an environment named **staging** and its secret **FLY_STAGING_API_TOKEN**, using a Fly deploy token scoped exclusively to the staging app. The staging environment and this secret were created and their presence verified on 22 October 2026. No secret value is stored in this repository. A local Fly login is not automatically a GitHub Actions secret. Supply the token directly to GitHub Secrets; never commit it or paste it in chat. Use a short expiry and renew deliberately. Do not use the live app's deploy token or an account-wide token.
 
 After the workflow has been merged into the default branch, open **Actions → Deploy Fly staging → Run workflow** and select the branch to test. Deployment runs only on this manual action. It first runs the backend/browser suite, checks the isolated config, deploys with one machine, then checks `/health` for `synthetic=true`, `payments_blocked=true` and `authorization_contract_verified=false`. Tests and deployments report the selected Git commit in GitHub Actions history.
 

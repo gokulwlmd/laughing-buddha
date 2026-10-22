@@ -1,11 +1,11 @@
 # Admin and checkout QA report
 
-Run: 22 October 2026, 12:48 PM IST.
+Run: 22 October 2026, 01:23 PM IST.
 
 Status: **Passed** for the implemented workflows below.
 
 - Backend: **161 tests**, 0 failures, 0 errors.
-- Browser: **65 passed**, 0 failed, 0 skipped, 0 flaky.
+- Browser: **66 passed**, 0 failed, 0 skipped, 0 flaky.
 - Browser engine: Chromium; desktop 1440×1000 and mobile 390×844.
 - Environment: disposable loopback server, synthetic owner/customer data, fake Sticky API and a Stripe.js contract stub. Production credentials are removed from the test process. External browser requests are blocked except the locally fulfilled Stripe stub.
 - No real card, processor authorization/capture, live refund, or live Sticky configuration write is made by this suite.
@@ -51,6 +51,7 @@ Status: **Passed** for the implemented workflows below.
 | SITE-01 | template and site UI prepare all branded checkouts, repeat setup and preserve private URL | Pass |
 | SITE-02 | mobile site creation with new brand, customization and reviewed template update | Pass |
 | SITE-03 | missing gateway is incomplete and does not offer a ready link | Pass |
+| SITE-04 | slow initial state loads before navigation becomes available | Pass |
 | PLN-01 | duration cards show each treatment price before selection and complete exactly one synthetic order | Pass |
 | PLN-02 | private plan invitation, mobile price comparison, subscription handoff and edit persistence | Pass |
 | PLN-03 | checkout can open one purchase option; matching SKU assignment and disabled checkout | Pass |
