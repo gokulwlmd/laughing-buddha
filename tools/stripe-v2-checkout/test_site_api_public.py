@@ -13,17 +13,18 @@ def fixture():
             for sub in (False,True):
                 entries.append({'sku':f'{prefix}-{months}M'+('-SUB' if sub else ''),'available':True,
                     'durationMonths':months,'currency':'usd','treatmentId':prefix,'purchaseOptionId':f'plan-{months}',
+                    # Real catalog semantics: days = gap between deliveries, renewalDays = days * cycles.
                     'options':[{'key':f'{len(entries)}:123:2','basePrice':'249.00','upfrontPrice':str(months*249),
-                        'prepaidCycles':{1:1,3:1,6:2,12:4}[months], 'recurring':sub or months>=6,'renewal':sub,'days':months*30,'renewalDays':months*30 if sub else None,'blockedReason':''}]})
+                        'prepaidCycles':{1:1,3:1,6:2,12:4}[months], 'recurring':sub or months>=6,'renewal':sub,'days':90 if months>=6 else months*30,'renewalDays':months*30 if sub else None,'blockedReason':''}]})
     return {'id':PUBLISHED_PLAN,'paymentTestOnly':True,'treatments':[{'id':'SEMA','name':'Semaglutide'},{'id':'TIRZ','name':'Tirzepatide'}],
         'branding':{'color':'#245844'},'entries':entries}
 
 
 class PublicDemoTests(unittest.TestCase):
     def setUp(self):
-        self.now=1000;self.data=fixture();self.calls=0
-        def read():
-            self.calls+=1
+        self.now=1000;self.data=fixture();self.calls=0;self.catalogs=[]
+        def read(catalog):
+            self.calls+=1;self.catalogs.append(catalog)
             return self.data
         self.client=TestClient(create_public_app('https://demo.example',read,lambda:self.now),base_url='https://demo.example')
         self.base='/api/v1/sites/payment-test'
@@ -52,7 +53,7 @@ class PublicDemoTests(unittest.TestCase):
 
     def test_scoped_docs_real_notice_and_no_payment_admin_routes(self):
         spec=self.client.get('/sites/payment-test/openapi.json').json()
-        self.assertEqual(set(spec['paths']),{self.base+'/plans',self.base+'/checkout',self.base+'/sessions',self.base+'/sessions/{session_id}',*[self.base+'/sessions/{session_id}/'+action for action in ('configuration','quote','payment','resume','complete')]})
+        self.assertEqual(set(spec['paths']),{self.base,'/api/v1/domains/{domain}',self.base+'/plans',self.base+'/checkout',self.base+'/sessions',self.base+'/sessions/{session_id}',*[self.base+'/sessions/{session_id}/'+action for action in ('configuration','quote','payment','resume','complete')]})
         self.assertIn('CheckoutSession',spec['components']['securitySchemes'])
         self.assertNotIn('return_url',str(spec))
         page=self.client.get('/').text
@@ -71,13 +72,44 @@ class PublicDemoTests(unittest.TestCase):
         self.assertEqual(self.client.get(self.base+'/plans').status_code,503)
         self.assertEqual(self.client.post(self.base+'/checkout',json={'plan_id':'sema-1m'}).status_code,503)
 
-    def test_unexpected_billing_and_duplicate_mapping_fail_closed(self):
-        for mutate in (lambda d:d['entries'][0].update(currency='EUR'),
-            lambda d:d['entries'][0]['options'][0].update(prepaidCycles=4),
-            lambda d:d['entries'][1]['options'][0].update(renewalDays=31),
-            lambda d:d['entries'].append(copy.deepcopy(d['entries'][0]))):
+    def test_invalid_billing_data_fails_closed(self):
+        for mutate in (lambda d:d['entries'][0].update(currency='usd$'),
+            lambda d:d['entries'][0].update(durationMonths=0),
+            lambda d:d['entries'][0]['options'][0].update(upfrontPrice='0',basePrice='0'),
+            lambda d:d['entries'][0]['options'][0].update(upfrontPrice='abc'),
+            lambda d:d['entries'][1]['options'][0].update(renewalDays=None),
+            lambda d:d['entries'][4]['options'][0].update(days=0),
+            lambda d:d['entries'][0].update(treatmentId='unknown'),
+            lambda d:d.update(id='another-catalog'),
+            lambda d:d.update(paymentTestOnly=False),
+            lambda d:[e.update(available=False) for e in d['entries']]):
             data=fixture();mutate(data)
             with self.assertRaises(ValueError):map_catalog(data)
+
+    def test_generic_mapping_follows_real_billing_rules(self):
+        catalog,routes=map_catalog(fixture())
+        plans={p.plan_id:p for p in catalog.plans}
+        self.assertEqual(len(plans),16)
+        self.assertEqual((plans['sema-1m'].purchase_type,plans['sema-1m'].renewal_days,plans['sema-1m'].shipment_days),('once',None,[0]))
+        self.assertEqual((plans['sema-1m-sub'].purchase_type,plans['sema-1m-sub'].renewal_days),('subscription',30))
+        # Prepaid: deliveries `days` apart, whole plan renews after renewalDays.
+        self.assertEqual((plans['sema-6m'].purchase_type,plans['sema-6m'].shipment_days,plans['sema-6m'].price),('once',[0,90],'1494.00'))
+        self.assertEqual((plans['sema-12m-sub'].renewal_days,plans['sema-12m-sub'].shipment_days),(360,[0,90,180,270]))
+        self.assertIn('4 prepaid cycles, 90 days apart',plans['tirz-12m'].terms)
+        # Other currencies and durations are no longer rejected.
+        data=fixture();data['entries'][0]['currency']='cad';data['entries'][0]['durationMonths']=2
+        p=next(x for x in map_catalog(data)[0].plans if x.plan_id=='sema-1m')
+        self.assertEqual((p.currency,p.duration_months),('CAD',2));self.assertTrue(p.terms.startswith('Pay CA$249.00 upfront.'))
+        # Blocked or unavailable entries are skipped, not fatal.
+        data=fixture();data['entries'][0]['options'][0]['blockedReason']='x';data['entries'][1]['available']=False
+        self.assertEqual(len(map_catalog(data)[0].plans),14)
+        # A SKU listed under two purchase options keeps one plan.
+        data=fixture();dup=copy.deepcopy(data['entries'][0]);dup['purchaseOptionId']='other';data['entries'].append(dup)
+        self.assertEqual(len(map_catalog(data)[0].plans),16)
+        # Several payment choices on one SKU get distinct, stable ids.
+        data=fixture();extra=dict(data['entries'][0]['options'][0],key='999:123:3');data['entries'][0]['options'].append(extra)
+        ids=[x.plan_id for x in map_catalog(data)[0].plans if x.plan_id.startswith('sema-1m-')]
+        self.assertEqual(len([i for i in ids if i!='sema-1m-sub']),2)
 
     def test_publication_clones_children_preserves_source_and_stays_narrow(self):
         source={'id':'original-private','campaign_id':422,'therapy_id':'weight-loss','payment_test_only':True,
@@ -132,7 +164,7 @@ class PublicDemoTests(unittest.TestCase):
         import threading
         started=threading.Event();release=threading.Event();finished=threading.Event()
         calls=[]
-        def read():
+        def read(catalog):
             calls.append(1)
             if len(calls)>1:
                 started.set();release.wait(3);finished.set()

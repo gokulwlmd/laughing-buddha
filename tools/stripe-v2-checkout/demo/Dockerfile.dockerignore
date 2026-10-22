@@ -7,5 +7,6 @@
 !demo/public.py
 !demo/session_api.py
 !demo/entrypoint.py
+!demo/sites.json
 !demo/web/
 !demo/web/**

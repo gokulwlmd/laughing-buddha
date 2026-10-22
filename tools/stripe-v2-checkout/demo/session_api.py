@@ -398,7 +398,7 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
     def create(site_id:str,body:CreateSession,req:Request):
         """Returns a session ID/token, not a hosted checkout URL. Save these before sending quote/payment requests. No charge or payment authorization is created."""
         ready();site_check(site_id);origin_check(req)
-        _,routes=catalog_loader()
+        _,routes=catalog_loader(site_id)
         target=routes.get(body.plan_id)
         if not target:raise HTTPException(404,'Plan not found')
         url=parse.urlsplit(target);selection=parse.parse_qs(url.query).get('selection',[])

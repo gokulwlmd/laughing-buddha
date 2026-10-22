@@ -47,12 +47,46 @@ class Plan(BaseModel):
     terms: str
 
 
+class Branding(BaseModel):
+    """Brand design from the admin (same fields as the Brand record). Empty when not set."""
+    name: str = ''
+    logo_url: str = ''
+    color: str = ''
+    background_color: str = ''
+    text_color: str = ''
+    button_text_color: str = ''
+    font: str = ''
+    layout: str = ''
+    support_email: str = ''
+    support_phone: str = ''
+
+
 class Catalog(BaseModel):
     site_id: str
     site_name: str
     color: str
     demo: bool = True
+    title: str | None = None
+    therapy: str | None = None
+    branding: Branding | None = None
     plans: list[Plan]
+
+
+class SiteInfo(BaseModel):
+    site_id: str
+    site_name: str
+    color: str
+    demo: bool
+    title: str | None = None
+    therapy: str | None = None
+    branding: Branding
+    plan_count: int
+    domains: list[str]
+
+
+class DomainSite(BaseModel):
+    domain: str
+    site_id: str
 
 
 class CreateCheckout(BaseModel):

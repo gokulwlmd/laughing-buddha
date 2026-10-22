@@ -1,28 +1,42 @@
 # Checkout APIs for your own frontend
 
-Swagger: <https://wlmd-site-api-demo-0f89b1bb.fly.dev/sites/payment-test/docs>
+**Multi-site.** Every site has its own plans, sessions and Swagger docs under its
+own `site_id`. The same endpoints serve every brand; only `{site_id}` changes.
 
-OpenAPI JSON: <https://wlmd-site-api-demo-0f89b1bb.fly.dev/sites/payment-test/openapi.json>
-
-Base URL: `https://wlmd-site-api-demo-0f89b1bb.fly.dev/api/v1/sites/payment-test`
+| | URL |
+| --- | --- |
+| Swagger (per site) | `https://wlmd-site-api-demo-0f89b1bb.fly.dev/sites/{site_id}/docs`, e.g. [payment-test](https://wlmd-site-api-demo-0f89b1bb.fly.dev/sites/payment-test/docs) |
+| OpenAPI JSON | `https://wlmd-site-api-demo-0f89b1bb.fly.dev/sites/{site_id}/openapi.json` |
+| Base URL | `https://wlmd-site-api-demo-0f89b1bb.fly.dev/api/v1/sites/{site_id}` |
 
 These APIs let your frontend own plan selection, customer details, Stripe's
-secure payment fields and the order confirmation. The new `/sessions` flow
-returns a checkout session, **not a checkout URL**. No frontend was added or
-changed for this API release. The old `/checkout` redirect endpoint remains
-available for the older demo and is marked deprecated in Swagger.
+secure payment fields and the order confirmation. The `/sessions` flow returns
+a checkout session, **not a checkout URL**. The old `/checkout` redirect
+endpoint remains available for the older demo and is marked deprecated.
 
-The current site contains sixteen approved campaign-422 payment-test plans.
-Its gateway is live: customers who finish payment make real payments. No
-medication is shipped by these test plans. Account credentials remain on the
-payment server. Only a session-scoped bearer token, the Stripe publishable key
-and that customer's PaymentIntent client secret are returned to the customer.
+Today the registry contains one site, `payment-test`: sixteen approved
+campaign-422 payment-test plans. Its gateway is live: customers who finish
+payment make real payments. No medication is shipped by these test plans.
+Account credentials remain on the payment server. Only a session-scoped bearer
+token, the Stripe publishable key and that customer's PaymentIntent client
+secret are returned to the customer.
+
+## Find your site
+
+| Request | Result |
+| --- | --- |
+| `GET /api/v1/domains/{domain}` | `{ "domain", "site_id" }` for a checkout domain listed in the registry; 404 otherwise |
+| `GET /api/v1/sites/{site_id}` | `site_name`, `color`, `title`, `therapy`, `branding` (logo, colours, font, layout, support email/phone from the admin Brand), `plan_count`, `domains` |
+
+An unknown, disabled or malformed `site_id` returns **404** on every endpoint.
+Sessions are bound to the site that created them: a session token used under
+another `site_id` is rejected with 401.
 
 ## Endpoint sequence
 
 | Request | Body | Result |
 | --- | --- | --- |
-| `GET /plans` | None | Medications, durations, prices and terms |
+| `GET /plans` | None | This site's medications, durations, prices and terms (plus `title`, `therapy`, `branding`) |
 | `POST /sessions` | `{ "plan_id": "sema-1m" }` | `session_id`, `session_token`, `expires_at` |
 | `GET /sessions/{id}/configuration` | None | Public Stripe configuration, allowed countries/shipping and plan terms |
 | `POST /sessions/{id}/quote` | Contact/address and optional `shipping_id` | Exact `quote_id`, `amount`, `currency`, terms and required consent |
@@ -177,7 +191,7 @@ Run the non-payment hosted smoke check from the repository root:
 
 ## Response speed
 
-The API keeps the plan display catalog warm in the background. Public display
+The API keeps every enabled site's plan display catalog warm in the background. Public display
 configuration is shared for at most 60 seconds by link and plan; each caller
 still passes a fresh session/link access check. Concurrent readers share one
 configuration load. An expired cache is never used to hide an upstream error.
@@ -193,3 +207,50 @@ Run `scripts/benchmark_site_payment_api.py` with the project virtualenv to measu
 plans, session creation, configuration and a synthetic draft quote. It makes no
 payment calls. See [measured speed evidence](SITE_API_SPEED.md) for current
 results and limits. No frontend integration changes are required.
+
+## Plans returned for any site
+
+Each available SKU choice in the site's published plan checkout becomes one plan:
+
+| Field | Rule |
+| --- | --- |
+| `plan_id` | The SKU in lower case (`SEMA-3M-SUB` → `sema-3m-sub`). If one SKU has several payment choices, a short stable suffix is added |
+| `purchase_type` | `subscription` if the choice renews, otherwise `once` |
+| `price` | Upfront price in major units: `upfrontPrice` for prepaid, otherwise `basePrice` |
+| `currency` | The gateway currency (USD, CAD, EUR, …) |
+| `renewal_days` | Prepaid: the whole plan's `renewalDays`. Otherwise: the billing interval. `null` if it doesn't renew |
+| `shipment_days` | Prepaid: one delivery every `days` (e.g. `[0, 90]` for 2 cycles). Otherwise `[0]` |
+
+Unavailable or blocked choices are left out. If the publication has an
+unexpected id, an unknown treatment, an invalid price, duration, currency or
+schedule, or no available plans, that site's catalog fails closed with 503.
+Other sites are unaffected.
+
+## Adding a site
+
+No code change is needed:
+
+1. In the admin, create the brand/site and its plan checkout as usual
+   (**Checkout links → brand → New plan checkout**). Publish it with visibility
+   **public**: the API holds no credentials, so it can only read public
+   publications. Note the plan checkout's id.
+2. Add the site to the registry, `tools/stripe-v2-checkout/demo/sites.json`:
+   ```json
+   "glow-health": {
+     "name": "Glow Health",
+     "catalog": "<plan checkout id>",
+     "domains": ["checkout.glowhealth.com"]
+   }
+   ```
+   `site_id` (the key): lowercase letters, digits and dashes. `payment_test_only: true`
+   additionally requires the publication to be a payment-test one. `enabled: false`
+   hides a site everywhere without deleting it.
+3. Deploy the API (`flyctl deploy --config fly-demo.toml …`, see the demo README).
+   To change sites without redeploying, set `SITE_API_SITES_FILE=/data/sites.json`
+   and keep the file on the API's volume. Changes are picked up automatically,
+   and an invalid edit keeps the previous registry (reported in `/health` as
+   `registry_error`).
+4. Check `GET /api/v1/sites/<site_id>/plans` and open `/sites/<site_id>/docs`.
+
+Registry sources, in order: `SITE_API_SITES` (inline JSON), `SITE_API_SITES_FILE`,
+then `demo/sites.json`.
