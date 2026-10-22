@@ -56,3 +56,7 @@ Weight Loss is now a built-in versioned skeleton in Checkout Templates, linked f
 ## Latest: three therapies and 32 priced master SKUs
 
 The user authorized actual master database records with editable starter prices, adding Sermorelin and Metformin to Weight Loss. See [MASTER_THERAPY_CATALOG.md](MASTER_THERAPY_CATALOG.md) for all 32 SKU codes, price assumptions, term/renewal rules, missing delivery details and the atomic idempotent synthetic-only import. These priced master drafts use `planning_contract`; processor mappings remain empty and activation blocked pending verification. Default prices can be edited through the normal owner-reviewed master form. Existing brand prices, therapy records and saved drafts must not be overwritten.
+
+## Latest: editable upfront shipments and PT-141
+
+Master SKUs now expose Edit upfront plan: full-term price, shipment count, interval in days and timeline. Saving rebuilds `product_setup` from the contract; templates read current SKU settings. Six-month default: 2 shipments at days 0/90. Twelve-month default: 4 at days 0/90/180/270. SUB renews by its calendar-month term independently. PT-141 adds eight exact PT141 SKUs as Master Therapy 4, bringing the catalog to 40 SKUs and sixteen plans. See [MASTER_THERAPY_CATALOG.md](MASTER_THERAPY_CATALOG.md). Use the explicit synthetic-only import with `--all`; its separate migration markers preserve existing prices and later schedule edits.

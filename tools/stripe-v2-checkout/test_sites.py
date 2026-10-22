@@ -30,7 +30,7 @@ class SiteTests(unittest.TestCase):
             self.assertEqual(p['charge'], 'full_term_upfront')
             self.assertEqual(p['renewal_months'], p['duration_months'] if p['sku'].endswith('-SUB') else None)
             self.assertEqual(p['shipments_per_term'], {6:2,12:4}.get(p['duration_months']))
-            self.assertIsNone(p['shipment_interval'])
+            self.assertEqual(p['shipment_interval'],90 if p['duration_months'] in (6,12) else None)
             self.assertEqual(p['later_shipment_charge'], '0.00')
         self.assertFalse(skeleton['ready'])
         products[0]['price'] = '123'

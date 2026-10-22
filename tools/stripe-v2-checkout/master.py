@@ -43,14 +43,33 @@ class PlanningContract(BaseModel):
     term_months: int = Field(ge=1, le=36, strict=True)
     renewal_months: int | None = Field(default=None, ge=1, le=36, strict=True)
     shipments_per_term: int | None = Field(default=None, ge=1, le=36, strict=True)
-    shipment_interval: None = None
+    shipment_interval: int | None = Field(default=None, ge=1, le=730, strict=True)
     later_shipment_charge: Literal['0.00'] = '0.00'
 
     @model_validator(mode='after')
     def matching_term(self):
         if self.renewal_months is not None and self.renewal_months != self.term_months:
             raise ValueError('Renewal must match the full upfront term')
+        if self.shipments_per_term and self.shipments_per_term > 1 and self.shipment_interval is None:
+            raise ValueError('Set the number of days between prepaid shipments')
+        if self.shipment_interval is not None and (self.shipments_per_term or 0) < 2:
+            raise ValueError('A shipment interval needs at least two shipments')
         return self
+
+
+def planned_product_setup(master):
+    """Derive the saved product plan from the editable master contract, never a processor write."""
+    c=master['planning_contract'];count=c['shipments_per_term'];days=c['shipment_interval']
+    prepaid=bool(count and count > 1)
+    try:per_shipment=str(unit_price(master['offers'][0]['price'],count)) if count else None
+    except ValueError:per_shipment=None
+    return {'payment_setup':'prepaid' if prepaid else 'upfront','upfront_price':master['offers'][0]['price'],
+            'currency':master['currency'],'term_months':c['term_months'],'renewal_months':c['renewal_months'],
+            'prepaid_cycles':count if prepaid else None,'shipment_count':count,'shipment_interval_days':days,
+            'shipment_days':[i*(days or 0) for i in range(count)] if count else [],
+            'later_shipment_charge':'0.00','per_shipment_product_price':per_shipment,
+            'processor_configuration':prepaid_configuration(count) if prepaid and not c['renewal_months'] else None,
+            'processor_verified':False}
 
 
 class MasterSKU(BaseModel):
@@ -235,11 +254,14 @@ class MasterCatalog:
                 therapy=self.get('therapy',data['therapy_id'])
                 if not therapy or not therapy['enabled'] or data['treatment_id'] not in {t['id'] for t in therapy['treatments']}:
                     raise HTTPException(422,'Choose an active therapy and one of its treatments')
-                if before and any(before.get(k)!=data[k] for k in ('therapy_id','treatment_id','product_duration_months','planning_contract')):
-                    raise HTTPException(422,'This SKU retains its agreed therapy and billing contract; edit its name, category or price instead')
+                if before and any(before.get(k)!=data[k] for k in ('therapy_id','treatment_id','product_duration_months')):
+                    raise HTTPException(422,'This SKU retains its agreed therapy and duration; edit its upfront price or shipment schedule instead')
+                if before and any(before['planning_contract'][k]!=data['planning_contract'][k] for k in ('charge','term_months','renewal_months','later_shipment_charge')):
+                    raise HTTPException(422,'Keep this SKU’s agreed upfront payment and renewal term')
                 for o in data['offers']:o.pop('prepaid_cycles',None)
+                data['product_setup']=planned_product_setup(data)
                 data.update(revision=(before or {}).get('revision',0)+1,billing_terms={})
-                preview={'before':before,'after':data,'stickyWrites':[], 'impact':'Saves an editable master catalog price. Billing and fulfillment need verification before assignment. Existing brand prices and subscriptions are unchanged.'}
+                preview={'before':before,'after':data,'stickyWrites':[], 'impact':'Saves the upfront price and shipment schedule, and rebuilds this SKU’s product setup from those settings. Processor activation still needs verification. Existing brand prices and subscriptions are unchanged.'}
                 return data, [], preview, [], self.local_fingerprint()
             data.pop('planning_contract',None)
             for o in data['offers']:

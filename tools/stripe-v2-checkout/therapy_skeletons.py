@@ -10,6 +10,7 @@ RECIPES = [
     (1, 'weight-loss', 'Weight Loss', [('SEMA', 'Semaglutide', '249.00'), ('TIRZ', 'Tirzepatide', '449.00')]),
     (2, 'sermorelin', 'Sermorelin', [('SERM', 'Sermorelin', '199.00')]),
     (3, 'metformin', 'Metformin', [('METFORM', 'Metformin', '49.00')]),
+    (4, 'pt-141', 'PT-141', [('PT141', 'PT-141', '199.00')]),
 ]
 
 
@@ -28,8 +29,8 @@ def all_skeletons():
                         'price_basis': 'Editable starter price; monthly reference multiplied by term',
                         'charge': 'full_term_upfront',
                         'renewal_months': months if renew else None,
-                        'shipments_per_term': {6: 2, 12: 4}.get(months) if number == 1 else None,
-                        'shipment_interval': None, 'later_shipment_charge': '0.00',
+                        'shipments_per_term': {6: 2, 12: 4}.get(months),
+                        'shipment_interval': 90 if months in (6, 12) else None, 'later_shipment_charge': '0.00',
                     })
         result.append({'id': f'master-therapy-{number}-v1', 'version': 1,
                        'name': f'Master Therapy {number} · {name}',
@@ -53,5 +54,5 @@ def skeleton_draft(skeleton=None, assigned=False):
             'plans': [{'id': f'{therapy_id}-{months}m', 'name': f'{months}-month plan',
                        'therapy_id': therapy_id, 'duration_months': months,
                        'skus': [p['sku'] for p in skeleton['products'] if p['duration_months'] == months] if assigned else [],
-                       'payment_types': ['once', 'subscription'], 'enabled': True}
+                       'payment_types': ['once', 'subscription', 'prepaid'] if months in (6,12) else ['once','subscription'], 'enabled': True}
                       for months in (1, 3, 6, 12)]}

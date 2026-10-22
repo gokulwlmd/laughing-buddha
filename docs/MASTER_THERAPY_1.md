@@ -11,13 +11,13 @@ Customers choose a treatment, a duration and whether to renew. Every choice char
 | 6 months | SEMA-6M | SEMA-6M-SUB | TIRZ-6M | TIRZ-6M-SUB | 2 |
 | 12 months | SEMA-12M | SEMA-12M-SUB | TIRZ-12M | TIRZ-12M-SUB | 4 |
 
-Each `-SUB` SKU renews after its stated duration: 1, 3, 6 or 12 months. Non-SUB SKUs stop after that paid term. Shipment dates/intervals are unspecified and independent of billing. Do not silently substitute 30/90/180/360-day billing models for calendar-month terms.
+Each `-SUB` SKU renews after its stated duration: 1, 3, 6 or 12 months. Non-SUB SKUs stop after that paid term. The owner subsequently specified 90-day shipment intervals: first at purchase, then day 90 for six-month terms; days 0/90/180/270 for twelve-month terms. These settings are editable per SKU and independent of billing. Do not silently substitute 30/90/180/360-day billing models for calendar-month terms.
 
 ## Using the skeleton
 
 Open **Checkout Templates → Master Therapy 1 · Weight Loss → Open skeleton draft**. The four duration plans are prefilled and the complete 16-SKU contract stays visible. Save through the existing review flow to persist a local draft and, if absent, its Weight Loss therapy. Reopening keeps the skeleton reference. The built-in recipe is available without creating or overwriting any database records. It does not alter existing Weight Loss therapies, master SKUs, prices, sites or published checkouts.
 
-Editable starter prices have now been assigned; see [the three-therapy catalog](MASTER_THERAPY_CATALOG.md). Processor mappings remain unset. Planned SKU codes are distinct from selected, approved master products; no processor assignments are created. The draft cannot be activated while this contract remains unverified. Existing independent templates continue working normally.
+Editable starter prices have now been assigned; see [the master therapy catalog](MASTER_THERAPY_CATALOG.md). Processor mappings remain unset. Planned SKU codes are distinct from selected, approved master products; no processor assignments are created. The draft cannot be activated while this contract remains unverified. Existing independent templates continue working normally.
 
 ## Before activation
 

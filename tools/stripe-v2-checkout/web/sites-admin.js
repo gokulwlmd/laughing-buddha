@@ -15,7 +15,7 @@ function newTemplate(t={}){
  f.elements.therapy_name.value=t.new_therapy?.name||'';f.elements.treatment_names.value=(t.new_therapy?.treatments||[]).map(x=>x.name).join(', ');
  f.elements.enabled.checked=t.enabled!==false;
  templateRows=structuredClone(t.plans||(t.purchase_option_ids||[]).map(id=>(state.purchaseOptions||[]).find(p=>p.id===id)).filter(Boolean));
- if(templateSkeletonId){const skeleton=(state.therapySkeletons||[]).find(s=>s.id===templateSkeletonId);for(const p of templateRows)if(!p.skus.length){const wanted=(skeleton?.products||[]).filter(x=>x.duration_months===p.duration_months).map(x=>x.sku);p.skus=(state.masters||[]).filter(m=>wanted.includes(m.sku)&&m.therapy_id===t.therapy_id).map(m=>m.sku);p.payment_types=['once','subscription'];}}
+ if(templateSkeletonId){const skeleton=(state.therapySkeletons||[]).find(s=>s.id===templateSkeletonId);for(const p of templateRows)if(!p.skus.length){const wanted=(skeleton?.products||[]).filter(x=>x.duration_months===p.duration_months).map(x=>x.sku);p.skus=(state.masters||[]).filter(m=>wanted.includes(m.sku)&&m.therapy_id===t.therapy_id).map(m=>m.sku);p.payment_types=['once','subscription',...(p.duration_months>=6?['prepaid']:[])];}}
  $('template-mode').textContent=t.id?'Edit checkout template':'New checkout template';$('template-editor').hidden=false;renderTemplateRows();$('template-editor').scrollIntoView({block:'start'});
 }
 function templateProducts(p){return (state.masters||[]).filter(m=>m.enabled&&!m.exclude_from_campaign_setup&&m.therapy_id===($('template-therapy').value==='__new'?templateDraftTherapyId:$('template-therapy').value)&&m.product_duration_months===Number(p.duration_months));}
@@ -136,12 +136,12 @@ submit('site-checkout-form',f=>({site_id:f.get('site_id'),template_id:f.get('tem
 function skeletonMatrix(skeleton){
  const group=element('div');group.append(element('p','Every plan is paid in full upfront. Subscriptions renew for the full term; one-time plans end after that term.'));
  for(const months of [1,3,6,12]){
-  const products=skeleton.products.filter(p=>p.duration_months===months),shipments=products[0].shipments_per_term;
-  const box=card(months+'-month plan',shipments?shipments+' shipments per term · later shipments have no extra charge':'Shipment count to be set');
-  for(const p of products)box.append(element('p',p.sku+' · '+p.treatment+' · '+(p.renewal_months?'Renews every '+months+' calendar month'+(months===1?'':'s'):'No renewal')+' · '+skeletonPrice(p)));
+  const products=skeleton.products.filter(p=>p.duration_months===months);
+  const box=card(months+'-month plan','Pay upfront · Shipment settings are saved per SKU');
+  for(const p of products)box.append(element('p',p.sku+' · '+p.treatment+' · '+(p.renewal_months?'Renews every '+months+' calendar month'+(months===1?'':'s'):'No renewal')+' · '+skeletonPrice(p)+' · '+skeletonShipments(p)));
   group.append(box);
  }
- group.append(element('p','Shipment dates are still to be set. Billing renewal and shipment timing are separate.','hint'));
+ group.append(element('p','The first shipment is at purchase. Later shipments are prepaid. Edit each SKU’s shipment count and interval in Master SKUs; renewal stays separate.','hint'));
  return group;
 }
 function renderTherapySkeletons(){
@@ -163,3 +163,5 @@ function renderSkeletonContract(){
 }
 
 function skeletonPrice(product){const m=(state.masters||[]).find(m=>m.sku===product.sku);return m?catalogPrice(m):new Intl.NumberFormat('en',{style:'currency',currency:product.currency}).format(Number(product.price))+' starter upfront price';}
+
+function skeletonShipments(p){const c=(state.masters||[]).find(m=>m.sku===p.sku)?.planning_contract||p;return c.shipments_per_term?c.shipments_per_term+' shipments per term'+(c.shipment_interval?' · Every '+c.shipment_interval+' days':' · Set interval'):'Shipment count to be set';}

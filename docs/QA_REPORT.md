@@ -153,3 +153,7 @@ All 169 backend tests passed (`unittest discover`, 27.764s). All eight site brow
 ## Priced three-therapy catalog — 22 October 2026
 
 All 172 backend tests passed (28.959s). All 16 affected master/site browser scenarios passed (1.4m); after locking contract fields in the price editor, MST-01 and SITE-09 passed again (7.9s). The import tests create exactly 32 master SKUs, preserve existing configuration and owner drafts, keep later default-price edits on repeat import, reject collisions atomically and reject non-synthetic environments. Contract checks reject unverified activation and mappings; the browser verifies an edited full-term price while retaining the renewal term. No live processor or delivery execution was exercised.
+
+## Editable upfront shipments and PT-141 — 22 October 2026
+
+All 174 backend tests passed (30.915s), and all 24 affected master/prepaid/site browser scenarios passed (1.8m). New coverage changes an upfront SKU from four shipments every 90 days to three every 120, verifies review output and persistence of rebuilt prepaid cycles/product setup, then checks template summaries use the saved schedule. Backend checks cover separate renewing/non-renewing terms, malformed shipment settings, preservation of price and owner edits during migration, exact PT141 codes, and repeat imports that make no changes. These are local/fake-service tests and do not verify processor activation, medication fulfillment or future renewal execution.

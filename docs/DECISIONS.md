@@ -55,3 +55,9 @@ The Weight Loss skeleton defines separate SEMA/TIRZ SKUs for 1/3/6/12-month term
 ## Three priced master therapies (22 October 2026)
 
 The owner authorized creating actual Weight Loss, Sermorelin and Metformin SKU records with editable standard starter pricing. The selected USD monthly references are SEMA 249, TIRZ 449, SERM 199 and METFORM 49; multiply by 1/3/6/12 for full-term upfront amounts, no discount. Separate SUB/non-SUB master records start at equal prices. This supersedes the earlier unset-price decision. Shipment counts for the two new therapies remain unspecified. Save the 32 masters as billing-contract drafts without inventing processor mappings or turning off activation guards. Existing brand prices and owner drafts are preserved. See [the catalog/import contract](MASTER_THERAPY_CATALOG.md).
+
+## Editable upfront shipment setup and PT-141 (22 October 2026)
+
+The owner specified the same prepaid delivery defaults for all master therapies: 6-month plans have two shipments every 90 days; 12-month plans four every 90 days, with the first shipment at purchase. Expose Pay upfront and allow per-SKU shipment count/interval edits. Rebuild the saved product setup from those values and prices; template summaries read saved per-SKU schedules. Keep full-term upfront charges and matching SUB calendar-month renewals independent of shipping. Existing remote offers and subscriptions still need a separate verified assignment.
+
+Add Master Therapy 4, PT-141, with exact `PT141-{1,3,6,12}M` and `-SUB` codes from the screenshot. Use an editable $199 one-month starter reference multiplied by term length. The catalog now contains 40 SKUs and sixteen duration plans. Preserve prices and owner schedule edits during the one-time synthetic shipment-default update.

@@ -129,8 +129,10 @@ function display(key,value){
   if(key==='entries')return value.map(e=>e.sku+' · '+e.options.length+' enabled payment choices').join('\n');
   if(key==='product_duration_months')return value+'-month product';
   if(key==='brand_id')return state.brands.find(b=>b.id===value)?.name||String(value);
+  if(key==='planning_contract')return planningTerms({planning_contract:value});
+  if(key==='product_setup')return 'Pay upfront: '+value.upfront_price+' '+value.currency+' · '+(value.shipment_count?value.shipment_count+' shipments':'Shipment count unset')+(value.shipment_interval_days?' every '+value.shipment_interval_days+' days':'')+' · '+(value.shipment_days.length?'Shipment days: '+value.shipment_days.join(', '):'Schedule unset')+' · Later shipments: $0';
   if(key==='billing_terms')return Object.entries(value).map(([id,t])=>'Model '+id+': '+(t.days?'every '+t.days+' days':'one-time')).join('\n');
-  if(key==='offers'&&Array.isArray(value)&&value.every(o=>o&&typeof o==='object'&&Array.isArray(o.billing_models)))return value.map(o=>masterPlanLabel(o)+' · '+o.price+(o.prepaid_cycles?' upfront':' per payment')).join('\n');
+  if(key==='offers'&&Array.isArray(value)&&value.every(o=>o&&typeof o==='object'&&Array.isArray(o.billing_models)))return value.map(o=>(o.billing_models.length?masterPlanLabel(o):'Pay upfront')+' · '+o.price+(o.prepaid_cycles||!o.billing_models.length?' upfront':' per payment')).join('\n');
   if(key==='billing_models')return value.map(id=>purchaseSchedule(id)).join('\n');
   if(typeof value==='boolean')return value?'Yes':'No';
   if(typeof value==='object')return JSON.stringify(value,null,2);
