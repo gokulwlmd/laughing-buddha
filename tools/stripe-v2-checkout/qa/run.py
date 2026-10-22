@@ -8,11 +8,11 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 os.chdir(ROOT);sys.path.insert(0,str(ROOT))
 results=ROOT/'qa/results';results.mkdir(parents=True,exist_ok=True)
-suite=unittest.defaultTestLoader.loadTestsFromNames(['test_checkout','test_admin','test_qa','test_master','test_brands','test_prepaid','test_prepaid_import','test_plans','test_purchase_options'])
+suite=unittest.defaultTestLoader.loadTestsFromNames(['test_checkout','test_admin','test_qa','test_master','test_brands','test_prepaid','test_prepaid_import','test_plans','test_purchase_options','test_sites','test_synthetic'])
 result=unittest.TextTestRunner(verbosity=2).run(suite)
 (results/'backend.json').write_text(json.dumps({'tests':result.testsRun,'failures':len(result.failures),'errors':len(result.errors),'skipped':len(result.skipped)},indent=2)+'\n')
 if not result.wasSuccessful():raise SystemExit(1)
-for script in ('web/admin.js','web/app.js','web/master.js','web/brand-design.js','web/therapy-admin.js','web/plans.js'):subprocess.run(['node','--check',script],check=True)
+for script in ('web/admin.js','web/app.js','web/master.js','web/brand-design.js','web/therapy-admin.js','web/plans.js','web/sites-admin.js'):subprocess.run(['node','--check',script],check=True)
 env=os.environ.copy();env['QA_PYTHON']=sys.executable
 (results/'results.json').unlink(missing_ok=True)
 test=subprocess.run(['npm','--prefix','qa','test','--','--config=playwright.config.cjs'],env=env)

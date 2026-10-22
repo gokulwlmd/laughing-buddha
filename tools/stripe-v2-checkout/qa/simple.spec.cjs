@@ -1,13 +1,13 @@
 const {test,expect,approve,stats,control,brand}=require('./fixtures.cjs');
-async function go(page,name){await page.locator('#navigation>[data-page='+name+']').click();if(name==='links'&&await page.locator('#checkout-brand-directory').isVisible()&&await page.locator('[data-brand-open]').count())await page.locator('[data-brand-open]').first().click();}
+async function go(page,name){await page.locator('#advanced-navigation').evaluate(e=>e.open=true);await page.locator('#navigation [data-page='+name+']').click();if(name==='links'&&await page.locator('#checkout-brand-directory').isVisible()&&await page.locator('[data-brand-open]').count())await page.locator('[data-brand-open]').first().click();}
 async function master(page,sku='NEW-THERAPY'){
  await expect(page.locator('#link-brand option').first()).toBeAttached();
  if(await page.locator('#link-brand option').count()===1)await brand(page);
  await go(page,'master');await page.locator('#master-new').click();await page.locator('#master-form [name=sku]').fill(sku);await page.locator('#master-form [name=name]').fill('New therapy');await page.locator('#master-offer-editor [data-field=price]').fill('99.00');await page.locator('#master-form button[type=submit]').click();await expect(page.locator('#review-summary')).toContainText('Requires shipping');await approve(page);
 }
 async function assign(page){await go(page,'campaigns');await page.locator('#setup-campaign').selectOption('422');await page.locator('#setup-form button[type=submit]').click();await approve(page);}
-test('SIM-01 six primary screens, local master and one-review existing campaign assignment',async({ownerPage:page,app})=>{
- await expect(page.locator('#page-title')).toHaveText('Brands');await expect(page.locator('#navigation>button')).toHaveCount(6);await expect(page.locator('#master-advanced')).not.toHaveAttribute('open','');
+test('SIM-01 two primary screens with advanced catalog tools, local master and one-review existing campaign assignment',async({ownerPage:page,app})=>{
+ await expect(page.locator('#page-title')).toHaveText('Sites');await expect(page.locator('#navigation>button')).toHaveCount(2);await expect(page.locator('#master-advanced')).not.toHaveAttribute('open','');
  await master(page);expect((await stats(page,app)).counts.products).toBe(0);await assign(page);await go(page,'links');await expect(page.locator('#link-list')).toContainText('NEW-THERAPY');await expect(page.locator('#link-list a')).toHaveCount(1);const counts=(await stats(page,app)).counts;expect(counts.products).toBe(1);expect(counts.offers).toBe(1);expect(counts.authorize_payment).toBe(0);
  await assign(page);expect((await stats(page,app)).counts.products).toBe(1);
 });
@@ -21,7 +21,7 @@ test('SIM-03 automatically selected choices and generated link address with publ
 test('SIM-04 uncertain campaign creation cannot duplicate through a fresh setup',async({ownerPage:page,app})=>{
  await master(page);await go(page,'campaigns');await page.locator('#setup-mode').selectOption('new');await page.locator('#setup-form [name=name]').fill('Held campaign');await page.locator('#setup-form button[type=submit]').click();await control(page,app,{campaign_timeout:true});await page.locator('#review-consent').check();await page.locator('#apply-review').click();await expect(page.locator('#message')).toContainText('held for reconciliation');await go(page,'campaigns');await page.locator('#setup-form button[type=submit]').click();await expect(page.locator('#message')).toContainText('needs reconciliation');expect((await stats(page,app)).counts.campaigns).toBe(1);
 });
-test('SIM-05 mobile master campaign and links need no advanced settings',async({ownerPage:page})=>{
+test('SIM-05 mobile advanced catalog and campaign tools remain usable',async({ownerPage:page})=>{
  await page.setViewportSize({width:390,height:844});await master(page);await assign(page);await go(page,'campaigns');expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);await page.screenshot({path:require('node:path').join(__dirname,'results/mobile-simple-campaigns.png'),fullPage:true});await go(page,'links');expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);await page.screenshot({path:require('node:path').join(__dirname,'results/mobile-simple-links.png'),fullPage:true});
 });
 

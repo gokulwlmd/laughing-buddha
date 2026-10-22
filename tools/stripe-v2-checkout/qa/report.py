@@ -40,6 +40,8 @@ Status: **{'Passed' if passed else 'Failed'}** for the implemented workflows bel
 
 ## Backend coverage
 
+`test_sites.py` covers reviewed site provisioning, template snapshots and updates, stable paths and repeat invitations, independent campaign prices, preserved overrides, live readiness and inaccessible campaigns, open-payment locks and cross-workflow reconciliation holds. `test_synthetic.py` verifies persistent demo state and forced network/payment isolation.
+
 The suite covers owner setup/sign-in/session storage, CSRF/origin checks, exact SKU mapping, duplicate SKU choices, server-owned pricing/tax calculations, separate brand offer prices, live-preview guards, explicit approval, refresh/discard, uncertain and partial-write holds, public/private access, invitation revocation, stale tabs, quote expiry, consent, resume after refresh, hold after a restart, captured receipts and repeat purchases. `test_brands.py` covers multiple campaigns per brand, distinct provisional IDs for new campaigns, price isolation, legacy mappings, design propagation, quote stability and target-campaign payment locks. `test_qa.py` contains checkout/admin regressions. `test_master.py` verifies versioned master saves, all five TIRZ intervals, independent brand prices, multiple SKUs/offers, assignment idempotency, private generated links, source/currency/model drift and partial-write holds.
 
 `test_prepaid.py` verifies full upfront pricing, per-shipment price conversion, cycle counts, consent, capture read-back, renewal rejection and independent brand prices.

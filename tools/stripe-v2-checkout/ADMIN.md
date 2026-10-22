@@ -4,6 +4,14 @@ Admin URL: `https://wlmd-stripe-test-0f89b1bb.fly.dev/admin`.
 
 The brand design/multiple-campaign update is deployed and verified. The image and test evidence are recorded in `deployment.json`.
 
+## Sites and Checkout Templates
+
+The primary screens are Sites and Checkout Templates. Templates reuse the existing duration plans and assigned master SKUs. Add a site, select or create its brand, and choose an existing or new campaign. One review includes the required catalog provisioning and all enabled templates. After approval and read-back, ready checkouts offer Preview, Copy link and Customize. New links start private; public activation requires an explicit reviewed customization.
+
+Template changes show Update available and require reviewed site setup to apply. Site titles, enabled plans, payment choices, campaign prices and stable URL paths are preserved. Missing gateways, campaign access failures and unavailable billing configurations show Incomplete. Advanced settings retains every existing brand, catalog, campaign and standalone link tool and its hash route.
+
+See [the current handoff](../../docs/PROJECT_HANDOFF.md), [decision record](../../docs/DECISIONS.md) and [local/staging setup](../../docs/COLLABORATION.md). The historical release notes below describe prior deployments; the new implementation is not automatically deployed to the live app.
+
 ## First owner setup
 
 The app creates `/data/admin-setup-token` with mode 0600. It is separate from the checkout invitation and is excluded from the image/source. An authorized operator can retrieve the owner setup URL privately through Fly machine exec: `/admin?setup=TOKEN`. Deliver it only to the owner; do not put its token in documentation, logs, screenshots, deployment metadata or startup instructions.
@@ -47,7 +55,7 @@ See [the first master entry and workflow](../../docs/master-sku-setup.md) and [t
 
 ## Everyday workflow
 
-The primary navigation is **Brands → Master SKUs → Campaigns → Checkout links**. Offer pricing, source SKU mappings, diagnostics and change history remain under Advanced settings.
+For the existing detailed workflow, open **Advanced settings → Brands → Master SKUs → Campaigns → All checkout links**. Offer pricing, source SKU mappings, diagnostics and change history remain under Advanced settings.
 
 1. **Brands**: create a brand and preview its logo, colors, font and layout. Support details and a pending custom domain are optional. Review and save. Manage campaigns and Checkout links shortcuts select that brand in the next form.
 2. **Master SKUs**: enter the SKU, display name, default price and billing options, then review and save. An existing Sticky product ID is optional. New SKU fulfillment defaults come from the reviewed template (initially product 2856); this step saves local configuration only.

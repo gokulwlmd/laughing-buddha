@@ -1,0 +1,37 @@
+name: Tests
+on:
+  pull_request:
+  push:
+    branches: [main, 'codex/**']
+permissions:
+  contents: read
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    name: Backend and browser tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tools/stripe-v2-checkout/requirements*.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tools/stripe-v2-checkout/qa/package-lock.json
+      - run: python -m pip install -r tools/stripe-v2-checkout/requirements-dev.txt
+      - run: npm --prefix tools/stripe-v2-checkout/qa ci --ignore-scripts
+      - run: tools/stripe-v2-checkout/qa/node_modules/.bin/playwright install --with-deps chromium
+      - run: python tools/stripe-v2-checkout/qa/run.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: tools/stripe-v2-checkout/qa/results
+          retention-days: 7

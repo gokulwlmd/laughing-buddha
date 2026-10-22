@@ -77,6 +77,7 @@ class Settings:
     sku: str = 'WLMD-CORE-2USD-0f89b1bb'
     # Set only after verifying the live authorize_payment contract for this fixture.
     authorization_verified: bool = False
+    synthetic: bool = False
 
     @classmethod
     def environment(cls):
@@ -85,9 +86,10 @@ class Settings:
             url = parse.urlsplit(origin)
             if url.scheme != 'https' or not url.hostname or url.username or url.password or url.path or url.query or url.fragment:
                 raise RuntimeError('CHECKOUT_PUBLIC_URL must be an HTTPS origin')
+        synthetic = os.environ.get('CHECKOUT_ENVIRONMENT') in ('staging','development')
         return cls(public_url=origin,
             state_dir=Path(os.environ.get('CHECKOUT_STATE_DIR', HERE / '.state')),
-            authorization_verified=os.environ.get('CHECKOUT_AUTHORIZATION_VERIFIED') == '1')
+            authorization_verified=not synthetic and os.environ.get('CHECKOUT_AUTHORIZATION_VERIFIED') == '1', synthetic=synthetic)
 
 
 class Contact(BaseModel):
@@ -201,8 +203,13 @@ class Store:
 
 def create_app(settings=None, sticky=None):
     cfg = settings or Settings.environment()
-    api = sticky or Sticky()
     store = Store(cfg.state_dir)
+    if cfg.synthetic:
+        from synthetic import SyntheticSticky
+        cfg.authorization_verified = False
+        api = SyntheticSticky(cfg.state_dir)
+    else:
+        api = sticky or Sticky()
     invite_path = cfg.state_dir / 'access-token'
     if not invite_path.exists():
         invite_path.write_text(secrets.token_urlsafe(32))
@@ -214,6 +221,9 @@ def create_app(settings=None, sticky=None):
     app.state.settings = cfg
     app.state.invite = invite
     admin = Admin(store,cfg,api,invite,ROUTE_LOCK)
+    if cfg.synthetic:
+        from synthetic import seed_demo
+        seed_demo(admin)
     app.state.admin = admin
     admin.attach(app)
 
@@ -320,7 +330,8 @@ def create_app(settings=None, sticky=None):
 
     @app.get('/health')
     def health():
-        return {'status': 'running', 'public_url_configured': bool(cfg.public_url), 'authorization_contract_verified': cfg.authorization_verified}
+        return {'status': 'running', 'public_url_configured': bool(cfg.public_url), 'authorization_contract_verified': cfg.authorization_verified,
+            'synthetic': cfg.synthetic, 'payments_blocked': not cfg.authorization_verified}
 
     @app.get('/')
     @app.get('/return')

@@ -142,9 +142,9 @@ def assignment_id(brand,campaign,sku):
 
 class MasterCatalog:
     def local_fingerprint(self):
-        return fingerprint([self.records(k) for k in ('brand','sku','link','offering','master','assignment','therapy','purchase_option','plan_checkout')])
+        return fingerprint([self.records(k) for k in ('brand','sku','link','offering','master','assignment','therapy','purchase_option','plan_checkout','checkout_template','site')])
 
-    def prepare_setup(self,payload):
+    def prepare_setup(self,payload,required_skus=None,site_brand=None):
         request=CampaignSetup.model_validate(payload).model_dump(mode='json')
         cid=request['campaign_id'];creating=cid is None
         if creating and not request['name']:raise HTTPException(422,'Enter a campaign name')
@@ -159,7 +159,7 @@ class MasterCatalog:
                 raise HTTPException(409,'This campaign setup needs reconciliation. Inspect its recorded objects before trying again.')
         template=self.api.detail(f"/api/v2/campaigns/{request['template_id'] if creating else cid}")
         matches=[b for b in self.records('brand') if cid and cid in brand_campaigns(b)]
-        selected=self.get('brand',request['brand_id']) if request['brand_id'] else None
+        selected=site_brand or (self.get('brand',request['brand_id']) if request['brand_id'] else None)
         if request['brand_id'] and not selected:raise HTTPException(422,'Save the brand first')
         if len(matches)>1 and not selected:raise HTTPException(422,'Select the brand for this campaign')
         brand=selected or (matches[0] if matches else {'id':'campaign-'+(str(cid) if cid else secrets.token_hex(10)),
@@ -168,7 +168,7 @@ class MasterCatalog:
         if not selected and not matches and self.get('brand',brand['id']):raise HTTPException(409,'This campaign identifier is already mapped. Resolve it in advanced settings.')
         campaign=dict(template)
         if creating:campaign.update(id=0,offers=[])
-        data,guards,preview,ops,local=self.prepare_master('provision',{'brand_id':brand['id']},context=(dict(brand,campaign_id=cid or 0),campaign))
+        data,guards,preview,ops,local=self.prepare_master('provision',{'brand_id':brand['id'],'skus':required_skus},context=(dict(brand,campaign_id=cid or 0),campaign))
         if creating:
             guards.append({'path':f"/api/v2/campaigns/{request['template_id']}",'keys':None,'hash':fingerprint(template)})
             routing=[p['provider']['id'] for p in template.get('alternative_payments',[]) if p.get('payment_method')=='stripe_link' and int(p.get('provider',{}).get('account_id') or 0)==250]
@@ -243,7 +243,7 @@ class MasterCatalog:
             cid=brand['campaign_id'] if context else data.get('campaign_id') or brand['campaign_id']
             if not context and cid not in brand_campaigns(brand):raise HTTPException(422,'Select a campaign attached to this brand')
             with self.store.db() as db:
-                held=db.execute("SELECT data,result FROM admin_reviews WHERE kind IN ('provision','campaign_setup') AND status IN ('applying','reconcile')").fetchall()
+                held=db.execute("SELECT data,result FROM admin_reviews WHERE kind IN ('provision','campaign_setup','site') AND status IN ('applying','reconcile')").fetchall()
             if any(json.loads(r[0])['data'].get('campaign_id')==cid or (cid and json.loads(r[1] or '{}').get('created',{}).get('campaign')==cid) for r in held):
                 raise HTTPException(409,'This campaign has an unresolved master assignment. Reconcile its recorded object IDs before preparing another.')
             c=context[1] if context else watch(f'/api/v2/campaigns/{cid}')

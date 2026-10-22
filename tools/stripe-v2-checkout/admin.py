@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, ValidationEr
 from catalog import resolve, enabled, money
 from prepaid import cycles_for, unit_price
 from plans import PlanCatalog
+from sites import SiteCatalog
 from master import MasterCatalog, clone_product, model_rows, offer_models, product_contract, source_product, brand_campaigns, attach_campaign, record_campaign
 
 LOCK = threading.RLock()
@@ -120,7 +121,7 @@ class Campaign(Form):
 
 
 class Proposal(Form):
-    kind: str = Field(pattern=r'^(brand|sku|link|offer|campaign|master|provision|campaign_setup|therapy|purchase_option|plan_checkout)$')
+    kind: str = Field(pattern=r'^(brand|sku|link|offer|campaign|master|provision|campaign_setup|therapy|purchase_option|plan_checkout|checkout_template|site|site_checkout)$')
     data: dict
 
 
@@ -134,7 +135,7 @@ def branding(brand):
     return {k:brand.get(k,defaults.get(k,'')) for k in ('name','logo_url','color','support_email','support_phone',*defaults)}
 
 
-class Admin(MasterCatalog,PlanCatalog):
+class Admin(MasterCatalog,PlanCatalog,SiteCatalog):
     def __init__(self,store,cfg,api,invite,payment_lock=None):
         self.store,self.cfg,self.api,self.invite=store,cfg,api,invite
         self.payment_lock=payment_lock or threading.RLock()
@@ -246,8 +247,11 @@ class Admin(MasterCatalog,PlanCatalog):
         return data['sku'] if kind=='sku' else data['id']
 
     def prepare(self,kind,data):
-        if kind in ('master','provision','campaign_setup','therapy','purchase_option','plan_checkout'):
+        if kind in ('master','provision','campaign_setup','therapy','purchase_option','plan_checkout','checkout_template','site','site_checkout'):
             try:
+                if kind in ('checkout_template','site','site_checkout'):return self.prepare_site(kind,data)
+                if kind=='plan_checkout' and (self.get('plan_checkout',data.get('id','')) or {}).get('site_id'):
+                    raise HTTPException(422,'Customize this checkout from its Site to preserve template inheritance')
                 if kind in ('therapy','purchase_option','plan_checkout'):return self.prepare_plan(kind,data)
                 return self.prepare_setup(data) if kind=='campaign_setup' else self.prepare_master(kind,data)
             except ValidationError as exc:
@@ -442,7 +446,7 @@ class Admin(MasterCatalog,PlanCatalog):
             with self.store.db() as db:
                 reviews=[{'id':r[0],'kind':r[1],'status':r[2],'created':r[3],'preview':json.loads(r[4]),'result':json.loads(r[5]) if r[5] else None}
                     for r in db.execute('SELECT id,kind,status,created,preview,result FROM admin_reviews ORDER BY created DESC LIMIT 30')]
-            return {'therapies':self.records('therapy'),'purchaseOptions':self.records('purchase_option'),'planCheckouts':self.plan_state(),'masters':self.records('master'),'assignments':self.records('assignment'),'brands':self.records('brand'),'skus':self.records('sku'),'offers':self.records('offering'),'links':links,'reviews':reviews,'owner':self.owner()[0]}
+            return {'synthetic':self.cfg.synthetic,'sites':self.site_state(),'checkoutTemplates':self.records('checkout_template'),'therapies':self.records('therapy'),'purchaseOptions':self.records('purchase_option'),'planCheckouts':self.plan_state(),'masters':self.records('master'),'assignments':self.records('assignment'),'brands':self.records('brand'),'skus':self.records('sku'),'offers':self.records('offering'),'links':links,'reviews':reviews,'owner':self.owner()[0]}
 
         @app.get('/api/admin/campaigns')
         def campaigns(req:Request):
@@ -561,7 +565,7 @@ class Admin(MasterCatalog,PlanCatalog):
                     else:
                         obj=self.api.detail(guard['path']);current=fingerprint({k:obj.get(k) for k in guard['keys']} if guard['keys'] else obj)
                     if current!=guard['hash']:raise HTTPException(409,'Sticky changed after this preview; review again')
-                if kind in ('offer','campaign','provision','campaign_setup'):
+                if kind in ('offer','campaign','provision','campaign_setup','site'):
                     brand=self.get('brand',data['brand_id']) or data.get('setup_brand')
                     campaign_id=data.get('campaign_id') or (brand or {}).get('campaign_id')
                     if campaign_id:
@@ -570,7 +574,7 @@ class Admin(MasterCatalog,PlanCatalog):
                             if db.execute("SELECT 1 FROM checkouts WHERE campaign=? AND status NOT IN ('new','captured') LIMIT 1",(campaign_id,)).fetchone():
                                 raise HTTPException(409,'This campaign has an open payment; reconcile it before changing its offers or mapping')
                 affected_links=[data['id']] if kind=='link' else [l['id'] for l in self.records('link') if l['brand_id']==data['id']] if kind=='brand' else []
-                if kind in ('offer','provision','campaign_setup','therapy','purchase_option','plan_checkout','master'):
+                if kind in ('offer','provision','campaign_setup','therapy','purchase_option','plan_checkout','master','site','site_checkout'):
                     affected_links=json.loads(self._review_preview(body.review_id)).get('affectedCheckoutLinks',[])
                 for affected_link in affected_links:
                     with self.store.db() as db:
@@ -626,6 +630,10 @@ class Admin(MasterCatalog,PlanCatalog):
                         self.put(kind,self.identity(kind,data),data)
                     elif kind in ('therapy','purchase_option','plan_checkout'):
                         self.finalize_plan(kind,data)
+                    elif kind=='checkout_template':
+                        self.put(kind,data['id'],data)
+                    elif kind=='site_checkout':
+                        self.finalize_plan('plan_checkout',data)
                     elif kind=='offer':
                         old=self.get('offering',data['id'])
                         if old:
@@ -637,7 +645,7 @@ class Admin(MasterCatalog,PlanCatalog):
                         self.put('offering',data['id'],data|{'product_id':completed['product'],'offer_id':completed['offer']})
                     elif kind=='campaign':
                         brand=attach_campaign(self.get('brand',data['brand_id']),completed['campaign']);self.put('brand',brand['id'],brand)
-                    extra=self.finalize_master(kind,data,references) if kind in ('master','provision','campaign_setup') else {}
+                    extra=self.finalize_site(data,references) if kind=='site' else self.finalize_master(kind,data,references) if kind in ('master','provision','campaign_setup') else {}
                     result={'status':'applied','created':completed,**extra}
                     with self.store.db() as db:db.execute("UPDATE admin_reviews SET status='applied',result=? WHERE id=?",(json.dumps(result),body.review_id))
                     return result
