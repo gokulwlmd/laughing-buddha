@@ -5,5 +5,7 @@
 !demo/__init__.py
 !demo/site_api.py
 !demo/public.py
+!demo/session_api.py
+!demo/entrypoint.py
 !demo/web/
 !demo/web/**

@@ -15,6 +15,10 @@ from urllib.parse import urlencode
 from urllib.request import Request as URLRequest, build_opener, HTTPRedirectHandler
 from decimal import Decimal
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from demo.session_api import SessionStore, CheckoutTransport, install_session_api, PUBLIC_UPSTREAM
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.openapi.utils import get_openapi
@@ -96,13 +100,26 @@ def map_catalog(data):
     return Catalog(site_id=SITE_ID,site_name='Master Therapy Payment Test',color=data['branding']['color'],plans=plans), routes
 
 
-def create_public_app(origin=None, read_catalog=read_live_catalog, clock=time.time):
+def create_public_app(origin=None, read_catalog=read_live_catalog, clock=time.time, session_store=None, transport=None):
     origin = origin or os.environ['DEMO_PUBLIC_ORIGIN']
     if not origin.startswith('https://') or origin.rstrip('/') != origin or '/' in origin[8:]:
         raise ValueError('DEMO_PUBLIC_ORIGIN must be an HTTPS origin')
     app = FastAPI(title='Site API · live checkout demo',docs_url=None,redoc_url=None,openapi_url=None)
     app.mount('/assets',StaticFiles(directory=HERE/'web'),name='assets')
     cache = {}; sessions = {}; lock = threading.Lock(); refresh_lock = threading.Lock()
+    state_dir=os.environ.get('DEMO_SESSION_STATE_DIR')
+    session_store=session_store or (SessionStore(state_dir) if state_dir else None)
+    transport=transport or CheckoutTransport(os.environ.get('CHECKOUT_UPSTREAM_ORIGIN',PUBLIC_UPSTREAM))
+    allowed_origins=tuple(x.strip() for x in os.environ.get('SITE_API_ALLOWED_ORIGINS','').split(',') if x.strip())
+    for allowed in allowed_origins:
+        if allowed != '*' and (not allowed.startswith('https://') or allowed.rstrip('/')!=allowed or '/' in allowed[8:]):
+            raise ValueError('SITE_API_ALLOWED_ORIGINS must contain HTTPS origins or *')
+    app.add_middleware(CORSMiddleware,allow_origins=[origin,*allowed_origins],allow_methods=['GET','POST'],allow_headers=['Authorization','Content-Type'])
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(req,exc):
+        return JSONResponse({'detail':'Invalid checkout request. Use the documented fields; do not send card details.'},status_code=422)
+
 
     def refresh(background=False):
         # Only catalog reads run here. Never cache authorization or payment state.
@@ -157,7 +174,7 @@ def create_public_app(origin=None, read_catalog=read_live_catalog, clock=time.ti
 
     @app.get('/health',include_in_schema=False)
     def health():
-        return {'status':'running','mode':'real-checkout-handoff','processor_credentials':False}
+        return {'status':'running','mode':'site-payment-api','processor_credentials':False,'session_storage_configured':session_store is not None}
 
     @app.get('/',include_in_schema=False,response_class=HTMLResponse)
     def frontend():
@@ -176,11 +193,11 @@ def create_public_app(origin=None, read_catalog=read_live_catalog, clock=time.ti
         site(site_id)
         return current()[0]
 
-    @app.post('/api/v1/sites/{site_id}/checkout',response_model=CheckoutURL,status_code=201,tags=['2. Open checkout'])
+    @app.post('/api/v1/sites/{site_id}/checkout',response_model=CheckoutURL,status_code=201,tags=['Legacy redirect demo'],deprecated=True)
     def checkout(site_id:str,body:Selection,req:Request):
         """Send only plan_id. Open checkout_url to enter details and pay on the existing Stripe v2 checkout. This call does not authorize or charge. The receipt stays on that checkout; custom return URLs are not supported in this demo."""
         site(site_id)
-        if req.headers.get('origin') not in (None,origin):
+        if '*' not in allowed_origins and req.headers.get('origin') not in (None,origin,*allowed_origins):
             raise HTTPException(403,'Frontend origin is not registered')
         routes = current()[1]
         if body.plan_id not in routes:
@@ -206,8 +223,8 @@ def create_public_app(origin=None, read_catalog=read_live_catalog, clock=time.ti
     @app.get('/sites/{site_id}/openapi.json',include_in_schema=False)
     def schema(site_id:str):
         site(site_id)
-        spec = get_openapi(title='Payment Test · Site API',version='0.2.0-demo',routes=app.routes,
-            description='Two calls, no processor credentials. Connects to the existing live Stripe v2 checkout. Real charges if you choose to pay; no medication is shipped. Receipt stays on the hosted checkout.')
+        spec = get_openapi(title='Payment Test · Site API',version='0.3.0',routes=app.routes,
+            description='Build checkout in your own frontend: get plans, create a session, calculate a quote, prepare Stripe Payment Element, confirm with Stripe.js, then complete the order. Use the session_token as Bearer authorization. No account secret keys or raw card data. Real-charge payment tests only; no medication is shipped. The older redirect endpoint remains for compatibility.')
         paths = {}
         for path,item in spec['paths'].items():
             if not path.startswith('/api/v1/sites/{site_id}/'):
@@ -226,4 +243,5 @@ def create_public_app(origin=None, read_catalog=read_live_catalog, clock=time.ti
         return get_swagger_ui_html(openapi_url=f'/sites/{SITE_ID}/openapi.json',title='Payment Test · API docs',
             swagger_favicon_url='data:,',swagger_ui_parameters={'defaultModelsExpandDepth':-1,'tryItOutEnabled':True,'persistAuthorization':False})
 
+    install_session_api(app,site,current,session_store,transport,origin,allowed_origins)
     return app

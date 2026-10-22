@@ -158,3 +158,27 @@ open attempts. Do not expose private invitation tokens or globally disable
 checkout access checks. Tests must cover cookie-free server resolution and
 opening the resulting destination in separate browsers, alongside preserved
 private access and disabled-parent rejection.
+
+## API-only on-page checkout integration
+
+The owner explicitly clarified that they need APIs rather than another frontend.
+Add session/configuration/quote/payment/resume/status/completion APIs with
+site-specific OpenAPI; retain the older redirect demo for compatibility. The
+customer's frontend renders Stripe Payment Element using only that session's
+public key/client secret. No account private keys or Sticky credentials go to
+developers. Do not implement a new card widget or an independent Stripe charge.
+
+Use durable, hashed bearer-token bindings to one approved plan and one existing
+payment-engine visit. Preserve all financial checks and historical attempts.
+Do not persist Stripe client secrets, accept client pricing/routing, retry an
+uncertain financial operation or silently create a replacement payment. A
+confirmed captured receipt may resolve a lost completion reply.
+
+Run the API adapter in the separate API app, with its own volume. The payment
+worker stays running. Use verified HTTPS because its current IPv4 listener
+cannot be reached via the direct IPv6 private route. Document the API service
+IP attribution. The owner explicitly answered “any” for frontend origins; allow
+any origin with session bearer authentication and no cross-origin cookie
+credentials. No frontend domain registration is required. Do not weaken live
+HTTPS or restart the payment worker to hide the IP limitation. No frontend
+changes are included in this API-only release.

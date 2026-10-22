@@ -1,9 +1,9 @@
 {
   "app": "wlmd-site-api-demo-0f89b1bb",
   "url": "https://wlmd-site-api-demo-0f89b1bb.fly.dev",
-  "machine": "81909dc929e428",
-  "image": "registry.fly.io/wlmd-site-api-demo-0f89b1bb@sha256:1ae91e3b5cde3e02d76bb7a439bf8a924e6e7ba1d319910830d2900b6a159061",
-  "mode": "real Stripe v2 checkout handoff",
+  "machine": "8d96521b7d9768",
+  "image": "registry.fly.io/wlmd-site-api-demo-0f89b1bb@sha256:4ddd6f039a678ea27e599666d11c7374f5599babbf39956093387dad28150f84",
+  "mode": "on-page site payment API with legacy redirect compatibility",
   "processor_credentials_copied": false,
   "publication": {
     "id": "site-api-public-weight-loss",
@@ -13,22 +13,32 @@
     "all_existing_configuration_preserved": true
   },
   "verification": {
-    "full_backend_tests_passed": 213,
-    "targeted_demo_tests_passed": 15,
+    "full_backend_tests_passed": 233,
+    "targeted_demo_tests_passed": 32,
     "hosted_frontend_and_fresh_contact_form": true,
     "financial_api_calls": 0,
     "original_live_worker_restarted": false,
     "targeted_demo_and_plan_backend_cases": 27,
     "cookie_free_server_resolution": true,
-    "independent_clean_browsers": 2
+    "independent_clean_browsers": 2,
+    "wildcard_cors": true,
+    "cookie_credentials": false,
+    "bearer_required": true,
+    "session_survives_deployment": true,
+    "session_status": "new",
+    "amount": 24900,
+    "openapi_paths": 9,
+    "financial_calls": 0
   },
   "runtime_file_sha256": {
-    "demo/public.py": "2ada5a0da5e286c1511e84d553e35480e10af96660bdcf2c5887745dd9b4c729",
+    "demo/public.py": "bb4c6388a6b76d9f2fc864da4e163576cd94e01b00f79a88c5dd32cb33d4113f",
+    "demo/session_api.py": "d9749f5c15d5d4baa6de5a650d8acfba8907eec91f70a0edc19e1ca10b7fa39d",
+    "demo/entrypoint.py": "707e030dfae726657929aa797d9eda931993cab249790d3507307bda39638819",
     "demo/publish.py": "34a4d5c30f993799c0d22e01dac6736ebf51588c0455e9444e4199f3ed26dd54",
     "demo/web/frontend.js": "41fb32e748165e6e1c3d119bef978586dd1479a51afc3f6fcbf0053266d7f13a",
-    "demo/Dockerfile": "c191e59bf74d6c6e4750af9d2053cbc04013c08a4956b2075678577ac8992a81",
-    "demo/Dockerfile.dockerignore": "9856bb95efcf1ae6a4e031c6610c3c8a3150df966518dbe16a90245bfbec54af",
-    "fly-demo.toml": "63240a166038ce6554b44a40e09977c0b8c3b470087d350688208c74b34eb831"
+    "demo/Dockerfile": "583425674431cb3d3bb914828b1399691aaaa0faa6b54b6528e0a288635d7f4e",
+    "demo/Dockerfile.dockerignore": "b9e6b3039d0e927c1cfce9bbc5d59ffe20ac44db3c69d32a772e426473ebd0e6",
+    "fly-demo.toml": "db375559e2f65cd5aab1a8ec375b3b63a242c20ac54de2a7dad609b423d7ceaf"
   },
   "catalog_refresh": {
     "fresh_seconds": 60,
@@ -43,5 +53,26 @@
     "processor_writes": 0,
     "all_existing_configuration_preserved": true
   },
-  "routing": "dedicated public parent and public children; no invitation cookie dependency"
+  "routing": "dedicated public parent and public children; no invitation cookie dependency",
+  "volume": {
+    "id": "vol_42kd0738ql56pj74",
+    "name": "site_api_sessions",
+    "mount": "/data",
+    "size_gb": 1,
+    "encrypted": true
+  },
+  "cors": {
+    "allowed_origins": [
+      "*"
+    ],
+    "owner_authorized": true,
+    "session_bearer_required": true,
+    "allow_cookie_credentials": false
+  },
+  "limits": [
+    "Only payment-test site is currently published.",
+    "Sticky sees the API service network IP.",
+    "Existing upstream payment latency remains unresolved.",
+    "Live verification did not prepare or complete a payment."
+  ]
 }

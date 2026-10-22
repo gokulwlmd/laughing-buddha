@@ -134,7 +134,8 @@ flyctl deploy --config fly-demo.toml --remote-only --ha=false --strategy immedia
 
 The Dockerfile-specific allowlist includes only demo runtime files, skeleton and
 pinned dependencies. The live app's Docker allowlist still excludes this demo.
-No volume or secrets are configured for the demo service. One worker/machine
+The legacy redirect demo needed no volume. The session API now uses its own
+separate volume; no processor secrets are configured. One worker/machine
 and disabled automatic stopping keep its short-lived handoff links available.
 Do not deploy `fly.toml` as part of updating this demo.
 
@@ -162,3 +163,22 @@ iframe. Navigate to the hosted checkout so it establishes its own purchase
 cookie and uses its own Stripe security policy. It is also safe to open the
 resolved public destination in a separate browser. Existing private admin
 preview links are not substitutes for the API's returned checkout_url.
+
+## APIs for checkout inside another frontend
+
+The API-only integration is now documented in
+[the Site Payment API guide](../../../docs/SITE_PAYMENT_API.md). Use the new
+`POST /api/v1/sites/payment-test/sessions` endpoint to receive a session ID/token,
+then configuration, quote, payment setup and completion. It does not return a
+checkout URL. The frontend developer renders Stripe's secure Payment Element
+inside their own page; no frontend implementation was added in this release.
+
+The old `/checkout` redirect endpoint remains for compatibility and is marked
+deprecated in Swagger. The existing demo frontend still uses that old route.
+The new APIs have durable state on the API service's separate `/data` volume.
+Only checkout bindings/cookies and hashed bearer tokens are stored there, with
+no persisted contact or Stripe client secret. The live payment worker and its
+account credentials remain unchanged. The adapter uses verified HTTPS; see the
+guide for the IP attribution limitation. The owner authorized any frontend
+origin; direct browser requests use per-session bearer tokens and no
+cross-origin cookie credentials.

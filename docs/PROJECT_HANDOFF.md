@@ -191,3 +191,46 @@ Frontend integration: the server POSTs plan_id and returns checkout_url to its
 browser. Navigate the browser to that URL. Do not embed/proxy the payment HTML
 in another origin; it needs its own browser state and Stripe security policy.
 Reuse the API to create a new handoff instead of storing its expiring URL.
+
+## On-page checkout APIs (no frontend implementation)
+
+The owner clarified that they need APIs for their own frontends, not another
+frontend implementation. New site-scoped session APIs are implemented on the
+API service: create session, public configuration, exact quote, prepare Stripe
+Payment Element, resume, read status and complete the Sticky order. The old
+redirect endpoint remains for compatibility and is deprecated in Swagger. No
+frontend source files were changed for this release.
+
+Read SITE_PAYMENT_API.md for the integration and response contract. Session
+creation returns session_id/session_token, not a checkout URL. All further
+requests require that checkout's bearer token. Amount, campaign, gateway,
+selection and intent ownership remain server-controlled. Account credentials
+stay on the original payment engine; only the customer's own Stripe setup is
+returned. Tokens are hashed and no customer contact or Stripe client secret is
+persisted in the API database. New APIs use the existing engine's authoritative
+quotes, Sticky-created Stripe v2 intents, capture and order read-back.
+
+The API app has a separate private 1 GB volume, site_api_sessions in iad, with
+0600 session storage. Its machine changed to 8d96521b7d9768 to attach that new
+volume. The live payment app/machine/volume and open forms were not restarted
+or replaced. Inflight financial operations become held on an API restart, and
+there are no blind payment retries. A lost authorization reply can resume only
+the same existing intent; uncertain captures require confirmed status/read-back.
+
+The attempted direct private route could not connect because the existing live
+worker listens on IPv4; no live listener, HTTPS setting or network address was
+changed. The API uses verified HTTPS to the existing checkout. Consequently
+Sticky sees the API service's IP; trusted end-customer IP forwarding needs a
+later native payment-engine change. This limitation is documented, not silently
+worked around. The owner explicitly authorized any frontend origin: the API
+uses SITE_API_ALLOWED_ORIGINS="*", requires each session bearer token and
+disables cross-origin cookie credentials. No domain registration or new account
+credentials are required. Payment latency remains unresolved.
+
+Validation: the full backend suite passed 233 cases, and the final 32 focused
+session/demo cases passed. Live verification is restricted to session creation,
+configuration, status and a synthetic read-only quote; no authorization, card
+confirmation, capture or order creation is part of that smoke check. See
+scripts/check_site_payment_api.py and site-payment-api-deployment.json for the
+final hosted evidence and image. The earlier permanent site-setup backend fix
+remains undeployed on the payment worker.
