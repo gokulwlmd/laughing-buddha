@@ -48,3 +48,7 @@ Read the repository checkout and catalog skills under `.agents/skills`, then [lo
 Check existing Fly authentication, GitHub connector permissions and local Git authentication before requesting credentials. Hosted Sticky secrets already exist on the live app; leave them there. Secrets, setup links, invitation URLs, real contact information and gateway profiles must not enter commits, reports or chat handoffs.
 
 Run backend tests and browser scenarios with disposable state and fake services. Passing offline tests does not verify live processor payments or future rebills. No real charge, owner impersonation, clinical action or live catalog setup is part of routine QA.
+
+## Latest: Master Therapy 1 skeleton
+
+Weight Loss is now a built-in versioned skeleton in Checkout Templates, linked from Therapies. It includes the 16 exact SEMA/TIRZ SKUs and upfront/renewal/fulfillment rules in [MASTER_THERAPY_1.md](MASTER_THERAPY_1.md). The four-plan draft is saved only through the normal owner review flow; deployment itself does not modify stored owner/catalog/review/checkout records. No prices are invented. Activation remains blocked pending prices, exact schedules and verified renewing prepaid support. Existing site creation uses only completed published templates.

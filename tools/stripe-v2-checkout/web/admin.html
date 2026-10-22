@@ -5,7 +5,7 @@
 
 <p id="staging-notice" class="readiness-warning" hidden>Synthetic environment · demo catalog only · payments are blocked.</p><section data-view="templates" hidden>
 <div class="section-heading"><div><h2>Build once. Use on every site.</h2><p>Each template contains a therapy’s treatments, plans and default products.</p></div><button id="template-new" type="button">New checkout template</button></div>
-<div id="template-list" class="brand-directory"></div>
+<div id="therapy-skeleton-list" class="record-list"></div><div id="template-list" class="brand-directory"></div>
 <article id="template-editor" class="panel" hidden><div class="panel-heading"><h2 id="template-mode">New checkout template</h2><button id="template-close" type="button" class="text-button">Close editor</button></div>
 <form id="template-form"><input name="id" type="hidden"><div class="template-layout"><div>
 <label>Template name<input name="name" required maxlength="100" placeholder="Weight Loss"></label>
@@ -13,7 +13,7 @@
 <label>Therapy<select name="therapy_id" id="template-therapy" required></select></label>
 <div id="template-new-therapy" hidden><label>Therapy name<input name="therapy_name" maxlength="100" placeholder="Weight Loss"></label><label>Treatments<input name="treatment_names" placeholder="Semaglutide, Tirzepatide"></label><p class="hint">Separate names with commas. You can save a draft while its products are being added to the catalog.</p></div>
 <h3>Plans and products</h3><p class="hint">Choose the products customers can select for each duration. Default prices come from your catalog.</p>
-<div id="template-plans"></div><button id="template-add-plan" type="button" class="secondary">Add a plan</button>
+<div id="template-skeleton-contract" class="record-list" hidden></div><div id="template-plans"></div><button id="template-add-plan" type="button" class="secondary">Add a plan</button>
 <label class="checkbox"><input name="enabled" type="checkbox" checked> Include this template in new sites</label>
 <details><summary>Advanced catalog settings</summary><p>Product prices and billing rules are managed in the shared catalog. Existing site prices stay independent.</p><button type="button" class="text-button" data-go="master">Manage product catalog →</button></details>
 <div id="template-readiness" role="status" class="status-note"></div><div class="actions"><button type="submit">Review template →</button><button id="template-save-draft" type="button" class="secondary">Save draft</button></div>

@@ -1,4 +1,5 @@
 """Owner admin, persisted configuration, and explicit Sticky change reviews."""
+from therapy_skeletons import weight_loss_skeleton, skeleton_draft
 import hashlib
 import hmac
 import json
@@ -446,7 +447,7 @@ class Admin(MasterCatalog,PlanCatalog,SiteCatalog):
             with self.store.db() as db:
                 reviews=[{'id':r[0],'kind':r[1],'status':r[2],'created':r[3],'preview':json.loads(r[4]),'result':json.loads(r[5]) if r[5] else None}
                     for r in db.execute('SELECT id,kind,status,created,preview,result FROM admin_reviews ORDER BY created DESC LIMIT 30')]
-            return {'synthetic':self.cfg.synthetic,'sites':self.site_state(),'checkoutTemplates':self.template_state(),'templateDrafts':self.records('template_draft'),'siteDefaults':self.get('site_defaults','default'),'therapies':self.records('therapy'),'purchaseOptions':self.records('purchase_option'),'planCheckouts':self.plan_state(),'masters':self.records('master'),'assignments':self.records('assignment'),'brands':self.records('brand'),'skus':self.records('sku'),'offers':self.records('offering'),'links':links,'reviews':reviews,'owner':self.owner()[0]}
+            return {'synthetic':self.cfg.synthetic,'sites':self.site_state(),'checkoutTemplates':self.template_state(),'therapySkeletons':[weight_loss_skeleton()], 'skeletonDraft':skeleton_draft(), 'templateDrafts':self.records('template_draft'),'siteDefaults':self.get('site_defaults','default'),'therapies':self.records('therapy'),'purchaseOptions':self.records('purchase_option'),'planCheckouts':self.plan_state(),'masters':self.records('master'),'assignments':self.records('assignment'),'brands':self.records('brand'),'skus':self.records('sku'),'offers':self.records('offering'),'links':links,'reviews':reviews,'owner':self.owner()[0]}
 
         @app.get('/api/admin/campaigns')
         def campaigns(req:Request):

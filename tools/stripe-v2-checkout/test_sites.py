@@ -19,6 +19,41 @@ class SiteTests(unittest.TestCase):
     provision = helpers.PurchaseOptionTests.provision
     save = helpers.PurchaseOptionTests.save
 
+    def test_master_therapy_skeleton_records_exact_contract_without_prices(self):
+        from therapy_skeletons import weight_loss_skeleton
+        skeleton = weight_loss_skeleton()
+        products = skeleton['products']
+        self.assertEqual(len(products), 16)
+        self.assertEqual({p['sku'] for p in products}, {f'{t}-{m}M{s}' for t in ('SEMA','TIRZ') for m in (1,3,6,12) for s in ('','-SUB')})
+        for p in products:
+            self.assertIsNone(p['price'])
+            self.assertEqual(p['charge'], 'full_term_upfront')
+            self.assertEqual(p['renewal_months'], p['duration_months'] if p['sku'].endswith('-SUB') else None)
+            self.assertEqual(p['shipments_per_term'], {6:2,12:4}.get(p['duration_months']))
+            self.assertIsNone(p['shipment_interval'])
+            self.assertEqual(p['later_shipment_charge'], '0.00')
+        self.assertFalse(skeleton['ready'])
+        products[0]['price'] = '123'
+        self.assertIsNone(weight_loss_skeleton()['products'][0]['price'])
+
+    def test_master_skeleton_draft_preserves_contract_and_cannot_publish(self):
+        from therapy_skeletons import skeleton_draft
+        draft = skeleton_draft()
+        before = copy.deepcopy(self.fake.calls)
+        self.save('template_editor', draft)
+        saved = self.state()['templateDrafts'][0]
+        self.assertEqual(saved['skeleton_id'], draft['skeleton_id'])
+        self.assertEqual(len(saved['plans']), 4)
+        self.assertEqual(self.state()['checkoutTemplates'], [])
+        self.assertEqual(self.state()['therapySkeletons'][0]['id'], draft['skeleton_id'])
+        self.assertEqual(self.fake.calls, before)
+        self.save('template_editor', draft)
+        self.assertEqual(len(self.state()['templateDrafts']), 1)
+        for change in ({'draft':False}, {'skeleton_id':None}, {'skeleton_id':'unknown'}):
+            result = self.post('reviews', {'kind':'template_editor','data':draft|change})
+            self.assertEqual(result.status_code, 422, result.text)
+        self.assertEqual(self.fake.calls, before)
+
     def seed(self):
         helpers.PurchaseOptionTests.seed(self)
         self.template = {'id':'weight-loss', 'name':'Weight Loss', 'title':'Choose your plan', 'therapy_id':'weight-loss',

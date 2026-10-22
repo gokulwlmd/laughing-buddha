@@ -47,3 +47,7 @@ Use Checkout Template for a complete therapy experience, Plan for duration choic
 Site setup defaults to new branding and a separate campaign created from an explicitly selected or previously reviewed payment source. Remember the source only when its review is approved. The initial source must be chosen by the owner; synthetic staging may select its known demo campaign. Keep the campaign mapping immutable on existing sites. Ready preview, public publication, paused and incomplete are distinct states. Never label a synthetic checkout as accepting live payments.
 
 Catalog products and their billing rules remain managed under Advanced. The template editor selects existing matching products and displays their catalog prices; it does not invent medication SKUs or alter shared prices. Missing products are reported at the affected plan, with draft saving available.
+
+## Master Therapy 1 skeleton (22 October 2026)
+
+The Weight Loss skeleton defines separate SEMA/TIRZ SKUs for 1/3/6/12-month terms, with and without `-SUB`. All terms are paid in full upfront; `-SUB` renews the full payment after the same calendar-month duration. Six-month terms contain two shipments, twelve-month terms four. Further shipments within the term have no extra charge. Prices, exact shipment timing and short-term shipment counts remain unspecified. The versioned recipe is visible in the admin and can be saved as a draft; it must not activate unverified prepaid renewal or invent prices. See [the full contract](MASTER_THERAPY_1.md).

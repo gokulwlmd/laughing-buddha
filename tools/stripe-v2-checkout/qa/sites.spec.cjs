@@ -58,3 +58,19 @@ test('SITE-06 next site uses saved setup with no Advanced navigation and publica
 test('SITE-07 new therapy and incomplete plans save together as a recoverable draft',async({ownerPage:page})=>{
  await nav(page,'templates');await page.locator('#template-new').click();const f=page.locator('#template-form');await f.locator('[name=name]').fill('Example therapy');await f.locator('[name=title]').fill('Choose your example plan');await f.locator('[name=therapy_id]').selectOption('__new');await f.locator('[name=therapy_name]').fill('Example therapy');await f.locator('[name=treatment_names]').fill('Treatment A, Treatment B');await page.locator('#template-add-plan').click();await expect(page.locator('#template-plans')).toContainText('No matching products');await expect(f.locator('button[type=submit]')).toBeDisabled();await page.locator('#template-save-draft').click();await approve(page);await expect(page.locator('#template-list')).toContainText('Draft · not included in sites');await page.locator('#template-list').getByRole('button',{name:'Continue draft'}).click();await expect(f.locator('[name=treatment_names]')).toHaveValue('Treatment A, Treatment B');await expect(page.locator('.template-plan')).toHaveCount(1);await page.screenshot({path:require('node:path').join(__dirname,'results/template-editor.png'),fullPage:true});
 });
+
+test('SITE-08 master therapy skeleton shows all terms and preserves a nonpayable draft',async({ownerPage:page,app})=>{
+ await nav(page,'templates');const skeleton=page.locator('#therapy-skeleton-list');
+ await expect(skeleton).toContainText('Master Therapy 1');await skeleton.getByText('View all SKUs and payment rules').click();
+ for(const prefix of ['SEMA','TIRZ'])for(const months of [1,3,6,12])for(const suffix of ['','-SUB'])await expect(skeleton).toContainText(prefix+'-'+months+'M'+suffix);
+ await expect(skeleton).toContainText('Renews every 6 calendar months');await expect(skeleton).toContainText('4 shipments per term');
+ await skeleton.getByRole('button',{name:'Open skeleton draft'}).click();
+ await expect(page.locator('#template-plans .template-plan')).toHaveCount(4);
+ await expect(page.locator('#template-form button[type=submit]')).toBeDisabled();
+ await page.locator('#template-save-draft').click();await approve(page);await nav(page,'templates');
+ await page.locator('#template-list').getByRole('button',{name:'Continue draft'}).click();
+ await expect(page.locator('#template-skeleton-contract')).toContainText('TIRZ-12M-SUB');
+ await expect(page.locator('#template-form button[type=submit]')).toBeDisabled();
+ await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+ expect((await stats(page,app)).counts.new_order).toBe(0);
+});

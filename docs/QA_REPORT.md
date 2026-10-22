@@ -145,3 +145,7 @@ npm --cache /workspace/.cache/npm --prefix qa ci --ignore-scripts
 ```
 
 Set `QA_PYTHON` to another virtualenv Python if needed. Chromium defaults to `/usr/bin/chromium`; set `QA_CHROMIUM_EXECUTABLE` for another installed Chromium or install Playwright's Chromium. Raw results and failure screenshots are ignored under `qa/results/`; the test definitions, lockfile and this report are saved in the repository.
+
+## Master Therapy 1 skeleton — 22 October 2026
+
+All 169 backend tests passed (`unittest discover`, 27.764s). All eight site browser scenarios passed (39.4s), including the new SITE-08 skeleton matrix, nonpayable draft save/resume and mobile width check. This targeted run covers all existing site scenarios; it does not claim a new full browser-suite run. Contract tests verify all 16 exact SKUs, upfront amounts remaining unset, matching renewal months, two/four shipments, unspecified delivery intervals, idempotent draft saves and rejection of activation/removal of the skeleton reference. No payment or live Sticky operations were performed.

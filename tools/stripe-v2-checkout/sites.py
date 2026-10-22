@@ -6,6 +6,7 @@ from pydantic import Field, field_validator
 from plans import Form, Therapy, PurchaseOption, fingerprint, ReadCache
 from master import brand_campaigns
 from catalog import resolve, CatalogError
+from therapy_skeletons import SKELETON_ID, BLOCKER
 
 
 class CheckoutTemplate(Form):
@@ -41,6 +42,7 @@ class TemplateEditor(Form):
     name: str = Field(min_length=1, max_length=100)
     title: str = Field(min_length=1, max_length=150)
     therapy_id: str = Field(min_length=1, max_length=61)
+    skeleton_id: str | None = Field(default=None, max_length=61)
     new_therapy: Therapy | None = None
     plans: list[PurchaseOption] = Field(default_factory=list, max_length=20)
     draft: bool = False
@@ -88,6 +90,14 @@ class SiteCatalog:
 
     def prepare_template_editor(self, payload):
         request = TemplateEditor.model_validate(payload).model_dump(mode='json')
+        saved_draft = self.get('template_draft', request['id']) or {}
+        if saved_draft.get('skeleton_id') and request['skeleton_id'] != saved_draft['skeleton_id']:
+            raise HTTPException(422, 'Keep the master therapy skeleton attached to this draft')
+        if request['skeleton_id']:
+            if request['skeleton_id'] != SKELETON_ID or request['therapy_id'] != 'weight-loss':
+                raise HTTPException(422, 'Choose the Weight Loss master therapy skeleton')
+            if not request['draft']:
+                raise HTTPException(422, BLOCKER)
         before = self.get('checkout_template', request['id'])
         if before and before['therapy_id'] != request['therapy_id']:
             raise HTTPException(422, 'Create another template to change its therapy')
