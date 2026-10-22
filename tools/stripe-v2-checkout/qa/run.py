@@ -8,7 +8,7 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 os.chdir(ROOT);sys.path.insert(0,str(ROOT))
 results=ROOT/'qa/results';results.mkdir(parents=True,exist_ok=True)
-suite=unittest.defaultTestLoader.loadTestsFromNames(['test_checkout','test_admin','test_qa','test_master','test_brands','test_prepaid','test_prepaid_import','test_plans','test_purchase_options','test_sites','test_synthetic'])
+suite=unittest.defaultTestLoader.discover(str(ROOT),pattern='test_*.py')
 result=unittest.TextTestRunner(verbosity=2).run(suite)
 (results/'backend.json').write_text(json.dumps({'tests':result.testsRun,'failures':len(result.failures),'errors':len(result.errors),'skipped':len(result.skipped)},indent=2)+'\n')
 if not result.wasSuccessful():raise SystemExit(1)

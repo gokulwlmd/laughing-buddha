@@ -112,3 +112,7 @@ Use a state dropdown for US billing addresses. Show full state names, submit onl
 ## Compare non-shippable weight defaults without weakening fulfillment checks
 
 Sticky returns weight 0 and unit 1 when omitted on new non-shippable products. Treat only that observed default as equivalent to an absent weight/unit. Preserve stored contract fingerprints and require every other field to match. Retain strict shipping, tax, restrictions, explicit weights and prices. Before a write, journal its index/stage; never retry an uncertain operation. The legacy first-product failure may resume its previously approved plan only after read-only verification of the recorded ID, unchanged configuration and absence of campaign payments, with a private backup and audit record.
+
+## Two calls for external frontend integrations
+
+Expose site plans and create a hosted checkout link from a server-owned plan_id. Frontend developers do not manage customer/payment steps, set prices, or receive Sticky/Stripe credentials. The first deliverable is an isolated, non-payment local demo with two sample sites and per-site Swagger. It does not expose or publish live site catalogs. Production access rules, real hosted-checkout handoff and authoritative return status require separate implementation.
