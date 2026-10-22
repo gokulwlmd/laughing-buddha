@@ -1,7 +1,8 @@
 """Publish only the owner's approved campaign-422 payment-test demo copy.
 
 Run inside the existing checkout machine. No processor writes, owner/session
-fabrication, private invitations, or existing record edits. Existing attempts
+fabrication, private invitations, or existing record edits. Public API children are public too; older cookie-
+scoped demo children and their payment attempts are not modified. Existing attempts
 and links are retained. The caller must explicitly authorize public access.
 """
 from copy import deepcopy
@@ -10,13 +11,14 @@ import json
 import time
 from plans import choice_id
 
-DEMO_ID = 'site-api-demo-weight-loss'
+LEGACY_DEMO_ID = 'site-api-demo-weight-loss'
+DEMO_ID = 'site-api-public-weight-loss'
 
 
 def publication(admin):
     candidates = [p for p in admin.records('plan_checkout') if p.get('campaign_id') == 422
         and p.get('therapy_id') == 'weight-loss' and p.get('payment_test_only')
-        and p.get('enabled') and p['id'] != DEMO_ID]
+        and p.get('enabled') and p['id'] not in (DEMO_ID, LEGACY_DEMO_ID)]
     if len(candidates) != 1:
         raise RuntimeError('Expected one approved weight-loss payment-test checkout')
     source = candidates[0]
@@ -31,7 +33,7 @@ def publication(admin):
             raise RuntimeError('Source checkout mapping needs review')
         child = deepcopy(old)
         child.update(id=choice_id(DEMO_ID, entry['sku'], entry.get('purchase_option_id', '')),
-            plan_checkout_id=DEMO_ID, revision=1, visibility='private')
+            plan_checkout_id=DEMO_ID, revision=1, visibility='public')
         children.append(child)
     return [('plan_checkout', plan)] + [('link', c) for c in children]
 
@@ -40,7 +42,7 @@ def publish(admin):
     records = publication(admin)
     # Verify current upstream availability before any local configuration write.
     source = next(p for p in admin.records('plan_checkout') if p.get('campaign_id') == 422
-        and p.get('therapy_id') == 'weight-loss' and p['id'] != DEMO_ID and p.get('payment_test_only') and p.get('enabled'))
+        and p.get('therapy_id') == 'weight-loss' and p['id'] not in (DEMO_ID, LEGACY_DEMO_ID) and p.get('payment_test_only') and p.get('enabled'))
     catalog = admin.plan_options(*admin.plan_record(source['id']))
     if len(catalog['entries']) != 16 or not all(e['available'] for e in catalog['entries']):
         raise RuntimeError('A source payment-test choice is unavailable')

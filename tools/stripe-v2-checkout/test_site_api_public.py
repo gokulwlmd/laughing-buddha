@@ -36,8 +36,9 @@ class PublicDemoTests(unittest.TestCase):
         self.assertNotEqual(*links)
         r=self.client.get(links[0],follow_redirects=False)
         self.assertEqual(r.status_code,303)
-        self.assertIn('/plans/'+PUBLISHED_PLAN+'/choose?',r.headers['location'])
-        self.assertIn('sku=SEMA-6M-SUB',r.headers['location'])
+        self.assertIn('/c/'+choice_id(PUBLISHED_PLAN,'SEMA-6M-SUB','plan-6')+'?',r.headers['location'])
+        self.assertIn('selection=',r.headers['location'])
+        self.assertNotIn('/choose',r.headers['location'])
         self.assertNotIn('access=',r.headers['location'])
         self.now+=901
         self.assertEqual(self.client.get(links[1]).status_code,410)
@@ -82,14 +83,14 @@ class PublicDemoTests(unittest.TestCase):
             'enabled':True,'visibility':'private','entries':[{'sku':str(i),'options':['1:2:3']} for i in range(16)]}
         children={choice_id(source['id'],str(i)):{'id':choice_id(source['id'],str(i)),'enabled':True,'visibility':'private','options':['1:2:3'],'plan_checkout_id':source['id']} for i in range(16)}
         class Admin:
-            def records(self,kind):return [source]
+            def records(self,kind):return [source,source|{'id':'site-api-demo-weight-loss','visibility':'public'}]
             def get(self,kind,key):return children.get(key)
         before=copy.deepcopy((source,children));records=publication(Admin())
         self.assertEqual((source,children),before)
         self.assertEqual(len(records),17)
         self.assertEqual(records[0][1]['id'],DEMO_ID)
         self.assertEqual(records[0][1]['visibility'],'public')
-        self.assertTrue(all(c['visibility']=='private' and c['plan_checkout_id']==DEMO_ID for _,c in records[1:]))
+        self.assertTrue(all(c['visibility']=='public' and c['plan_checkout_id']==DEMO_ID for _,c in records[1:]))
         self.assertFalse(set(c['id'] for _,c in records[1:]) & set(children))
 
     def test_publication_is_atomic_idempotent_and_never_overwrites(self):
@@ -106,7 +107,7 @@ class PublicDemoTests(unittest.TestCase):
                 def db(self):return sqlite3.connect(path)
             class Admin:
                 store=Store()
-                def records(self,kind):return [source]
+                def records(self,kind):return [source,source|{'id':'site-api-demo-weight-loss','visibility':'public'}]
                 def get(self,kind,key):return children.get(key)
                 def plan_record(self,key):return source,{},{}
                 def plan_options(self,*args):return {'entries':[{'available':True} for _ in range(16)]}

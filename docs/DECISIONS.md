@@ -148,3 +148,13 @@ refresh avoids redundant full-catalog reads. This does not authorize stale
 quotes/payments or relax private link, consent, state or price-drift checks.
 Do not report the overall payment speed problem as resolved from an earlier
 editable form or a cached catalog response.
+
+## Public API destinations must open without invitation cookies
+
+Public API checkout links must remain usable when a server resolves their
+redirects before a clean customer browser opens the final URL. Use a dedicated
+public parent with public child records, preserving prior private children and
+open attempts. Do not expose private invitation tokens or globally disable
+checkout access checks. Tests must cover cookie-free server resolution and
+opening the resulting destination in separate browsers, alongside preserved
+private access and disabled-parent rejection.

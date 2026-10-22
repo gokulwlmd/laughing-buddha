@@ -169,3 +169,25 @@ and checkout-loading-deployment.json. Seven customer browser checks, eight
 payment regressions and fifteen targeted demo backend cases passed without
 submitting any real financial request. No new credential or account setup is
 required. The existing permanent site-setup backend fix is still undeployed.
+
+## Public API invitation gate correction
+
+The earlier API used a public parent whose child checkouts required invitation
+cookies. Following the handoff in one browser worked, but resolving it on a
+frontend server and then opening its final URL in another browser returned 401
+and the invitation gate. That screen belongs to this checkout service.
+
+A separate publication, site-api-public-weight-loss, now has sixteen PUBLIC
+child checkout copies. The API maps approved plans directly to these public
+children. It retains the short-lived opaque handoff URL, with no invitation
+secret in the response or destination. The existing private original and older
+demo children, their revisions and all old payment attempts remain unchanged.
+New public copies still enforce their parent membership, enabled state,
+published payment choices, browser-owned attempt, CSRF and live payment checks.
+No processor credentials or configuration were changed, and the live worker was
+not restarted. A private on-volume backup and publication audit were saved.
+
+Frontend integration: the server POSTs plan_id and returns checkout_url to its
+browser. Navigate the browser to that URL. Do not embed/proxy the payment HTML
+in another origin; it needs its own browser state and Stripe security policy.
+Reuse the API to create a new handoff instead of storing its expiring URL.

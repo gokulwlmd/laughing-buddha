@@ -118,8 +118,8 @@ return URLs. Handoff links are independent, bounded to 1,000 concurrent links,
 expire after 15 minutes, and disappear if the demo service restarts. Browser
 payment isolation and durable attempt protection remain with the live app.
 
-`demo.publish` creates a separate public parent and sixteen new private child
-links from the already approved payment-test checkout. Original private links
+`demo.publish` creates a separate public parent and sixteen new public child
+links from the already approved payment-test checkout. Original private links, the earlier cookie-scoped demo children
 and all existing records are retained. It makes no Sticky writes, creates no
 owner/session/review approval, validates upstream availability, refuses changed
 or partial existing publications, and records the publication. The operator
@@ -143,3 +143,22 @@ renewing prepaid, server-controlled prices/routes, expiry, scoped Swagger,
 fail-closed upstream handling and atomic/idempotent publication. The explicit
 `qa/site-api-public-smoke.cjs` checks the hosted frontend and fresh contact form
 without entering contact/card details or invoking authorize/capture/resume.
+
+### Redirects and frontend integration
+
+The API destination is now public without any invitation cookie. The earlier
+version ended at a private child; a server resolving redirects could see the
+checkout itself but leave the customer's browser at an invitation gate. A new
+public publication fixes that without changing old private links or payments.
+
+```javascript
+// Your frontend server calls POST /api/v1/sites/payment-test/checkout.
+// Return the JSON response to its browser, then:
+window.location.assign(result.checkout_url);
+```
+
+Do not render/proxy checkout HTML under your frontend's origin or embed it in an
+iframe. Navigate to the hosted checkout so it establishes its own purchase
+cookie and uses its own Stripe security policy. It is also safe to open the
+resolved public destination in a separate browser. Existing private admin
+preview links are not substitutes for the API's returned checkout_url.

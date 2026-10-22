@@ -2,11 +2,11 @@
   "app": "wlmd-site-api-demo-0f89b1bb",
   "url": "https://wlmd-site-api-demo-0f89b1bb.fly.dev",
   "machine": "81909dc929e428",
-  "image": "registry.fly.io/wlmd-site-api-demo-0f89b1bb@sha256:14ab1ce7b207309d4a6f22515733040acc04f1c40dbdd1023228846480c80ea2",
+  "image": "registry.fly.io/wlmd-site-api-demo-0f89b1bb@sha256:1ae91e3b5cde3e02d76bb7a439bf8a924e6e7ba1d319910830d2900b6a159061",
   "mode": "real Stripe v2 checkout handoff",
   "processor_credentials_copied": false,
   "publication": {
-    "id": "site-api-demo-weight-loss",
+    "id": "site-api-public-weight-loss",
     "published_records": 17,
     "plans": 16,
     "processor_writes": 0,
@@ -17,11 +17,14 @@
     "targeted_demo_tests_passed": 15,
     "hosted_frontend_and_fresh_contact_form": true,
     "financial_api_calls": 0,
-    "original_live_worker_restarted": false
+    "original_live_worker_restarted": false,
+    "targeted_demo_and_plan_backend_cases": 27,
+    "cookie_free_server_resolution": true,
+    "independent_clean_browsers": 2
   },
   "runtime_file_sha256": {
-    "demo/public.py": "821d8158bc8377db723ac0119a1c3f06b41d7b09967f73b45b7998f9bfdd13a8",
-    "demo/publish.py": "001fe0ef94d1dc839540db900cccdb043a1b95f53270a9fa64d1ac0b5ef16f55",
+    "demo/public.py": "2ada5a0da5e286c1511e84d553e35480e10af96660bdcf2c5887745dd9b4c729",
+    "demo/publish.py": "34a4d5c30f993799c0d22e01dac6736ebf51588c0455e9444e4199f3ed26dd54",
     "demo/web/frontend.js": "41fb32e748165e6e1c3d119bef978586dd1479a51afc3f6fcbf0053266d7f13a",
     "demo/Dockerfile": "c191e59bf74d6c6e4750af9d2053cbc04013c08a4956b2075678577ac8992a81",
     "demo/Dockerfile.dockerignore": "9856bb95efcf1ae6a4e031c6610c3c8a3150df966518dbe16a90245bfbec54af",
@@ -32,5 +35,13 @@
     "maximum_display_age_seconds": 120,
     "background_single_flight": true,
     "payment_checks_cached": false
-  }
+  },
+  "legacy_publication": {
+    "id": "site-api-demo-weight-loss",
+    "published_records": 17,
+    "plans": 16,
+    "processor_writes": 0,
+    "all_existing_configuration_preserved": true
+  },
+  "routing": "dedicated public parent and public children; no invitation cookie dependency"
 }

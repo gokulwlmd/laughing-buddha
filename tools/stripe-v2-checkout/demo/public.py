@@ -3,6 +3,7 @@
 No processor credentials, production DB, card widget or payment write client.
 Only the explicitly published demo parent can be read/selected.
 """
+import hashlib
 import html
 import json
 import os
@@ -23,7 +24,7 @@ from demo.site_api import Catalog, Plan
 
 HERE = Path(__file__).parent
 LIVE_ORIGIN = 'https://wlmd-stripe-test-0f89b1bb.fly.dev'
-PUBLISHED_PLAN = 'site-api-demo-weight-loss'
+PUBLISHED_PLAN = 'site-api-public-weight-loss'
 SITE_ID = 'payment-test'
 CATALOG_FRESH_SECONDS = 60
 CATALOG_MAX_AGE_SECONDS = 120
@@ -84,8 +85,12 @@ def map_catalog(data):
         plans.append(Plan(plan_id=pid,name=f'{medication} — {months}-month plan',medication=medication,
             duration_months=months,purchase_type='subscription' if recurring else 'once',price=price,
             renewal_days=days,shipment_days=[n*90 for n in range(count)],terms=terms))
-        routes[pid] = LIVE_ORIGIN+'/plans/'+PUBLISHED_PLAN+'/choose?'+urlencode({
-            'sku':entry['sku'],'option':option['key'],'purchase_option_id':entry.get('purchaseOptionId','')})
+        # This dedicated publication has public children. Opening the final URL
+        # must work in a fresh browser, without cookies from an earlier redirect.
+        purchase_id = entry.get('purchaseOptionId','')
+        identity = PUBLISHED_PLAN+'\0'+entry['sku']+('\0'+purchase_id if purchase_id else '')
+        child_id = 'choice-'+hashlib.sha256(identity.encode()).hexdigest()[:32]
+        routes[pid] = LIVE_ORIGIN+'/c/'+child_id+'?'+urlencode({'selection':option['key']})
     if len(plans) != 16:
         raise ValueError('The complete approved payment-test catalog is required')
     return Catalog(site_id=SITE_ID,site_name='Master Therapy Payment Test',color=data['branding']['color'],plans=plans), routes
