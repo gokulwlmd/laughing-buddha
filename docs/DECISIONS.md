@@ -205,3 +205,17 @@ with accurate shipment and renewal terms. Preserve the existing Stripe v2
 payment logic in checkout-v9.js. Publish through versioned static assets so the
 payment worker and database can remain in place. See CHECKOUT_REFERENCE_DESIGN.md
 and the final deployment metadata for the implemented scope and verification.
+
+## Patient portal and intake adapters (23 October 2026)
+
+Keep branded patient accounts and records separate per site initially. The owner
+will provide intake and doctor-messaging APIs; use clearly marked backend mock
+questions and messages until then. The medical team will fetch information from
+Sticky, so its intake destination/mapping remains an integration dependency;
+do not pretend a mock submission reached a clinician. Start with an isolated
+synthetic demo of orders, saved intake and site/therapy admin views. Use the same
+site-scoped APIs for the UI and Swagger. Preserve charge-first and individual
+SKU refill rules. No clinical approval or medication release follows from
+payment, billing cadence or completed intake. Real patient authentication,
+medical-data hosting and the paid-but-declined/incomplete intake policy remain
+required before connecting real patients.

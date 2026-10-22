@@ -264,3 +264,19 @@ Use tools/stripe-v2-checkout/checkout-reference-deployment.json for actual live
 publication and final test evidence. Hosted visual checks must not submit a
 payment; local financial regression tests use the fake backend. No customer
 screenshots or private checkout URLs are committed.
+
+## Patient portal direction and isolated demo
+
+The owner confirmed separate patient portals/records per site. The medical team
+will fetch information from Sticky; intake and doctor-messaging APIs will be
+provided later. Use backend-served therapy-specific sample questions and mock
+messaging in the meantime. Do not introduce medical-network integration as a
+prerequisite or infer clinical approval from payment/submission.
+
+Read PATIENT_PORTAL_PLAN.md and tools/stripe-v2-checkout/patient_demo/README.md.
+The new loopback demo has its own synthetic database, site/role-scoped demo
+tokens, sample orders, saved intake drafts, immutable submissions, messages,
+admin progress views and site Swagger. Its persona switch is not real patient
+authentication. Partial leads are display fixtures. No production order import,
+Sticky intake handoff, clinical decision, refill, store or funnel builder is
+connected yet. Existing live checkout and API deployments remain unchanged.
