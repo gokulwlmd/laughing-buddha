@@ -108,6 +108,22 @@ class StarterCatalogTests(unittest.TestCase):
         with self.assertRaises(ValueError):promote_live(self.app)
         self.assertEqual(before,self.snapshot())
 
+    def test_test_activation_is_revision_bound_and_cannot_enable_physical_prepaid(self):
+        from import_master_therapies import run
+        from master import fingerprint
+        from fastapi import HTTPException
+        run(self.app);master=self.admin.get('master','SEMA-12M-SUB')
+        configured=dict(master,product_template={'sku':master['sku'],'is_shippable':0,'taxable':0})
+        configured.pop('planning_contract')
+        activation={'sku':master['sku'],'master_hash':fingerprint(master),'master':configured,'payment_test_only':True}
+        self.admin.put('test_catalog_activation',master['sku'],activation)
+        self.assertEqual(self.admin.activated_master(master),configured)
+        changed=dict(master,revision=master['revision']+1)
+        with self.assertRaises(HTTPException):self.admin.activated_master(changed)
+        activation['master']['product_template']['is_shippable']=1
+        self.admin.put('test_catalog_activation',master['sku'],activation)
+        with self.assertRaises(HTTPException):self.admin.activated_master(master)
+
     def test_collision_rolls_back_whole_import_and_live_environment_is_rejected(self):
         from import_master_therapies import run
         self.admin.put('sku','SERM-1M',{'sku':'SERM-1M','name':'Existing custom SKU'})
@@ -188,3 +204,66 @@ class StarterCatalogTests(unittest.TestCase):
 
 
 if __name__=='__main__':unittest.main()
+
+
+class TherapyCampaignSpecTests(unittest.TestCase):
+    def test_all_40_specs_charge_whole_term_and_match_exact_renewal_days(self):
+        from therapy_campaign_setup import specification
+        from therapy_skeletons import all_skeletons
+        from decimal import Decimal
+        specs=[]
+        for skeleton in all_skeletons():
+            for p in skeleton['products']:
+                m={'name':p['sku'],'offers':[{'price':p['price']}]}
+                spec=specification(p,m);specs.append(spec)
+                self.assertEqual(Decimal(spec['unit'])*(spec['cycles'] or 1),Decimal(p['price']))
+                if p['renewal_months']:self.assertEqual(spec['days']*(spec['cycles'] or 1),p['duration_months']*30)
+                self.assertEqual(spec['configuration'].get('prepaid',{}).get('is_subscription',0),int(bool(spec['cycles'] and p['renewal_months'])))
+        self.assertEqual(len(specs),40)
+    def test_incompatible_custom_shipments_cannot_silently_change_renewal_term(self):
+        from therapy_campaign_setup import specification
+        p={'sku':'SEMA-6M-SUB','duration_months':6}
+        m={'name':'Six-month','offers':[{'price':'1494.00'}],'planning_contract':{'renewal_months':6,'shipments_per_term':3,'shipment_interval':90}}
+        with self.assertRaises(ValueError):specification(p,m)
+
+    def test_uncertain_external_write_cannot_be_retried(self):
+        from therapy_campaign_setup import Setup
+        from unittest.mock import Mock
+        with tempfile.TemporaryDirectory() as directory:
+            setup=Setup.__new__(Setup);setup.path=Path(directory)/'journal.json';setup.state={'operations':{}}
+            setup.api=Mock();setup.api.call.side_effect=TimeoutError('uncertain')
+            with self.assertRaises(TimeoutError):setup.write('new-offer','POST','/api/v2/offers',{'name':'Synthetic'})
+            with self.assertRaises(ValueError):setup.write('new-offer','POST','/api/v2/offers',{'name':'Synthetic'})
+            self.assertEqual(setup.api.call.call_count,1)
+
+    def test_full_campaign_setup_publishes_four_ready_private_checkouts_idempotently(self):
+        from app import create_app,Settings
+        from qa.fake_master import MasterSticky
+        from therapy_campaign_setup import Setup,BRAND
+        from import_master_therapies import run,add_pt141
+        from fastapi.testclient import TestClient
+        with tempfile.TemporaryDirectory() as directory:
+            fake=MasterSticky();app=create_app(Settings(public_url='https://localhost',state_dir=Path(directory),authorization_verified=True),fake)
+            admin=app.state.admin;admin.cfg.synthetic=True
+            run(app);add_pt141(app);admin.cfg.synthetic=False
+            admin.put('brand','campaign-422',{'id':'campaign-422','name':'Existing','campaign_id':422,'campaign_ids':[422],'color':'#245844'})
+            before={k:admin.records(k) for k in ('brand','offering','assignment','link')}
+            setup=Setup.__new__(Setup);setup.admin=admin;setup.api=fake;setup.path=Path(directory)/'journal.json';setup.state={'id':'test','operations':{},'renewal_proof':{'verified':True}}
+            setup.check_campaign=lambda:fake.detail('/api/v2/campaigns/422')
+            provisioned=setup.provision();self.assertEqual(provisioned['created_products'],40)
+            self.assertEqual(fake.count('/products'),40);self.assertEqual(fake.count('/offers'),40)
+            published=setup.publish();self.assertEqual(len(published['checkouts']),4)
+            self.assertEqual(len(published['quote_checks']),40)
+            self.assertEqual(len(admin.records('test_catalog_activation')),40)
+            self.assertEqual(len(admin.site_state()[0]['checkouts']),4)
+            self.assertTrue(all(c['status']=='ready' for c in admin.site_state()[0]['checkouts']))
+            for k,rows in before.items():
+                for old in rows:self.assertIn(old,admin.records(k))
+            customer=TestClient(app,base_url='https://localhost')
+            for plan in admin.plan_state():
+                customer.get(plan['url']);data=customer.get('/api/plans/'+plan['id']).json()
+                self.assertTrue(data['paymentTestOnly']);self.assertTrue(all(e['available'] for e in data['entries']))
+                self.assertTrue(all('renewal' in o for e in data['entries'] for o in e['options'] if o.get('prepaidCycles')))
+            self.assertEqual(fake.count('/new_order'),0);self.assertEqual(fake.count('/authorize_payment'),0)
+            self.assertTrue(setup.publish()['already_published']);self.assertEqual(fake.count('/products'),40)
+            customer.close()

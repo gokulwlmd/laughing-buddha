@@ -54,3 +54,8 @@ The original three-therapy import keeps its historical scope. `add_pt141()` adds
 ## Owner-authorized live promotion
 
 The owner explicitly switched the shared workspace to the existing live app. After deploying this source there, an authenticated operator can run `from app import app; from import_master_therapies import promote_live; promote_live(app)` in the application directory. This is deliberately separate from the default synthetic import and is restricted to the existing live hostname. It adds missing SKU drafts and their plans atomically, creates no owner/session/approval, never contacts Sticky and preserves existing SKU definitions. Existing TIRZ-1M is kept with its earlier billing setup and omitted from the newly generated one-month duration plan. Review that conflict separately before enabling the new intended one-time choice. Existing checkout links, prices, offers and pending payments retain their records. Repeat promotion uses its persisted setup marker rather than resetting later edits.
+
+
+## Current live payment-test status
+
+All forty codes now have new independently priced payment-test offers on connected campaign 422. Four private therapy checkouts are available under Sites → Master Therapy Payment Test. The operator-verified mappings are non-shippable/non-taxable and tied to the saved master fingerprint; planning masters retain editable upfront price/shipments and require reviewed campaign updates after edits. Original TIRZ-1M billing offers remain untouched while a separate one-time test product/offer supplies its new checkout choice. See [live setup, IDs and verification limits](MASTER_THERAPY_LIVE_TESTS.md).

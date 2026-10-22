@@ -232,13 +232,13 @@ class PlanCatalog:
                 _,treatment=self.therapy_for(master or {},therapy['id'])
                 item.update(name=master['name'],durationMonths=master['product_duration_months'],treatmentId=treatment['id'])
                 child,_=self.link(choice_id(plan['id'],entry['sku'],entry.get('purchase_option_id','')))
-                c=resolve(cache,plan['campaign_id'],entry['sku'])
-                options=[{k:o[k] for k in ('key','recurring','days','basePrice','blockedReason','prepaidCycles','upfrontPrice') if k in o} for o in c['options'] if o['key'] in child['options'] and not o['blockedReason']]
+                c=self.filter_catalog(resolve(cache,plan['campaign_id'],entry['sku']),child,brand)
+                options=[{k:o[k] for k in ('key','recurring','days','basePrice','blockedReason','prepaidCycles','upfrontPrice','renewal','renewalDays') if k in o} for o in c['options'] if o['key'] in child['options'] and not o['blockedReason']]
                 if c['blockedReason'] or not options:raise ValueError('Not ready')
                 item.update(available=True,reason='',currency=c['currency'],options=options)
             except (HTTPException,CatalogError,ValueError):pass
             entries.append(item)
-        return {'id':plan['id'],'title':plan['title'],'therapy':therapy['name'],'treatments':therapy['treatments'],'branding':branding(brand),'entries':entries,'purchaseOptions':[{'id':p['id'],'name':p['name'],'durationMonths':p['duration_months']} for p in plan.get('purchase_options',[])]}
+        return {'id':plan['id'],'title':plan['title'],'paymentTestOnly':bool(plan.get('payment_test_only')),'therapy':therapy['name'],'treatments':therapy['treatments'],'branding':branding(brand),'entries':entries,'purchaseOptions':[{'id':p['id'],'name':p['name'],'durationMonths':p['duration_months']} for p in plan.get('purchase_options',[])]}
 
     def attach_plans(self,app):
         @app.get('/api/admin/plan-options')

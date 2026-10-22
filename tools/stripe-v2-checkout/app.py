@@ -402,7 +402,7 @@ def create_app(settings=None, sticky=None):
         ready = bool(cfg.public_url and cfg.authorization_verified and not c['blockedReason'])
         return {k: c[k] for k in ('campaignId','campaignName','sku','options','shipping','countries','currency','publishableKey')} | {
             'csrfToken': admin.checkout_csrf(admin.link(req.query_params['link_id'])[0]) if req.query_params.get('link_id') else csrf(), 'branding': c.get('branding'), 'checkoutTitle': c.get('checkoutTitle'), 'ready': ready, 'blockedReason': c['blockedReason'] or ('' if ready else 'The secure checkout connection is still being configured.'),
-            'status': row['status'], 'attemptId': row['id']}
+            'status': row['status'], 'attemptId': row['id'],'paymentTestOnly':c.get('paymentTestOnly',False)}
 
     @app.get('/api/status')
     def status(req: Request):
@@ -554,7 +554,7 @@ def create_app(settings=None, sticky=None):
             str(products[0].get('billing_model',{}).get('id')) == str(option['billingModelId']) and
             str(products[0].get('product_qty')) == '1' and str(products[0].get('offer',{}).get('id')) == str(option['offerId']) and
             str(products[0].get('is_recurring')) == ('1' if option['recurring'] else '0'))
-        if option.get('prepaidCycles'):valid=valid and order_terms_match(products[0],option['prepaidCycles']) if valid else False
+        if option.get('prepaidCycles'):valid=valid and order_terms_match(products[0],option['prepaidCycles'],option.get('renewal',False)) if valid else False
         if not valid:
             raise StickyError('The payment result needs reconciliation; no second capture will be submitted')
         store.claim('capture_pending','captured',key,order_id=str(order_id))

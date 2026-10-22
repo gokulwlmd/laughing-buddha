@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal, InvalidOperation
 import hashlib
 import json
-from prepaid import cycles_for
+from prepaid import cycles_for, renewal_for
 
 
 class CatalogError(Exception):
@@ -67,7 +67,7 @@ def resolve(api, campaign_id, sku):
                 options.append({'key': f"{o['id']}:{pid}:{mid}", 'offerId': int(o['id']), 'productId': pid,
                     'billingModelId': mid, 'name': product.get('name', sku), 'offerName': o.get('name', ''),
                     'modelName': m.get('name', ''), 'recurring': mid != 2, 'days': days,
-                    **({'prepaidCycles':prepaid_cycles,'renewal':False,'upfrontPrice':str(money(product.get('price'))*prepaid_cycles)} if prepaid_cycles else {}),
+                    **({'prepaidCycles':prepaid_cycles,'renewal':renewal_for(o),'renewalDays':days*prepaid_cycles if renewal_for(o) else None,'upfrontPrice':str(money(product.get('price'))*prepaid_cycles)} if prepaid_cycles else {}),
                     'basePrice': str(money(product.get('price'))), 'shippable': enabled(product.get('is_shippable')), 'blockedReason': model_reason})
     if not options:
         raise CatalogError('No active billing model is configured for this SKU')

@@ -70,3 +70,14 @@ The owner explicitly directed work onto the existing live app and asked to stop 
 SUB terms charge the entire term upfront and renew after **30, 90, 180 or 360 days**, respectively. This supersedes all earlier calendar-month renewal wording. Non-SUB terms charge once. Shipment schedules stay independent; six/twelve-month defaults remain two/four shipments every 90 days starting at purchase.
 
 The owner-authorized live catalog promotion adds missing drafts atomically, preserves existing SKU definitions and all existing records, and never performs Sticky/payment writes. The older live TIRZ-1M definition remains untouched and excluded from new duration-plan selections pending a separate billing review. No existing campaign offers are reassigned automatically.
+
+
+## Live payment-test activation (22 October 2026)
+
+The owner explicitly authorized provisioning the four therapies into connected campaign 422 on the existing live app and will enter cards/submit real payments themselves. Use forty new, independently priced non-shippable/non-taxable test products/offers, preserving all existing remote catalog, gateway routing and customer payment records. Group them in a separate payment-test brand/site with private previews and explicit real-charge/no-medication notices. Clinical fulfillment remains separate.
+
+The owner separately approved two synthetic products, two prepaid offers, a new Dry Run campaign and eight synthetic orders/forced cycles. Both native two/four-cycle renewal chains passed, with full upfront and renewal charges and $0 intermediate product charges. Campaign 428 access was enabled by the owner. Native prepaid renewal is now supported for this verified simple test configuration; conversion, discounts, physical/taxable prepaid release and advanced combinations remain blocked.
+
+Keep a server-owned activation record bound to each master fingerprint, so a planning save cannot grant processor readiness. Template/site setup may use a current verified non-fulfilling mapping; master edits invalidate it for future setup. Do not rewrite old subscriptions or automatically republish existing checkouts.
+
+The explicitly authorized operator attachment adds only new offers, checking original remote terms/routing before and after; it preserves the older held authorization without retrying, cancelling or capturing it. Normal owner review locks remain unchanged. The operator journal and separate setup audit must retain confirmed IDs and stop on uncertain writes.

@@ -67,9 +67,9 @@ class PrepaidTests(unittest.TestCase):
     def test_prepaid_brand_price_replacement_preserves_terms(self):
         self.seed();self.provision();o=self.state()['offers'][0];d={k:o[k] for k in ('id','brand_id','sku','name','billing_models','configuration')};d['price']='1000.00';r=self.apply(self.review('offer',d));self.assertEqual(r.status_code,200,r.text);o=self.state()['offers'][0];self.assertEqual(self.fake.products[o['product_id']]['price'],250.0);self.provision();self.assertEqual(self.state()['offers'][0]['price'],'1000.00')
     def test_prepaid_unverified_terms_are_rejected(self):
-        for mutate in ('renew','discount','multiple','custom','expiry'):
+        for mutate in ('conversion','discount','multiple','custom','expiry'):
             c=configuration(4)
-            if mutate=='renew':c['prepaid']['is_subscription']=1
+            if mutate=='conversion':c['prepaid']['is_convert_to_standard']=1
             if mutate=='discount':c['prepaid']['terms'][0]['discount_value']=10
             if mutate=='multiple':c['prepaid']['terms'].append({'cycles':6,'discount_value':0})
             if mutate=='custom':c['recurring']['cycle_type_id']=2
@@ -94,3 +94,41 @@ class PrepaidTests(unittest.TestCase):
             return result
         self.fake.call=altered
         self.assertEqual(c.post('/api/capture',params=p,headers=h,json={}).status_code,502);self.assertEqual(c.post('/api/capture',params=p,headers=h,json={}).status_code,409);self.assertEqual(self.fake.count('/new_order'),1)
+
+    def test_renewing_prepaid_full_upfront_quote_capture_and_renewal_readback(self):
+        for count,days in [(2,180),(4,360)]:
+            with self.subTest(count=count):
+                self.setUp()
+                try:
+                    d=self.preset();d['offers'][0].update(prepaid_cycles=count,prepaid_renewal=True)
+                    self.apply(self.review('master',d));self.apply(self.review('brand',{'id':'test-brand','name':'Test brand','campaign_id':422}));self.provision()
+                    link=self.state()['links'][0];customer=TestClient(self.app,base_url=ORIGIN);customer.get(link['url'])
+                    params={'link_id':link['id']};cfg=customer.get('/api/config',params=params).json();o=cfg['options'][0]
+                    self.assertTrue(o['renewal']);self.assertEqual(o['renewalDays'],days)
+                    h={'Origin':ORIGIN,'X-CSRF-Token':cfg['csrfToken'],'X-Checkout-Attempt':cfg['attemptId']}
+                    q=customer.post('/api/quote',params=params,headers=h,json={'contact':CONTACT,'selection':o['key'],'shipping_id':2}).json()
+                    self.assertEqual(q['amount'],120000)
+                    self.assertEqual(customer.post('/api/authorize',params=params,headers=h,json={'quote_id':q['id']}).status_code,422)
+                    self.assertEqual(customer.post('/api/authorize',params=params,headers=h,json={'quote_id':q['id'],'recurring_consent':True}).status_code,200)
+                    self.fake.order_total='1200.00'
+                    self.assertEqual(customer.post('/api/capture',params=params,headers=h,json={}).status_code,200)
+                    self.assertEqual(self.fake.count('/new_order'),1)
+                    customer.close()
+                finally:self.tearDown()
+
+    def test_renewing_prepaid_capture_missing_renewal_is_held_without_retry(self):
+        d=self.preset();d['offers'][0]['prepaid_renewal']=True
+        self.apply(self.review('master',d));self.apply(self.review('brand',{'id':'test-brand','name':'Test brand','campaign_id':422}));self.provision()
+        link=self.state()['links'][0];c=TestClient(self.app,base_url=ORIGIN);c.get(link['url']);params={'link_id':link['id']}
+        cfg=c.get('/api/config',params=params).json();h={'Origin':ORIGIN,'X-CSRF-Token':cfg['csrfToken'],'X-Checkout-Attempt':cfg['attemptId']}
+        q=c.post('/api/quote',params=params,headers=h,json={'contact':CONTACT,'selection':cfg['options'][0]['key'],'shipping_id':2}).json()
+        c.post('/api/authorize',params=params,headers=h,json={'quote_id':q['id'],'recurring_consent':True})
+        self.fake.order_total='1200.00';original=self.fake.call
+        def changed(method,path,body=None):
+            r=original(method,path,body)
+            if path=='/api/v1/order_view':r['products'][0]['prepaid'][0]['is_renew']='0'
+            return r
+        self.fake.call=changed
+        self.assertEqual(c.post('/api/capture',params=params,headers=h,json={}).status_code,502)
+        self.assertEqual(c.post('/api/capture',params=params,headers=h,json={}).status_code,409)
+        self.assertEqual(self.fake.count('/new_order'),1);c.close()

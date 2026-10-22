@@ -173,7 +173,7 @@ class SiteCatalog:
             for sku in purchase['skus']:
                 master = self.get('master', sku) or {}
                 self.therapy_for(master, therapy['id'])
-                if master.get('planning_contract'):raise HTTPException(422,sku+': verify planned billing and fulfillment before activating this template')
+                master=self.activated_master(master)
                 if not master.get('enabled') or master.get('exclude_from_campaign_setup') or master['product_duration_months'] != purchase['duration_months']:
                     raise HTTPException(422, sku + ': choose an enabled master SKU with matching product duration')
                 masters[sku] = master
@@ -278,6 +278,9 @@ class SiteCatalog:
         data, guards, preview, ops, local = view.prepare_plan('plan_checkout', request)
         data.update(site_id=site['id'], template_id=template['id'], template_snapshot=source,
             template_source_hash=fingerprint(source), site_override=override)
+        if any(m.get('payment_test_only') for m in source['masters']):
+            data['payment_test_only']=True
+            for child in data['_children']:child['payment_test_only']=True
         # Repeated setup must not rotate private invitations or invalidate fresh quotes.
         if old:
             comparable = lambda p: {k:v for k,v in p.items() if k not in ('revision', '_children')}

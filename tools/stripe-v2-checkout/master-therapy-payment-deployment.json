@@ -1,0 +1,552 @@
+{
+  "date": "2026-10-22",
+  "app": "wlmd-stripe-test-0f89b1bb",
+  "machine": "84e117f290dd38",
+  "volume": "vol_40o3gdk37mo7zy24",
+  "image": "registry.fly.io/wlmd-stripe-test-0f89b1bb@sha256:69834ae19999b8d2be579b1d91ffa29c6198374e1f4e19f25c7c4c62bd45ae42",
+  "backend_tests": 183,
+  "affected_browser_scenarios": 34,
+  "browser_validation": "33 existing scenarios passed; the new renewal scenario passed after fixing the test service to echo the configured renewal flag.",
+  "runtime_hashes": {
+    "app.py": "5d29af2ea096477d594f135a3231c4f458c3669d51963a51a40c608c4833afa9",
+    "admin.py": "9f9dcc08a35e945859a6e05c502bcf03a5b94d84d419d1905b186fb5fd47909f",
+    "master.py": "67c2b1162414d82410c4d36f0210984397bf1981d2a78e3a91829e84d8611548",
+    "sites.py": "a80ebe6b75ad921498b38c712dfa2c42815e4c78eb42d89b7e0a41fbb9b43e2d",
+    "plans.py": "f6571cd1255b0c2f4730a2fa3893e6374a5d471ce4ee87233a31dac239b9a14f",
+    "prepaid.py": "9aa1fd1fe8628d74e342b70daad8efc88d842a41e423837264bcc761b88a73c8",
+    "catalog.py": "e1d4ca5ebd5714ce98824ce6f1aa83d75011bd82312477567bb3a0701f650b6e",
+    "therapy_campaign_setup.py": "f2a3a88b3bb4b54184f8fc5c24ab3c46bf69d04af415d940de4d7f174f403547",
+    "web/app.js": "7540d9313ef4177ab730c67256fc3d2bf3367131a8432e2437647ebba6fd1466",
+    "web/plans.js": "5a16613a59e429113bfbe41fd64a190e56d4bca3027410f0d723d4fa04b6d169",
+    "web/master.js": "f9231cd7d3fd3fb412f6c5bc0286a3b45f501a98dffc27048887933735a7eeca",
+    "web/index.html": "4922f6f5e606b23e4c407b4deed5592e670ce55fb12e274d92a24a2e2c4cabef"
+  },
+  "verification": {
+    "campaign_id": 422,
+    "gateway_id": 254,
+    "site_id": "master-therapy-test-422",
+    "new_products": 40,
+    "new_offers": 40,
+    "verified_quotes": 40,
+    "checkouts": [
+      {
+        "therapy": "Weight Loss",
+        "checkout_id": "site-ec11002726433dd806e45bb2356584e71b88c8ca",
+        "available_skus": 16,
+        "private_api_verified": true
+      },
+      {
+        "therapy": "Sermorelin",
+        "checkout_id": "site-a87339222256192adbfd37d4cc97c1f70894131f",
+        "available_skus": 8,
+        "private_api_verified": true
+      },
+      {
+        "therapy": "Metformin",
+        "checkout_id": "site-5e6302692bd3bfb0669dce7a0a54aeab4fce2592",
+        "available_skus": 8,
+        "private_api_verified": true
+      },
+      {
+        "therapy": "PT-141",
+        "checkout_id": "site-dbc33b80567862f940d80205a9e9debc7cbc9a67",
+        "available_skus": 8,
+        "private_api_verified": true
+      }
+    ],
+    "original_offers_preserved": true,
+    "original_products_preserved": true,
+    "routing_preserved": true,
+    "owner_sessions_reviews_payments_preserved": true,
+    "existing_catalog_preserved_except_organization_metadata_and_explicit_plan_addition": true,
+    "repeat_publish_makes_no_changes": true,
+    "real_payments_submitted_by_agent": 0,
+    "published": {
+      "campaign_id": 422,
+      "site_id": "master-therapy-test-422",
+      "brand_id": "master-therapy-test-422",
+      "checkouts": [
+        "site-ec11002726433dd806e45bb2356584e71b88c8ca",
+        "site-a87339222256192adbfd37d4cc97c1f70894131f",
+        "site-5e6302692bd3bfb0669dce7a0a54aeab4fce2592",
+        "site-dbc33b80567862f940d80205a9e9debc7cbc9a67"
+      ],
+      "quote_checks": [
+        {
+          "sku": "SEMA-1M",
+          "product_id": 55866,
+          "offer_id": 715,
+          "billing_model_id": 2,
+          "upfront_total": "249.00",
+          "cycles": null,
+          "renewal_days": null
+        },
+        {
+          "sku": "SEMA-1M-SUB",
+          "product_id": 55867,
+          "offer_id": 716,
+          "billing_model_id": 3,
+          "upfront_total": "249.00",
+          "cycles": null,
+          "renewal_days": 30
+        },
+        {
+          "sku": "SEMA-3M",
+          "product_id": 55868,
+          "offer_id": 717,
+          "billing_model_id": 2,
+          "upfront_total": "747.00",
+          "cycles": null,
+          "renewal_days": null
+        },
+        {
+          "sku": "SEMA-3M-SUB",
+          "product_id": 55869,
+          "offer_id": 718,
+          "billing_model_id": 4,
+          "upfront_total": "747.00",
+          "cycles": null,
+          "renewal_days": 90
+        },
+        {
+          "sku": "SEMA-6M",
+          "product_id": 55870,
+          "offer_id": 719,
+          "billing_model_id": 4,
+          "upfront_total": "1494.00",
+          "cycles": 2,
+          "renewal_days": null
+        },
+        {
+          "sku": "SEMA-6M-SUB",
+          "product_id": 55871,
+          "offer_id": 720,
+          "billing_model_id": 4,
+          "upfront_total": "1494.00",
+          "cycles": 2,
+          "renewal_days": 180
+        },
+        {
+          "sku": "SEMA-12M",
+          "product_id": 55872,
+          "offer_id": 721,
+          "billing_model_id": 4,
+          "upfront_total": "2988.00",
+          "cycles": 4,
+          "renewal_days": null
+        },
+        {
+          "sku": "SEMA-12M-SUB",
+          "product_id": 55873,
+          "offer_id": 722,
+          "billing_model_id": 4,
+          "upfront_total": "2988.00",
+          "cycles": 4,
+          "renewal_days": 360
+        },
+        {
+          "sku": "TIRZ-1M",
+          "product_id": 55874,
+          "offer_id": 723,
+          "billing_model_id": 2,
+          "upfront_total": "449.00",
+          "cycles": null,
+          "renewal_days": null
+        },
+        {
+          "sku": "TIRZ-1M-SUB",
+          "product_id": 55875,
+          "offer_id": 724,
+          "billing_model_id": 3,
+          "upfront_total": "449.00",
+          "cycles": null,
+          "renewal_days": 30
+        },
+        {
+          "sku": "TIRZ-3M",
+          "product_id": 55876,
+          "offer_id": 725,
+          "billing_model_id": 2,
+          "upfront_total": "1347.00",
+          "cycles": null,
+          "renewal_days": null
+        },
+        {
+          "sku": "TIRZ-3M-SUB",
+          "product_id": 55877,
+          "offer_id": 726,
+          "billing_model_id": 4,
+          "upfront_total": "1347.00",
+          "cycles": null,
+          "renewal_days": 90
+        },
+        {
+          "sku": "TIRZ-6M",
+          "product_id": 55878,
+          "offer_id": 727,
+          "billing_model_id": 4,
+          "upfront_total": "2694.00",
+          "cycles": 2,
+          "renewal_days": null
+        },
+        {
+          "sku": "TIRZ-6M-SUB",
+          "product_id": 55879,
+          "offer_id": 728,
+          "billing_model_id": 4,
+          "upfront_total": "2694.00",
+          "cycles": 2,
+          "renewal_days": 180
+        },
+        {
+          "sku": "TIRZ-12M",
+          "product_id": 55880,
+          "offer_id": 729,
+          "billing_model_id": 4,
+          "upfront_total": "5388.00",
+          "cycles": 4,
+          "renewal_days": null
+        },
+        {
+          "sku": "TIRZ-12M-SUB",
+          "product_id": 55881,
+          "offer_id": 730,
+          "billing_model_id": 4,
+          "upfront_total": "5388.00",
+          "cycles": 4,
+          "renewal_days": 360
+        },
+        {
+          "sku": "SERM-1M",
+          "product_id": 55882,
+          "offer_id": 731,
+          "billing_model_id": 2,
+          "upfront_total": "199.00",
+          "cycles": null,
+          "renewal_days": null
+        },
+        {
+          "sku": "SERM-1M-SUB",
+          "product_id": 55883,
+          "offer_id": 732,
+          "billing_model_id": 3,
+          "upfront_total": "199.00",
+          "cycles": null,
+          "renewal_days": 30
+        },
+        {
+          "sku": "SERM-3M",
+          "product_id": 55884,
+          "offer_id": 733,
+          "billing_model_id": 2,
+          "upfront_total": "597.00",
+          "cycles": null,
+          "renewal_days": null
+        },
+        {
+          "sku": "SERM-3M-SUB",
+          "product_id": 55885,
+          "offer_id": 734,
+          "billing_model_id": 4,
+          "upfront_total": "597.00",
+          "cycles": null,
+          "renewal_days": 90
+        },
+        {
+          "sku": "SERM-6M",
+          "product_id": 55886,
+          "offer_id": 735,
+          "billing_model_id": 4,
+          "upfront_total": "1194.00",
+          "cycles": 2,
+          "renewal_days": null
+        },
+        {
+          "sku": "SERM-6M-SUB",
+          "product_id": 55887,
+          "offer_id": 736,
+          "billing_model_id": 4,
+          "upfront_total": "1194.00",
+          "cycles": 2,
+          "renewal_days": 180
+        },
+        {
+          "sku": "SERM-12M",
+          "product_id": 55888,
+          "offer_id": 737,
+          "billing_model_id": 4,
+          "upfront_total": "2388.00",
+          "cycles": 4,
+          "renewal_days": null
+        },
+        {
+          "sku": "SERM-12M-SUB",
+          "product_id": 55889,
+          "offer_id": 738,
+          "billing_model_id": 4,
+          "upfront_total": "2388.00",
+          "cycles": 4,
+          "renewal_days": 360
+        },
+        {
+          "sku": "METFORM-1M",
+          "product_id": 55890,
+          "offer_id": 739,
+          "billing_model_id": 2,
+          "upfront_total": "49.00",
+          "cycles": null,
+          "renewal_days": null
+        },
+        {
+          "sku": "METFORM-1M-SUB",
+          "product_id": 55891,
+          "offer_id": 740,
+          "billing_model_id": 3,
+          "upfront_total": "49.00",
+          "cycles": null,
+          "renewal_days": 30
+        },
+        {
+          "sku": "METFORM-3M",
+          "product_id": 55892,
+          "offer_id": 741,
+          "billing_model_id": 2,
+          "upfront_total": "147.00",
+          "cycles": null,
+          "renewal_days": null
+        },
+        {
+          "sku": "METFORM-3M-SUB",
+          "product_id": 55893,
+          "offer_id": 742,
+          "billing_model_id": 4,
+          "upfront_total": "147.00",
+          "cycles": null,
+          "renewal_days": 90
+        },
+        {
+          "sku": "METFORM-6M",
+          "product_id": 55894,
+          "offer_id": 743,
+          "billing_model_id": 4,
+          "upfront_total": "294.00",
+          "cycles": 2,
+          "renewal_days": null
+        },
+        {
+          "sku": "METFORM-6M-SUB",
+          "product_id": 55895,
+          "offer_id": 744,
+          "billing_model_id": 4,
+          "upfront_total": "294.00",
+          "cycles": 2,
+          "renewal_days": 180
+        },
+        {
+          "sku": "METFORM-12M",
+          "product_id": 55896,
+          "offer_id": 745,
+          "billing_model_id": 4,
+          "upfront_total": "588.00",
+          "cycles": 4,
+          "renewal_days": null
+        },
+        {
+          "sku": "METFORM-12M-SUB",
+          "product_id": 55897,
+          "offer_id": 746,
+          "billing_model_id": 4,
+          "upfront_total": "588.00",
+          "cycles": 4,
+          "renewal_days": 360
+        },
+        {
+          "sku": "PT141-1M",
+          "product_id": 55898,
+          "offer_id": 747,
+          "billing_model_id": 2,
+          "upfront_total": "199.00",
+          "cycles": null,
+          "renewal_days": null
+        },
+        {
+          "sku": "PT141-1M-SUB",
+          "product_id": 55899,
+          "offer_id": 748,
+          "billing_model_id": 3,
+          "upfront_total": "199.00",
+          "cycles": null,
+          "renewal_days": 30
+        },
+        {
+          "sku": "PT141-3M",
+          "product_id": 55900,
+          "offer_id": 749,
+          "billing_model_id": 2,
+          "upfront_total": "597.00",
+          "cycles": null,
+          "renewal_days": null
+        },
+        {
+          "sku": "PT141-3M-SUB",
+          "product_id": 55901,
+          "offer_id": 750,
+          "billing_model_id": 4,
+          "upfront_total": "597.00",
+          "cycles": null,
+          "renewal_days": 90
+        },
+        {
+          "sku": "PT141-6M",
+          "product_id": 55902,
+          "offer_id": 751,
+          "billing_model_id": 4,
+          "upfront_total": "1194.00",
+          "cycles": 2,
+          "renewal_days": null
+        },
+        {
+          "sku": "PT141-6M-SUB",
+          "product_id": 55903,
+          "offer_id": 752,
+          "billing_model_id": 4,
+          "upfront_total": "1194.00",
+          "cycles": 2,
+          "renewal_days": 180
+        },
+        {
+          "sku": "PT141-12M",
+          "product_id": 55904,
+          "offer_id": 753,
+          "billing_model_id": 4,
+          "upfront_total": "2388.00",
+          "cycles": 4,
+          "renewal_days": null
+        },
+        {
+          "sku": "PT141-12M-SUB",
+          "product_id": 55905,
+          "offer_id": 754,
+          "billing_model_id": 4,
+          "upfront_total": "2388.00",
+          "cycles": 4,
+          "renewal_days": 360
+        }
+      ],
+      "real_payments": 0
+    },
+    "renewal_proof": {
+      "campaign_id": 428,
+      "gateway_id": 1,
+      "chains": [
+        {
+          "cycles": 2,
+          "interval_days": 90,
+          "renewal_days": 180,
+          "orders": [
+            {
+              "order_id": "507023",
+              "total": "20",
+              "cycle": 1,
+              "cycles": 2,
+              "recurring": "1",
+              "next_date": "2027-01-20",
+              "ancestor": "507023",
+              "gateway_id": 1,
+              "test": true
+            },
+            {
+              "order_id": "507024",
+              "total": "0",
+              "cycle": 2,
+              "cycles": 2,
+              "recurring": "1",
+              "next_date": "2027-01-20",
+              "ancestor": "507023",
+              "gateway_id": 1,
+              "test": true
+            },
+            {
+              "order_id": "507025",
+              "total": "20",
+              "cycle": 1,
+              "cycles": 2,
+              "recurring": "1",
+              "next_date": "2027-01-20",
+              "ancestor": "507023",
+              "gateway_id": 1,
+              "test": true
+            }
+          ]
+        },
+        {
+          "cycles": 4,
+          "interval_days": 90,
+          "renewal_days": 360,
+          "orders": [
+            {
+              "order_id": "507026",
+              "total": "40",
+              "cycle": 1,
+              "cycles": 4,
+              "recurring": "1",
+              "next_date": "2027-01-20",
+              "ancestor": "507026",
+              "gateway_id": 1,
+              "test": true
+            },
+            {
+              "order_id": "507027",
+              "total": "0",
+              "cycle": 2,
+              "cycles": 4,
+              "recurring": "1",
+              "next_date": "2027-01-20",
+              "ancestor": "507026",
+              "gateway_id": 1,
+              "test": true
+            },
+            {
+              "order_id": "507028",
+              "total": "0",
+              "cycle": 3,
+              "cycles": 4,
+              "recurring": "1",
+              "next_date": "2027-01-20",
+              "ancestor": "507026",
+              "gateway_id": 1,
+              "test": true
+            },
+            {
+              "order_id": "507029",
+              "total": "0",
+              "cycle": 4,
+              "cycles": 4,
+              "recurring": "1",
+              "next_date": "2027-01-20",
+              "ancestor": "507026",
+              "gateway_id": 1,
+              "test": true
+            },
+            {
+              "order_id": "507030",
+              "total": "40",
+              "cycle": 1,
+              "cycles": 4,
+              "recurring": "1",
+              "next_date": "2027-01-20",
+              "ancestor": "507026",
+              "gateway_id": 1,
+              "test": true
+            }
+          ]
+        }
+      ],
+      "real_payments": 0,
+      "physical_shipments": 0
+    }
+  },
+  "clinical_fulfillment": false,
+  "live_processor_payment_verified_by_agent": false,
+  "external_setup_blocked": []
+}

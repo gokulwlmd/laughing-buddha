@@ -14,8 +14,8 @@ from urllib.parse import urlsplit
 from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator, ValidationError
-from catalog import resolve, enabled, money
-from prepaid import cycles_for, unit_price
+from catalog import CatalogError, resolve, enabled, money
+from prepaid import renewal_for, cycles_for, unit_price
 from plans import PlanCatalog
 from sites import SiteCatalog
 from master import MasterCatalog, clone_product, model_rows, offer_models, product_contract, source_product, brand_campaigns, attach_campaign, record_campaign
@@ -237,11 +237,16 @@ class Admin(MasterCatalog,PlanCatalog,SiteCatalog):
 
     def filter_catalog(self,c,link,brand):
         c['options']=[o for o in c['options'] if o['key'] in link['options']]
+        for option in c['options']:
+            expected=next((o for o in self.records('offering') if o['brand_id']==brand['id'] and o['sku']==link['sku'] and o.get('offer_id')==option['offerId'] and o.get('product_id')==option['productId']),None)
+            if expected and (cycles_for(expected.get('configuration',{}))!=option.get('prepaidCycles') or renewal_for(expected.get('configuration',{}))!=bool(option.get('renewal'))):
+                raise CatalogError('Managed prepaid terms changed; review the offer before payment')
         if not c['options']:
             raise HTTPException(409,'No enabled offers remain available on this link')
         c['fingerprint']=fingerprint([c['fingerprint'],link,branding(brand)])
         c['branding']=branding(brand)
         c['checkoutTitle']=link['title']
+        c['paymentTestOnly']=bool(link.get('payment_test_only'))
         return c
 
     def identity(self,kind,data):
@@ -447,7 +452,7 @@ class Admin(MasterCatalog,PlanCatalog,SiteCatalog):
             with self.store.db() as db:
                 reviews=[{'id':r[0],'kind':r[1],'status':r[2],'created':r[3],'preview':json.loads(r[4]),'result':json.loads(r[5]) if r[5] else None}
                     for r in db.execute('SELECT id,kind,status,created,preview,result FROM admin_reviews ORDER BY created DESC LIMIT 30')]
-            return {'synthetic':self.cfg.synthetic,'sites':self.site_state(),'checkoutTemplates':self.template_state(),'therapySkeletons':all_skeletons(), 'skeletonDrafts':[skeleton_draft(s) for s in all_skeletons()], 'templateDrafts':self.records('template_draft'),'siteDefaults':self.get('site_defaults','default'),'therapies':self.records('therapy'),'purchaseOptions':self.records('purchase_option'),'planCheckouts':self.plan_state(),'masters':self.records('master'),'assignments':self.records('assignment'),'brands':self.records('brand'),'skus':self.records('sku'),'offers':self.records('offering'),'links':links,'reviews':reviews,'owner':self.owner()[0]}
+            return {'synthetic':self.cfg.synthetic,'sites':self.site_state(),'checkoutTemplates':self.template_state(),'therapySkeletons':all_skeletons(), 'skeletonDrafts':[skeleton_draft(s) for s in all_skeletons()], 'templateDrafts':self.records('template_draft'),'siteDefaults':self.get('site_defaults','default'),'therapies':self.records('therapy'),'purchaseOptions':self.records('purchase_option'),'planCheckouts':self.plan_state(),'masters':self.records('master'),'testCatalogActivations':[{'sku':a['sku'],'current':a.get('master_hash')==fingerprint(self.get('master',a['sku']))} for a in self.records('test_catalog_activation')],'assignments':self.records('assignment'),'brands':self.records('brand'),'skus':self.records('sku'),'offers':self.records('offering'),'links':links,'reviews':reviews,'owner':self.owner()[0]}
 
         @app.get('/api/admin/campaigns')
         def campaigns(req:Request):
@@ -609,7 +614,7 @@ class Admin(MasterCatalog,PlanCatalog,SiteCatalog):
                                     raise ValueError('Master shipping/tax product read-back did not match')
                                 if expected['kind']=='offer' and ({int(p['id']) for p in checked.get('products',[])}!={expected['product']} or offer_models(checked)!=set(expected['models'])):
                                     raise ValueError('Master offer read-back did not match')
-                                if expected['kind']=='offer' and cycles_for(checked)!=expected.get('prepaid_cycles'):raise ValueError('Prepaid terms read-back did not match')
+                                if expected['kind']=='offer' and (cycles_for(checked)!=expected.get('prepaid_cycles') or renewal_for(checked)!=expected.get('prepaid_renewal',False)):raise ValueError('Prepaid terms read-back did not match')
                                 if expected['kind']=='campaign':
                                     routes=[p.get('provider',{}) for p in checked.get('alternative_payments',[]) if p.get('payment_method')=='stripe_link']
                                     if (set(expected['offers'])!={int(o['id']) for o in checked.get('offers',[])} or
@@ -619,7 +624,7 @@ class Admin(MasterCatalog,PlanCatalog,SiteCatalog):
                                         raise ValueError('Campaign payment, offers or fulfillment read-back did not match')
                             if op['save']=='product' and (checked.get('sku')!=payload['sku'] or money(checked.get('price'))!=money(payload['price'])):
                                 raise ValueError('Product price/SKU read-back did not match')
-                            if op['save']=='offer' and cycles_for(checked)!=cycles_for(data.get('configuration',{})):raise ValueError('Prepaid terms read-back did not match')
+                            if op['save']=='offer' and (cycles_for(checked)!=cycles_for(data.get('configuration',{})) or renewal_for(checked)!=renewal_for(data.get('configuration',{}))):raise ValueError('Prepaid terms read-back did not match')
                             if op['save']=='offer' and (set(int(p['id']) for p in checked.get('products',[]))!={completed['product']} or set(int(m['id']) for m in checked.get('billing_models',[]))!=set(data['billing_models'])):
                                 raise ValueError('Offer read-back did not match')
                         elif op['method']=='PUT':

@@ -44,5 +44,5 @@ class MasterSticky(AdminSticky):
         result=super().call(method,path,body)
         if path=='/api/v1/order_view':
             line=next(b['offers'][0] for _,p,b in reversed(self.calls) if p=='/api/v1/new_order')
-            if line.get('prepaid_cycles'):result['products'][0]['prepaid']=[{'total_cycles':str(line['prepaid_cycles']),'current_cycle':'1','is_renew':'0'}]
+            if line.get('prepaid_cycles'):result['products'][0]['prepaid']=[{'total_cycles':str(line['prepaid_cycles']),'current_cycle':'1','is_renew':str(int(bool((self.offers[line['offer_id']].get('prepaid') or {}).get('is_subscription'))))}]
         return result

@@ -58,7 +58,7 @@ class QASticky(MasterSticky):
             self.orders[key]={'response_code':'100','order_status':'2','order_total':str(intent['amount']/100),
                 'campaign_id':str(body['campaignId']),'gateway_id':str(body['forceGatewayId']),
                 'products':[{'product_id':str(line['product_id']),'offer':{'id':str(line['offer_id'])},'billing_model':{'id':str(line['billing_model_id'])},'product_qty':'1','is_recurring':'0' if line['billing_model_id']==2 else '1'}]}
-            if line.get('prepaid_cycles'):self.orders[key]['products'][0]['prepaid']=[{'total_cycles':str(line['prepaid_cycles']),'current_cycle':'1','is_renew':'0'}]
+            if line.get('prepaid_cycles'):self.orders[key]['products'][0]['prepaid']=[{'total_cycles':str(line['prepaid_cycles']),'current_cycle':'1','is_renew':str(int(bool((self.offers[line['offer_id']].get('prepaid') or {}).get('is_subscription'))))}]
             intent['status']='succeeded'
             if self.flags.get('capture_timeout'):raise StickyError('Capture result is uncertain; contact support before retrying')
             return {'response_code':'101' if self.flags.get('extra_3ds') else '100','order_id':key}

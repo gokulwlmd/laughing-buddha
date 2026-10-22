@@ -129,3 +129,8 @@ The selected combinations survive saving, reopening and campaign assignment, and
 Combined purchase choices are deployed. All 26 affected desktop/mobile browser scenarios passed; container, hosted asset and saved-state checks passed. See [targeted QA](../../docs/COMBINED_PURCHASE_OPTIONS_QA.md). No live pricing, catalog or order changes were made.
 
 Category dropdown is deployed and verified with 12 affected category/master browser scenarios, container checks and hosted asset/state checks. See [category QA](../../docs/CATEGORY_DROPDOWN_QA.md).
+
+
+## Master Therapy Payment Test — 22 October 2026
+
+On the existing live app, Sites → Master Therapy Payment Test has four private therapy previews and all forty requested SKU choices on campaign 422. These are live-charge payment tests with non-shippable products; each checkout displays that no medication is shipped. The owner supplies their card and submits charges. Native prepaid renewal is supported for the verified simple two/four-cycle test configuration, preserving full upfront pricing and 180/360-day renewal. The earlier historical renewal limitations above are superseded for that configuration only; physical/taxable prepaid release, discounts and conversion remain unsupported. See [the applied setup and evidence](../../docs/MASTER_THERAPY_LIVE_TESTS.md).
