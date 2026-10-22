@@ -88,7 +88,7 @@ test('PAY-07 price change requires a fresh reviewed total',async({ownerPage:page
 });
 
 test('PAY-08 uncertain capture stays held after refresh and is never repeated',async({ownerPage:page,app})=>{
- await prepare(page);await checkout(page,app);await authorize(page);await control(page,app,{capture_timeout:true});await page.locator('#pay').click();await expect(page.locator('#message')).toContainText('uncertain');await page.reload();await expect(page.locator('#message')).toContainText('status needs review');await expect(page.locator('#new-purchase')).toBeHidden();const s=await stats(page,app);expect(s.counts.new_order).toBe(1);expect(s.orderCount).toBe(1);
+ await prepare(page);await checkout(page,app);await authorize(page);await control(page,app,{capture_timeout:true});await page.locator('#pay').click();await expect(page.locator('#message')).toContainText('uncertain');await page.reload();await expect(page.locator('#payment-hold')).toBeVisible();await expect(page.locator('#hold-description')).toContainText('earlier payment');await page.locator('#check-payment-status').click();await expect(page.locator('#hold-help')).toContainText('still unconfirmed');await expect(page.locator('#new-purchase')).toBeHidden();const s=await stats(page,app);expect(s.counts.new_order).toBe(1);expect(s.orderCount).toBe(1);
 });
 
 test('LINK-01 private invitation is scoped and revocation is visible',async({ownerPage:page,app})=>{

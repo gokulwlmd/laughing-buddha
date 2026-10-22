@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-22",
+  "app": "wlmd-stripe-test-0f89b1bb",
+  "source_base": "58d8616bde2c67785a32a9761ba57f313b7402ad",
+  "flow": [
+    "medication",
+    "plan length and upfront price",
+    "one-time or subscription"
+  ],
+  "proof": {
+    "app": "wlmd-stripe-test-0f89b1bb",
+    "applied": true,
+    "worker_unchanged": true,
+    "database_unchanged": true,
+    "asset_hashes": {
+      "checkout-v3.css": "a40fded108f7544f8c86bcd4376d5b24135a495c80b4380ca4aef097b098988b",
+      "plan-selector-v3.css": "e82a9e8fcaa233b4ecccb04a5ae1a19cf85d72c0d38a485dff99d8ce36cb208b",
+      "checkout-v3.js": "e61b4384237d06ef5b6783e9b2a92617c7104209027e38efe33497043c78fa1e",
+      "plan-selector-v3.js": "225b8c864abd9ca0ee176b8f012b57aa665db3d144a6455e051fe66b05f7626a",
+      "index.html": "3226626b730bdcf0d9e8625bd50ed55efb4505ed1c19e17635316a982decef0d",
+      "plans.html": "b7bf1156a283f36c9d0e499a6f20d7e94c76292c59ca3fe52e552e399b2dffd6"
+    },
+    "legacy_assets_preserved": true,
+    "payment_requests_submitted": 0
+  },
+  "public_asset_hashes_verified": true,
+  "health_verified": true,
+  "browser_scenarios_verified": 14,
+  "browser_validation": "Six targeted flow/status scenarios passed. Seven of eight payment regressions passed on the first run; the uncertain-capture copy assertion was changed to the new status panel, with duplicate-order assertions retained and a repeated read-only status check added, and passed on rerun.",
+  "pending_authorization": {
+    "status": "authorization_pending",
+    "has_stored_intent": false,
+    "has_stored_order": false,
+    "reconciled": false,
+    "replacement_or_retry_submitted": false
+  },
+  "remaining_blocker": "Authoritative lookup of the original Sticky authorization result; application records and available sanitized logs do not establish that result.",
+  "performance_limits": "Medication/plan/payment selection renders locally. Stripe.js loads at review/payment. Initial campaign catalog verification and selected child validation still wait on upstream reads. No claim of measured end-to-end speedup.",
+  "image_for_next_safe_container_deploy": "registry.fly.io/wlmd-stripe-test-0f89b1bb@sha256:63375b369b4896b1a663bb4c6077de759404e074063a9fbde27941c49b4337a4",
+  "running_image_replaced": false
+}

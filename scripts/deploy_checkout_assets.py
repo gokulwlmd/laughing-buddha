@@ -13,8 +13,8 @@ import shlex
 import subprocess
 
 APP='wlmd-stripe-test-0f89b1bb'
-BASE='5dd10994038778261c7feffdab4907c8a127463a'
-ASSETS=['checkout-v2.css','plan-selector-v2.css','checkout-v2.js','plan-selector-v2.js','index.html','plans.html']
+BASE='58d8616bde2c67785a32a9761ba57f313b7402ad'
+ASSETS=['checkout-v3.css','plan-selector-v3.css','checkout-v3.js','plan-selector-v3.js','index.html','plans.html']
 ROOT=Path(__file__).resolve().parents[1]
 
 
@@ -28,7 +28,7 @@ def main():
     code="""import base64,json,hashlib,os,sqlite3,tempfile
 from pathlib import Path
 payload=json.loads(base64.b64decode(__BUNDLE__))
-root=Path('/app/web');backup=Path('/data/ui-backups/customer-checkout-v2-20261022')
+root=Path('/app/web');backup=Path('/data/ui-backups/customer-checkout-v3-20261022')
 def digest(data):return hashlib.sha256(data).hexdigest()
 def processes():
  result={}

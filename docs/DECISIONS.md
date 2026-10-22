@@ -90,3 +90,8 @@ Use a customer-facing plan → treatment → payment-preference flow with clear 
 Use the reference's clear layout without inventing savings, included clinical services, outcomes or cancellation benefits. Preserve the explicit real-charge/no-medication notice for live payment-test checkouts. No change to prices, recurring consent, payment processing, clinical rules or access permissions follows from the design.
 
 For this release, publish versioned static files and atomically update HTML without restarting the worker because a customer authorization is open. Retain legacy assets for already-open pages. Store the matching immutable image for the next safe container deployment, with ordinary preflight/reconciliation required before a restart.
+
+
+## Medication before price; explicit payment preference
+
+On 22 October 2026 the owner requested Medication → plan length/pricing → one-time or subscription, with immediate local selection changes. Only the selected medication's prices appear; changing medication clears duration/payment. Defer Stripe.js until review/payment. Preserve live server validation, full upfront totals, exact renewal intervals and explicit recurring consent. Do not clear an uncertain payment to improve checkout speed: display status/help immediately and require authoritative reconciliation before a new attempt. Use v3 assets while retaining v2 for open pages.
