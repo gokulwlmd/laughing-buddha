@@ -1,0 +1,28 @@
+app = "wlmd-site-api-demo-0f89b1bb"
+primary_region = "iad"
+[build]
+  dockerfile = "demo/Dockerfile"
+[env]
+  DEMO_PUBLIC_ORIGIN = "https://wlmd-site-api-demo-0f89b1bb.fly.dev"
+  DEMO_SESSION_STATE_DIR = "/data"
+  SITE_API_ALLOWED_ORIGINS = "*"
+  CHECKOUT_UPSTREAM_ORIGIN = "https://wlmd-stripe-test-0f89b1bb.fly.dev"
+[[mounts]]
+  source = "site_api_sessions"
+  destination = "/data"
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "256mb"

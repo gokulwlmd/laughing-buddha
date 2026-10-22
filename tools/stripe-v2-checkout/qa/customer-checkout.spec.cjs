@@ -1,0 +1,70 @@
+const {test,expect,nav,brand,sku,link,checkout,control,stats}=require('./fixtures.cjs');
+async function save(page,kind,data){return page.evaluate(async({kind,data})=>{const auth=await(await fetch('/api/admin/auth')).json(),headers={'Content-Type':'application/json','X-CSRF-Token':auth.csrfToken};const review=await fetch('/api/admin/reviews',{method:'POST',headers,body:JSON.stringify({kind,data})});const r=await review.json();if(!review.ok)throw Error(JSON.stringify(r));const applied=await fetch('/api/admin/apply',{method:'POST',headers,body:JSON.stringify({review_id:r.id,approve:true})});if(!applied.ok)throw Error(JSON.stringify(await applied.json()));return applied.json();},{kind,data});}
+test('CUS-01 distinct one-time and SUB SKUs share one treatment card and retain exact payment mapping',async({ownerPage:page,app})=>{
+ await brand(page);
+ await save(page,'therapy',{id:'weight-loss',name:'Weight Loss',enabled:true,treatments:[{id:'sema',name:'Semaglutide'},{id:'tirz',name:'Tirzepatide'}]});
+ const skus=[];for(const[prefix,treatment,name,price]of [['SEMA','sema','Semaglutide','1494.00'],['TIRZ','tirz','Tirzepatide','2694.00']])for(const renewal of[false,true]){const sku=prefix+'-6M'+(renewal?'-SUB':'');skus.push(sku);await save(page,'master',{sku,name:'WLMD payment test / '+name+' / 6 months / '+(renewal?'Subscription':'One-time'),therapy_id:'weight-loss',treatment_id:treatment,product_duration_months:6,fulfillment_product_id:55098,currency:'USD',offers:[{id:'upfront',name:'Full-term upfront',price,billing_models:[4],prepaid_cycles:2,...(renewal?{prepaid_renewal:true}:{})}]});}
+ await save(page,'provision',{brand_id:'qa-brand',campaign_id:422,skus});await save(page,'purchase_option',{id:'six-month-plan',name:'6-month plan',therapy_id:'weight-loss',duration_months:6,skus,payment_types:['prepaid']});
+ await save(page,'plan_checkout',{id:'customer-six-month',brand_id:'qa-brand',campaign_id:422,therapy_id:'weight-loss',title:'Choose your weight loss plan',purchase_option_ids:['six-month-plan'],visibility:'public',enabled:true});
+ await page.goto(app.origin+'/plans/customer-six-month');await expect(page.locator('#treatments button')).toHaveCount(2);await expect(page.locator('#duration-step')).toBeVisible();await expect(page.locator('#payment-step')).toBeHidden();
+ await page.locator('#treatments').getByRole('button',{name:'Semaglutide',exact:true}).click();await expect(page.locator('#durations [data-duration="6"]')).toContainText('$1,494.00');await expect(page.locator('#durations')).not.toContainText('$2,694.00');
+ await page.locator('#durations [data-duration="6"]').click();await expect(page.locator('#payments button')).toHaveCount(2);
+ await page.locator('#payments').getByRole('button',{name:/Subscription/}).click();await expect(page.locator('#selection-details')).toContainText('180 days');await page.locator('#plan-continue').click();
+ await expect(page.locator('#contact')).toBeVisible();await expect(page.locator('#product')).toHaveText('Semaglutide');await expect(page.locator('#plan-description')).toHaveText('6-month plan');await expect(page.locator('#total')).toContainText('1,494.00');await expect(page.locator('#payment-choice')).toBeHidden();await expect(page.locator('#sku')).toBeHidden();
+ const body=await page.locator('body').innerText();expect(body).not.toMatch(/SEMA-6M|Full-term upfront|shipment orders|synthetic test product/i);
+ const key=new URL(page.url()).pathname.split('/').pop();const cfg=await(await page.request.get(app.origin+'/api/config?link_id='+key)).json();expect(cfg.sku).toBe('SEMA-6M-SUB');expect(cfg.options[0].renewalDays).toBe(180);
+ await page.screenshot({path:test.info().outputPath('customer-checkout-desktop.png'),fullPage:true});await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);await page.locator('#summary-toggle').click();await expect(page.locator('#summary-terms')).toBeVisible();await page.locator('#summary-toggle').click();await expect(page.locator('#summary-terms')).toBeHidden();await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));await page.screenshot({path:test.info().outputPath('customer-checkout-mobile.png')});
+ await page.goto(app.origin+'/plans/customer-six-month');await page.locator('#treatments').getByRole('button',{name:'Semaglutide',exact:true}).click();await page.locator('#durations [data-duration="6"]').click();await page.locator('#payments').getByRole('button',{name:/One-time purchase/}).click();await page.screenshot({path:test.info().outputPath('customer-plan-mobile.png'),fullPage:true});await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:test.info().outputPath('customer-plan-desktop.png'),fullPage:true});
+ await page.locator('#treatments').getByRole('button',{name:'Tirzepatide',exact:true}).click();await expect(page.locator('#payment-step')).toBeHidden();await expect(page.locator('#plan-continue')).toBeHidden();await expect(page.locator('#durations')).toContainText('$2,694.00');await expect(page.locator('#durations')).not.toContainText('$1,494.00');await page.locator('#treatments').getByRole('button',{name:'Semaglutide',exact:true}).click();await page.locator('#durations [data-duration="6"]').click();await page.locator('#payments').getByRole('button',{name:/One-time purchase/}).click();await page.locator('#plan-continue').click();const onceKey=new URL(page.url()).pathname.split('/').pop();const once=await(await page.request.get(app.origin+'/api/config?link_id='+onceKey)).json();expect(once.sku).toBe('SEMA-6M');expect(once.options[0].renewal).toBe(false);
+});
+
+test('CUS-02 uncertain authorization shows immediate status help and never submits another payment',async({ownerPage:page,app})=>{
+ await brand(page);await sku(page);await link(page);await checkout(page,app);await control(page,app,{authorize_timeout:true});await page.locator('#authorize').click();await expect(page.locator('#payment-hold')).toBeVisible();
+ const before=(await stats(page,app)).counts;await page.reload();await expect(page.locator('#payment-hold')).toBeVisible();await expect(page.locator('#hold-description')).toContainText('contact the store');await expect(page.locator('#contact')).toBeHidden();await expect(page.locator('#payment')).toBeHidden();await expect(page.locator('#new-purchase')).toBeHidden();
+ await page.locator('#check-payment-status').click();await expect(page.locator('#hold-help')).toContainText('still unconfirmed');expect((await stats(page,app)).counts).toEqual(before);expect(before.authorize_payment).toBe(1);expect(before.new_order).toBe(0);await page.screenshot({path:test.info().outputPath('payment-status-help.png'),fullPage:true});
+});
+
+test('CUS-03 the original Payment Element confirms the Sticky-owned intent and captures exactly once',async({ownerPage:page,app})=>{
+ await brand(page);await sku(page);await link(page);await checkout(page,app);
+ let paymentCalls=0;page.on('request',r=>{if(/\/api\/(authorize|capture)\?/.test(r.url()))paymentCalls++;});
+ await page.locator('#authorize').click();await expect(page.locator('#payment')).toBeVisible();await expect(page.locator('#pay')).toBeEnabled();expect(paymentCalls).toBe(1);expect((await stats(page,app)).counts.authorize_payment).toBe(1);
+ expect(await page.evaluate(()=>window.__qaElementTypes)).toContain('payment');expect(await page.evaluate(()=>window.__qaElementTypes)).not.toContain('card');
+ await page.locator('#pay').evaluate(b=>{b.click();b.click();});await expect(page.locator('#success')).toBeVisible();const state=await stats(page,app);expect(state.counts.authorize_payment).toBe(1);expect(state.counts.new_order).toBe(1);
+});
+
+test('CUS-04 a fresh shared-link visit works while the previous visit remains held',async({ownerPage:page,app})=>{
+ await brand(page);await sku(page);await link(page);await checkout(page,app);await control(page,app,{authorize_timeout:true});await page.locator('#authorize').click();await expect(page.locator('#payment-hold')).toBeVisible();const old=await page.evaluate(()=>attemptId);
+ await page.reload();await expect(page.locator('#payment-hold')).toBeVisible();expect(await page.evaluate(()=>attemptId)).toBe(old);
+ await page.goto(app.origin+'/c/qa-link');await expect(page.locator('#contact')).toBeVisible();const fresh=await page.evaluate(()=>attemptId);expect(fresh).not.toBe(old);await page.reload();await expect(page.locator('#contact')).toBeVisible();expect(await page.evaluate(()=>attemptId)).toBe(fresh);
+ const previous=await(await page.request.get(app.origin+'/api/status?link_id=qa-link',{headers:{'X-Checkout-Attempt':old}})).json();expect(previous.status).toBe('authorization_pending');expect((await stats(page,app)).counts.authorize_payment).toBe(1);expect((await stats(page,app)).counts.new_order).toBe(0);
+});
+
+test('CUS-05 incomplete payment details never confirm or capture the prepared intent',async({ownerPage:page,app})=>{
+ await brand(page);await sku(page);await link(page);await checkout(page,app);await page.evaluate(()=>window.__qaIncompletePayment=true);await page.locator('#authorize').click();await page.locator('#pay').click();await expect(page.locator('#message')).toContainText('complete payment details');expect((await stats(page,app)).counts.authorize_payment).toBe(1);expect((await stats(page,app)).counts.new_order).toBe(0);
+});
+
+
+test('CUS-06 all US states are selectable and only state codes reach Sticky',async({ownerPage:page,app})=>{
+ await brand(page);await sku(page);await link(page);await checkout(page,app);await page.locator('#edit').click();
+ await expect(page.locator('#state option')).toHaveCount(60);await expect(page.locator('#state option[value=AK]')).toHaveText('Alaska');await expect(page.locator('#state option[value=HI]')).toHaveText('Hawaii');await expect(page.locator('#state option[value=DC]')).toHaveText('District of Columbia');
+ let posted;page.on('request',r=>{if(r.url().includes('/api/quote?'))posted=r.postDataJSON();});
+ await page.locator('#state').selectOption({label:'California'});await page.locator('#contact button').click();await expect(page.locator('#review')).toBeVisible();expect(posted.contact.region).toBe('CA');
+ await page.locator('#edit').click();await page.locator('#state').selectOption({label:'New York'});await page.locator('#contact button').click();await expect(page.locator('#review')).toBeVisible();expect(posted.contact.region).toBe('NY');
+ await page.locator('#authorize').click();await expect(page.locator('#payment')).toBeVisible();const state=await stats(page,app);expect(state.counts.authorize_payment).toBe(1);expect(state.authorizationStates).toEqual([['NY','NY']]);
+});
+
+test('CUS-07 customers can type during slow catalog reads but cannot submit until validated',async({ownerPage:page,app})=>{
+ await brand(page);await sku(page);await link(page);
+ let release;const gate=new Promise(resolve=>release=resolve);let loaded;
+ const catalogStarted=new Promise(resolve=>loaded=resolve);
+ await page.route('**/api/config?**',async route=>{loaded();await gate;await route.continue();});
+ const before=(await stats(page,app)).counts;
+ await page.goto(app.origin+'/c/qa-link');await catalogStarted;
+ await expect(page.locator('#contact')).toBeVisible();await expect(page.locator('#contact button')).toBeDisabled();
+ await page.locator('[name=name]').fill('Early Customer');await page.locator('[name=email]').fill('early@example.test');
+ await page.locator('[name=email]').press('Enter');
+ expect((await stats(page,app)).counts).toEqual(before);await expect(page.locator('#country')).toBeDisabled();
+ release();await expect(page.locator('#contact button')).toBeEnabled();await expect(page.locator('#country')).toBeEnabled();
+ await expect(page.locator('[name=name]')).toHaveValue('Early Customer');await expect(page.locator('[name=email]')).toHaveValue('early@example.test');
+ expect((await stats(page,app)).counts).toEqual(before);
+});

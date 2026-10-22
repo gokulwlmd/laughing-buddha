@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-23",
+  "version": "checkout-v4 / plan-selector-v4",
+  "reference": "https://checkout.vigmd.com/wl_checkout/?product=semaglutide",
+  "delivery": "versioned static overlay; original live worker and database preserved",
+  "proof": {
+    "app": "wlmd-stripe-test-0f89b1bb",
+    "applied": true,
+    "worker_unchanged": true,
+    "database_unchanged": true,
+    "asset_hashes": {
+      "red-hat-display-latin-v1.woff2": "39d2ddd13759cf61a3342d25f1f342d220e379f0e157bd963ee9cd5dd461d718",
+      "red-hat-display-OFL.txt": "435fbfb7e66988b2a06686a4cb966faec733f35d8fe100a1601573c27f3e0bb8",
+      "checkout-font-v1.css": "6a255913608d1fb50618297853fce358480b58eef6ca627bb5efc4ebdb79b29b",
+      "brand-design-v2.js": "db32721909ea4b734f737f26649f72c8d83eb8827b3b493a7108d95632c8f96d",
+      "checkout-v4.css": "0c2e2be659d8707d87e07c4e17785d7fdc1a87d872e52db1d4d144642b8613fe",
+      "plan-selector-v4.css": "dd2d0c37c2b008798d0997dec676f6df3cb9787ddb42c8f89c91606979706c86",
+      "checkout-v9.js": "83f79e2dfb366950b8eca87be65f7a478e044cea174aad8d2f7b4ec6f27c2ab6",
+      "plan-selector-v4.js": "d20b9e7ca654cf5d5600c89de73bbe8f7fa8fa5dfc2079edfcade9371607034f",
+      "index.html": "befd058c031c8280f26a350ac6913db55fc83c0bb5ce803c5a30720d7c3a9b54",
+      "plans.html": "0b245bcbef7a0fd8d8191bab1a086fdc71855630b1a9543f77c634ff973f5903"
+    },
+    "legacy_assets_preserved": true,
+    "payment_requests_submitted": 0
+  },
+  "validation": {
+    "local_browser_cases": 15,
+    "local_synthetic_services": true,
+    "javascript_syntax": "passed",
+    "hosted_visual_smoke": {
+      "ok": true,
+      "viewports": [
+        1440,
+        390
+      ],
+      "screenshots": 4,
+      "new_design_assets": true,
+      "self_hosted_font": true,
+      "horizontal_overflow": false,
+      "blank_checkout_visits": 1,
+      "financial_requests": 0,
+      "unexpected_writes": 0
+    }
+  },
+  "limits": [
+    "Visual and plan-selection update; existing checkout-v9 payment behavior and API service unchanged.",
+    "Hosted checks open one fresh blank visit; no customer details, quote, authorization, confirmation, capture or order submission.",
+    "The live backend image and earlier pending site-setup deployment are unchanged."
+  ]
+}

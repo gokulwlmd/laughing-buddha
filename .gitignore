@@ -8,6 +8,9 @@ __pycache__/
 *.sqlite3-*
 *.log
 .DS_Store
+.tools/
+test-results/
+playwright-report/
 tools/stripe-v2-checkout/.state/
 tools/stripe-v2-checkout/qa/node_modules/
 tools/stripe-v2-checkout/qa/results/

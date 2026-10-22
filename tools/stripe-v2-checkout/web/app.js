@@ -61,7 +61,7 @@ async function confirm() {
 }
 function termsFor(q) {
   const total = money(q.amount, q.currency);
-  if(q.option.prepaidCycles)return `One payment of ${total} covers ${q.option.prepaidCycles} shipment orders, every ${q.option.days} days (${q.option.prepaidCycles*q.option.days}-day plan). The first shipment is included. No automatic renewal or additional product payments. This is a synthetic test product; no medication is shipped.`;
+  if(q.option.prepaidCycles)return `One payment of ${total} covers ${q.option.prepaidCycles} shipment orders, every ${q.option.days} days (${q.option.prepaidCycles*q.option.days}-day plan). The first shipment is included. ${q.option.renewal?`The full ${total} renews automatically every ${q.option.renewalDays} days. No additional product charge for the included intermediate shipments.`:'No automatic renewal or additional product payments.'} This is a synthetic test product; no medication is shipped.`;
   return q.option.recurring
     ? `Today: ${total}. This subscription bills automatically every ${q.option.days} days under the selected offer. Future charges follow its configured pricing and applicable taxes and shipping.`
     : `You authorize one payment of ${total}.`;
@@ -108,10 +108,11 @@ async function initialize() {
       return;
     }
     if (status.status !== 'new') throw new Error('A payment attempt is already open. Its status needs review before another payment.');
+    $('payment-test-notice').hidden=!config.paymentTestOnly;
     const select = $('selection');
     for (const option of config.options) {
       const el = document.createElement('option'); el.value = option.key;
-      el.textContent = `${option.prepaidCycles?'Pay upfront · '+option.prepaidCycles+' shipments every '+option.days+' days · No renewal:':option.offerName} ${option.prepaidCycles?money(Number(option.upfrontPrice)*100,config.currency):'· '+option.modelName}${option.blockedReason ? ' (unavailable)' : ''}`;
+      el.textContent = `${option.prepaidCycles?'Pay upfront · '+option.prepaidCycles+' shipments every '+option.days+' days · '+(option.renewal?'Renews every '+option.renewalDays+' days:':'No renewal:'):option.offerName} ${option.prepaidCycles?money(Number(option.upfrontPrice)*100,config.currency):'· '+option.modelName}${option.blockedReason ? ' (unavailable)' : ''}`;
       el.disabled = !!option.blockedReason;
       select.append(el);
     }

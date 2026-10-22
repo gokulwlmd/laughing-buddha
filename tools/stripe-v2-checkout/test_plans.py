@@ -107,4 +107,32 @@ class PlanTests(unittest.TestCase):
         for product in self.fake.products.values():product['archived_flag']=1
         r=c.get('/api/plans/weight-loss-plans');self.assertEqual(r.status_code,200);self.assertTrue(all(not e['available'] for e in r.json()['entries']))
 
+
+    def test_shared_public_api_child_needs_no_prior_invitation_and_keeps_old_attempts(self):
+        self.seed();self.plan['visibility']='private';self.save('plan_checkout',self.plan)
+        admin=self.app.state.admin;entry=self.plan['entries'][0]
+        old_id=choice_id(self.plan['id'],entry['sku'])
+        original=copy.deepcopy(admin.get('link',old_id))
+        held=self.app.state.store.create(422,entry['sku'],link_id=old_id)
+        self.app.state.store.claim('new','awaiting_card',held)
+        new_plan=copy.deepcopy(admin.get('plan_checkout',self.plan['id']))
+        new_plan.update(id='public-api-copy',visibility='public',revision=1)
+        new_id=choice_id(new_plan['id'],entry['sku'])
+        public_child=original|{'id':new_id,'plan_checkout_id':new_plan['id'],'visibility':'public','revision':1}
+        admin.put('plan_checkout',new_plan['id'],new_plan)
+        admin.put('link',new_id,public_child)
+        for _ in range(2):
+            with self.customer() as customer:
+                self.assertEqual(customer.get('/c/'+old_id).status_code,401)
+                self.assertEqual(customer.get('/c/'+new_id,params={'selection':entry['options'][0]}).status_code,200)
+                self.assertFalse(any(c.name.startswith('link_access_') for c in customer.cookies.jar))
+                response=customer.get('/api/config',params={'link_id':new_id})
+                self.assertEqual(response.status_code,200,response.text)
+                self.assertEqual(response.json()['sku'],entry['sku'])
+        self.assertEqual(admin.get('link',old_id),original)
+        self.assertEqual(self.app.state.store.read(held)['status'],'awaiting_card')
+        admin.put('plan_checkout',new_plan['id'],new_plan|{'enabled':False})
+        self.assertEqual(self.customer().get('/c/'+new_id).status_code,404)
+        self.assertEqual(self.fake.count('/authorize_payment'),0)
+
 if __name__=='__main__':unittest.main()

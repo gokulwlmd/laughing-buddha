@@ -1,0 +1,48 @@
+{
+  "app": "wlmd-stripe-test-0f89b1bb",
+  "machine": "84e117f290dd38",
+  "volume": "vol_40o3gdk37mo7zy24",
+  "date": "2026-10-22",
+  "admin_url": "https://wlmd-stripe-test-0f89b1bb.fly.dev/admin",
+  "image": "registry.fly.io/wlmd-stripe-test-0f89b1bb@sha256:14f5a23009bf3efe58e08f3cafdd1dac3763fd93e8eef30351c629fb6c644cc9",
+  "backend_tests": 176,
+  "affected_browser_tests": 24,
+  "health": {
+    "status": "running",
+    "public_url_configured": true,
+    "authorization_contract_verified": true,
+    "synthetic": false,
+    "payments_blocked": false
+  },
+  "catalog_promotion": {
+    "already_imported": false,
+    "master_skus": 39,
+    "created_records": 101,
+    "sticky_writes": 0,
+    "payment_writes": 0,
+    "preserved_existing_skus": [
+      "TIRZ-1M"
+    ],
+    "catalog_activation": "Drafts only; existing offers and payment records unchanged"
+  },
+  "verification": {
+    "existing_rows_preserved": true,
+    "catalog_skus_present": 40,
+    "new_master_drafts": 39,
+    "existing_tirz_preserved": true,
+    "new_duration_plans": 16,
+    "new_template_drafts": 4,
+    "import_idempotent": true,
+    "runtime_hashes": {
+      "master.py": "cb99c288a71060328f34bbcc28cf0e921516e9faf082ddd449a09855954f1d2d",
+      "therapy_skeletons.py": "eaf87298e15d0fca1d0a65456cd3ae2612c9cb23e2fd592d35cc15e3247d3df3",
+      "import_master_therapies.py": "540633e8acdf8ae807f35e0fc41697722138d95f2baa6c6f5e8b97e18f0e856d",
+      "web/master.js": "b4b6855baf478b2eac4bb107a1550e8facb62a2023d0b279c3ef8313ec40ff46",
+      "web/sites-admin.js": "30aad7303201d4096d5bec1dcde47e8ae209a54f706b83793dea59b7926c2ecf"
+    }
+  },
+  "sticky_writes": 0,
+  "new_payments": 0,
+  "catalog_activation": "39 new planning drafts; existing TIRZ-1M preserved; new campaign offers and payment eligibility not activated",
+  "workspace_decision": "Owner requested continuing on existing live app; synthetic staging optional"
+}

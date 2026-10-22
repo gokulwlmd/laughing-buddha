@@ -4,6 +4,16 @@ Admin URL: `https://wlmd-stripe-test-0f89b1bb.fly.dev/admin`.
 
 The brand design/multiple-campaign update is deployed and verified. The image and test evidence are recorded in `deployment.json`.
 
+## Sites and Checkout Templates
+
+Start in **Checkout Templates** to create a complete therapy checkout. Choose a therapy or create one inline, add duration plans, select matching products by name, and choose payment types. The customer preview shows selected products and catalog prices. Missing products appear beside the plan; Save draft preserves unfinished work without including it in site setup or changing a published template. Shared catalog product creation and detailed billing remain under Advanced.
+
+In **Sites → Add a site**, enter its name, logo, color and support email, then continue to the included checkouts. All enabled, valid templates are included automatically. Choose a payment setup for the first site; an approved setup can be reused for future sites with independent campaign prices. Existing branding and campaign connections remain optional settings. One review prepares the brand, campaign catalog and checkouts.
+
+The site dashboard opens after approval. Ready to preview means the link is private. Publish opens the checkout settings for an explicit publication review; Copy public link appears afterward. Paused and Needs attention are separate states. Synthetic staging labels public checkouts as test mode and always blocks payments. Template changes require reviewed site updates; saved site customizations, independent prices, subscriptions and stable URL paths are preserved.
+
+See [the current handoff](../../docs/PROJECT_HANDOFF.md), [decision record](../../docs/DECISIONS.md) and [local/staging setup](../../docs/COLLABORATION.md). The historical release notes below describe prior deployments; the new implementation is not automatically deployed to the live app.
+
 ## First owner setup
 
 The app creates `/data/admin-setup-token` with mode 0600. It is separate from the checkout invitation and is excluded from the image/source. An authorized operator can retrieve the owner setup URL privately through Fly machine exec: `/admin?setup=TOKEN`. Deliver it only to the owner; do not put its token in documentation, logs, screenshots, deployment metadata or startup instructions.
@@ -47,7 +57,7 @@ See [the first master entry and workflow](../../docs/master-sku-setup.md) and [t
 
 ## Everyday workflow
 
-The primary navigation is **Brands → Master SKUs → Campaigns → Checkout links**. Offer pricing, source SKU mappings, diagnostics and change history remain under Advanced settings.
+For the existing detailed workflow, open **Advanced settings → Brands → Master SKUs → Campaigns → All checkout links**. Offer pricing, source SKU mappings, diagnostics and change history remain under Advanced settings.
 
 1. **Brands**: create a brand and preview its logo, colors, font and layout. Support details and a pending custom domain are optional. Review and save. Manage campaigns and Checkout links shortcuts select that brand in the next form.
 2. **Master SKUs**: enter the SKU, display name, default price and billing options, then review and save. An existing Sticky product ID is optional. New SKU fulfillment defaults come from the reviewed template (initially product 2856); this step saves local configuration only.
@@ -119,3 +129,8 @@ The selected combinations survive saving, reopening and campaign assignment, and
 Combined purchase choices are deployed. All 26 affected desktop/mobile browser scenarios passed; container, hosted asset and saved-state checks passed. See [targeted QA](../../docs/COMBINED_PURCHASE_OPTIONS_QA.md). No live pricing, catalog or order changes were made.
 
 Category dropdown is deployed and verified with 12 affected category/master browser scenarios, container checks and hosted asset/state checks. See [category QA](../../docs/CATEGORY_DROPDOWN_QA.md).
+
+
+## Master Therapy Payment Test — 22 October 2026
+
+On the existing live app, Sites → Master Therapy Payment Test has four private therapy previews and all forty requested SKU choices on campaign 422. These are live-charge payment tests with non-shippable products; each checkout displays that no medication is shipped. The owner supplies their card and submits charges. Native prepaid renewal is supported for the verified simple two/four-cycle test configuration, preserving full upfront pricing and 180/360-day renewal. The earlier historical renewal limitations above are superseded for that configuration only; physical/taxable prepaid release, discounts and conversion remain unsupported. See [the applied setup and evidence](../../docs/MASTER_THERAPY_LIVE_TESTS.md).

@@ -1,0 +1,79 @@
+{
+  "app": "wlmd-site-api-demo-0f89b1bb",
+  "url": "https://wlmd-site-api-demo-0f89b1bb.fly.dev",
+  "machine": "8d96521b7d9768",
+  "image": "registry.fly.io/wlmd-site-api-demo-0f89b1bb@sha256:bd56d0c6d26fbd5de18eb17772ce66d2ba541479c07982338264cc785be76db0",
+  "mode": "on-page site payment API with legacy redirect compatibility",
+  "processor_credentials_copied": false,
+  "publication": {
+    "id": "site-api-public-weight-loss",
+    "published_records": 17,
+    "plans": 16,
+    "processor_writes": 0,
+    "all_existing_configuration_preserved": true
+  },
+  "verification": {
+    "full_backend_tests_passed": 255,
+    "targeted_demo_tests_passed": 32,
+    "hosted_frontend_and_fresh_contact_form": true,
+    "financial_api_calls": 0,
+    "original_live_worker_restarted": false,
+    "targeted_demo_and_plan_backend_cases": 27,
+    "cookie_free_server_resolution": true,
+    "independent_clean_browsers": 2,
+    "wildcard_cors": true,
+    "cookie_credentials": false,
+    "bearer_required": true,
+    "session_survives_deployment": true,
+    "session_status": "new",
+    "amount": 24900,
+    "openapi_paths": 9,
+    "financial_calls": 0
+  },
+  "runtime_file_sha256": {
+    "demo/public.py": "5a8363a970c8370a68e719d9489ce5b37d3cf91d933fd762f65040110b4b6d63",
+    "demo/session_api.py": "c6501ced8d92554e3b6f4617ab64bdf2d5c1ac598492d60962e62cee6e149166",
+    "demo/entrypoint.py": "707e030dfae726657929aa797d9eda931993cab249790d3507307bda39638819",
+    "demo/publish.py": "34a4d5c30f993799c0d22e01dac6736ebf51588c0455e9444e4199f3ed26dd54",
+    "demo/web/frontend.js": "41fb32e748165e6e1c3d119bef978586dd1479a51afc3f6fcbf0053266d7f13a",
+    "demo/Dockerfile": "583425674431cb3d3bb914828b1399691aaaa0faa6b54b6528e0a288635d7f4e",
+    "demo/Dockerfile.dockerignore": "b9e6b3039d0e927c1cfce9bbc5d59ffe20ac44db3c69d32a772e426473ebd0e6",
+    "fly-demo.toml": "db375559e2f65cd5aab1a8ec375b3b63a242c20ac54de2a7dad609b423d7ceaf"
+  },
+  "catalog_refresh": {
+    "fresh_seconds": 60,
+    "maximum_display_age_seconds": 120,
+    "background_single_flight": true,
+    "payment_checks_cached": false
+  },
+  "legacy_publication": {
+    "id": "site-api-demo-weight-loss",
+    "published_records": 17,
+    "plans": 16,
+    "processor_writes": 0,
+    "all_existing_configuration_preserved": true
+  },
+  "routing": "dedicated public parent and public children; no invitation cookie dependency",
+  "volume": {
+    "id": "vol_42kd0738ql56pj74",
+    "name": "site_api_sessions",
+    "mount": "/data",
+    "size_gb": 1,
+    "encrypted": true
+  },
+  "cors": {
+    "allowed_origins": [
+      "*"
+    ],
+    "owner_authorized": true,
+    "session_bearer_required": true,
+    "allow_cookie_credentials": false
+  },
+  "limits": [
+    "Only payment-test site is currently published.",
+    "Sticky sees the API service network IP.",
+    "Existing upstream payment latency remains unresolved.",
+    "Live verification did not prepare or complete a payment."
+  ],
+  "performance_release": "site-api-speed-deployment.json"
+}

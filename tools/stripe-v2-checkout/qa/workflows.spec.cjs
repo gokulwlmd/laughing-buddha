@@ -76,11 +76,11 @@ test('PAY-04 Stripe-style redirect return removes secret and captures same inten
 });
 
 test('PAY-05 page refresh resumes the existing card authorization',async({ownerPage:page,app})=>{
- await prepare(page);await checkout(page,app);await authorize(page);await page.reload();await expect(page.locator('#payment')).toBeVisible();await expect(page.locator('#message')).toContainText('No new payment was created');await pay(page);expect((await stats(page,app)).counts.authorize_payment).toBe(1);
+ await prepare(page);await checkout(page,app);await authorize(page);await page.evaluate(()=>window.__qaStripeMode='decline');await page.locator('#pay').click();await expect(page.locator('#message')).toContainText('declined');await page.reload();await expect(page.locator('#payment')).toBeVisible();await expect(page.locator('#pay')).toBeEnabled();expect((await stats(page,app)).counts.authorize_payment).toBe(1);await pay(page);expect((await stats(page,app)).counts.authorize_payment).toBe(1);
 });
 
 test('PAY-06 unavailable session secret holds payment instead of creating another',async({ownerPage:page,app})=>{
- await prepare(page);await checkout(page,app);await authorize(page);await page.route('**/api/resume?*',r=>r.fulfill({status:409,contentType:'application/json',body:JSON.stringify({detail:'This payment needs review before continuing. Please contact support; do not start another payment.'})}));await page.reload();await expect(page.locator('#message')).toContainText('needs review');await expect(page.locator('#contact')).toBeHidden();await expect(page.locator('#new-purchase')).toBeHidden();expect((await stats(page,app)).counts.authorize_payment).toBe(1);
+ await prepare(page);await checkout(page,app);await authorize(page);await page.evaluate(()=>window.__qaStripeMode='decline');await page.locator('#pay').click();await expect(page.locator('#message')).toContainText('declined');await page.route('**/api/resume?*',r=>r.fulfill({status:409,contentType:'application/json',body:JSON.stringify({detail:'This payment needs review before continuing. Please contact support; do not start another payment.'})}));await page.reload();await expect(page.locator('#message')).toContainText('needs review');await expect(page.locator('#contact')).toBeHidden();await expect(page.locator('#new-purchase')).toBeHidden();expect((await stats(page,app)).counts.authorize_payment).toBe(1);
 });
 
 test('PAY-07 price change requires a fresh reviewed total',async({ownerPage:page,app})=>{
@@ -88,7 +88,7 @@ test('PAY-07 price change requires a fresh reviewed total',async({ownerPage:page
 });
 
 test('PAY-08 uncertain capture stays held after refresh and is never repeated',async({ownerPage:page,app})=>{
- await prepare(page);await checkout(page,app);await authorize(page);await control(page,app,{capture_timeout:true});await page.locator('#pay').click();await expect(page.locator('#message')).toContainText('uncertain');await page.reload();await expect(page.locator('#message')).toContainText('status needs review');await expect(page.locator('#new-purchase')).toBeHidden();const s=await stats(page,app);expect(s.counts.new_order).toBe(1);expect(s.orderCount).toBe(1);
+ await prepare(page);await checkout(page,app);await authorize(page);await control(page,app,{capture_timeout:true});await page.locator('#pay').click();await expect(page.locator('#message')).toContainText('uncertain');await page.reload();await expect(page.locator('#payment-hold')).toBeVisible();await expect(page.locator('#hold-description')).toContainText('earlier payment');await page.locator('#check-payment-status').click();await expect(page.locator('#hold-help')).toContainText('still unconfirmed');await expect(page.locator('#new-purchase')).toBeHidden();const s=await stats(page,app);expect(s.counts.new_order).toBe(1);expect(s.orderCount).toBe(1);
 });
 
 test('LINK-01 private invitation is scoped and revocation is visible',async({ownerPage:page,app})=>{

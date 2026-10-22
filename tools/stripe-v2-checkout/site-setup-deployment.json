@@ -1,0 +1,37 @@
+{
+  "date": "2026-10-22",
+  "app": "wlmd-stripe-test-0f89b1bb",
+  "image": "registry.fly.io/wlmd-stripe-test-0f89b1bb@sha256:db82a299df069a23b2317cdb08a01ff1781ddfb4585d281d5915f7271cf7bf87",
+  "deployment_status": "built_awaiting_safe_restart",
+  "live_worker_restarted": false,
+  "recovery": {
+    "status": "applied",
+    "campaign_id": 423,
+    "reused_product_id": 55906,
+    "products_recorded": 40,
+    "offers_recorded": 40,
+    "private_checkouts_ready": 4,
+    "payment_requests_submitted": 0,
+    "original_approval_reused": true,
+    "sqlite_backup": true,
+    "audit_table": "admin_recoveries"
+  },
+  "backend_tests_passed": 200,
+  "targeted_browser_cases_passed": [
+    "CUS-06",
+    "SITE-01",
+    "SITE-02",
+    "SITE-03",
+    "SITE-06"
+  ],
+  "source_hashes": {
+    "admin.py": "21067d0eccbac1ee64f736b95fd28e6e426ee972c77c93fa1e3b9ad73facea5b",
+    "master.py": "ebe05d315f4caed0f620c113e0a02411bf1021a9aee6171061612713483ad892",
+    "plans.py": "a6fcc2a4dd0ca0cc0255158616a45ac82a4c0c7dcf0997033bf0272584068787",
+    "sites.py": "c5f9d1c15856f7e31e8f194d29ab0941b2276b0c6d9f279fab4900a48795b463",
+    "reconcile_site.py": "b535566050683759311a8d3403fb8ecd79771d80b6e65268b031b1e067e83dae",
+    "web/index.html": "9a504bf0047fe3226f2a8e9ddbbd84f3c0fb33cc6ba1f8348b3daf328dad65d9",
+    "web/checkout-v8.js": "046093eeacc02aa2cb87a7a4e9b964ce16bb075e956696e9bf29d13188686ecc"
+  },
+  "limitation": "Deployment paused for a newly opened card form; original live latency and old payment holds are not resolved by this site fix."
+}

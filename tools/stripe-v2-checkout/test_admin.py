@@ -109,6 +109,26 @@ class AdminTests(unittest.TestCase):
         headers={'Origin':ORIGIN,'X-CSRF-Token':c['csrfToken'],'X-Checkout-Attempt':s['attemptId']}
         r=customer.post('/api/quote',params={'link_id':'test-link'},headers=headers,json={'contact':CONTACT,'selection':'706:54537:2','shipping_id':2})
         self.assertEqual(r.status_code,200,r.text);self.assertEqual(r.json()['amount'],200)
+    def test_existing_unscoped_quote_can_authorize_resume_and_capture_after_speed_update(self):
+        import json
+        from catalog import resolve,quote
+        self.publish();customer=TestClient(self.app,base_url=ORIGIN);customer.get('/c/test-link')
+        params={'link_id':'test-link'};cfg=customer.get('/api/config',params=params).json()
+        headers={'Origin':ORIGIN,'X-CSRF-Token':cfg['csrfToken'],'X-Checkout-Attempt':cfg['attemptId']}
+        quoted=customer.post('/api/quote',params=params,headers=headers,json={'contact':CONTACT,'selection':'706:54537:2','shipping_id':2})
+        self.assertEqual(quoted.status_code,200)
+        key=cfg['attemptId'];row=self.app.state.store.read(key);q=json.loads(row['quote'])
+        link,brand=self.app.state.admin.link('test-link')
+        old=quote(self.fake,self.app.state.admin.filter_catalog(resolve(self.fake,422,SKU),link,brand),q['selection'],q['shippingId'],CONTACT)
+        q['fingerprint']=old['fingerprint'];q.pop('catalogVersion')
+        self.app.state.store.claim('new','new',key,quote=json.dumps(q))
+        authorized=customer.post('/api/authorize',params=params,headers=headers,json={'quote_id':q['id']})
+        self.assertEqual(authorized.status_code,200,authorized.text)
+        self.assertEqual(customer.post('/api/resume',params=params,headers=headers,json={}).status_code,200)
+        captured=customer.post('/api/capture',params=params,headers=headers,json={})
+        self.assertEqual(captured.status_code,200,captured.text)
+        self.assertEqual(self.fake.count('/authorize_payment'),1);self.assertEqual(self.fake.count('/new_order'),1)
+
     def test_private_link_requires_its_specific_invitation(self):
         l=self.publish('private');customer=TestClient(self.app,base_url=ORIGIN)
         self.assertEqual(customer.get('/c/test-link').status_code,401)

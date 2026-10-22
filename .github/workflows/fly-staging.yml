@@ -1,0 +1,48 @@
+name: Deploy Fly staging
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: fly-staging
+  cancel-in-progress: false
+jobs:
+  verify:
+    name: Verify staging release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -r tools/stripe-v2-checkout/requirements-dev.txt
+      - run: npm --prefix tools/stripe-v2-checkout/qa ci --ignore-scripts
+      - run: tools/stripe-v2-checkout/qa/node_modules/.bin/playwright install --with-deps chromium
+      - run: python tools/stripe-v2-checkout/qa/run.py
+  deploy:
+    name: Deploy staging only
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_STAGING_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate isolated staging configuration
+        run: python scripts/check_staging.py
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy selected branch to isolated staging
+        working-directory: tools/stripe-v2-checkout
+        run: |
+          test -n "$FLY_API_TOKEN"
+          flyctl deploy --config fly.staging.toml --remote-only --ha=false --strategy immediate --yes
+      - name: Verify synthetic mode and blocked payments
+        run: python scripts/check_staging.py --health

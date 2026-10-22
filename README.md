@@ -4,6 +4,14 @@ Master SKU catalog, branded campaign setup, and Sticky.io Stripe Connect v2 chec
 
 The current application lives in [`tools/stripe-v2-checkout`](tools/stripe-v2-checkout). It uses FastAPI, SQLite, and a browser-based admin panel, with Stripe Elements handling card entry. It is deployed on Fly.io.
 
+## Continue development
+
+- [Sanitized project handoff](docs/PROJECT_HANDOFF.md) and [decision record](docs/DECISIONS.md)
+- [Local development with synthetic data](docs/LOCAL_DEVELOPMENT.md)
+- [GitHub collaboration and manual Fly staging](docs/COLLABORATION.md)
+
+The everyday admin starts with **Sites** and **Checkout Templates**. Add a site to prepare branded therapy checkouts from predefined plans and master SKUs in one reviewed setup. Detailed catalog and billing tools remain under Advanced settings.
+
 ## Current workflows
 
 - Group master SKUs by therapy and treatment, with editable categories, product duration, and purchase options.

@@ -3,10 +3,11 @@ import hashlib
 import json
 import secrets
 from decimal import Decimal
+from typing import Literal
 from fastapi import HTTPException
 from pydantic import BaseModel,ConfigDict,Field,field_validator,model_validator
 from catalog import CatalogError,enabled,money,resolve,quote
-from prepaid import configuration as prepaid_configuration, cycles_for, unit_price
+from prepaid import configuration as prepaid_configuration, cycles_for, unit_price, renewal_for
 
 
 def fingerprint(value):
@@ -18,12 +19,14 @@ class MasterOffer(BaseModel):
     id: str = Field(pattern=r'^[a-z0-9][a-z0-9-]{0,39}$')
     name: str = Field(min_length=1,max_length=100)
     price: Decimal = Field(gt=0,max_digits=10,decimal_places=2)
-    billing_models: list[int] = Field(min_length=1,max_length=30)
+    billing_models: list[int] = Field(min_length=0,max_length=30)
 
     prepaid_cycles: int | None = Field(default=None,ge=2,le=36,strict=True)
+    prepaid_renewal: bool = False
 
     @model_validator(mode='after')
     def prepaid_valid(self):
+        if self.prepaid_renewal and not self.prepaid_cycles:raise ValueError('Prepaid renewal needs a shipment count')
         if self.prepaid_cycles:
             if len(self.billing_models)!=1 or self.billing_models[0]==2:raise ValueError('Prepaid needs one shipment interval')
             unit_price(self.price,self.prepaid_cycles)
@@ -34,6 +37,42 @@ class MasterOffer(BaseModel):
     def unique_models(cls,value):
         if any(i<1 for i in value) or len(set(value))!=len(value):raise ValueError('Choose unique positive billing models')
         return value
+
+
+class PlanningContract(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    charge: Literal['full_term_upfront'] = 'full_term_upfront'
+    term_months: int = Field(ge=1, le=36, strict=True)
+    renewal_months: int | None = Field(default=None, ge=1, le=36, strict=True)
+    shipments_per_term: int | None = Field(default=None, ge=1, le=36, strict=True)
+    shipment_interval: int | None = Field(default=None, ge=1, le=730, strict=True)
+    later_shipment_charge: Literal['0.00'] = '0.00'
+
+    @model_validator(mode='after')
+    def matching_term(self):
+        if self.renewal_months is not None and self.renewal_months != self.term_months:
+            raise ValueError('Renewal must match the full upfront term')
+        if self.shipments_per_term and self.shipments_per_term > 1 and self.shipment_interval is None:
+            raise ValueError('Set the number of days between prepaid shipments')
+        if self.shipment_interval is not None and (self.shipments_per_term or 0) < 2:
+            raise ValueError('A shipment interval needs at least two shipments')
+        return self
+
+
+def planned_product_setup(master):
+    """Derive the saved product plan from the editable master contract, never a processor write."""
+    c=master['planning_contract'];count=c['shipments_per_term'];days=c['shipment_interval']
+    prepaid=bool(count and count > 1)
+    try:per_shipment=str(unit_price(master['offers'][0]['price'],count)) if count else None
+    except ValueError:per_shipment=None
+    return {'payment_setup':'prepaid' if prepaid else 'upfront','upfront_price':master['offers'][0]['price'],
+            'currency':master['currency'],'term_months':c['term_months'],'renewal_months':c['renewal_months'],
+            'renewal_days':c['renewal_months']*30 if c['renewal_months'] else None,
+            'prepaid_cycles':count if prepaid else None,'shipment_count':count,'shipment_interval_days':days,
+            'shipment_days':[i*(days or 0) for i in range(count)] if count else [],
+            'later_shipment_charge':'0.00','per_shipment_product_price':per_shipment,
+            'processor_configuration':prepaid_configuration(count) if prepaid and not c['renewal_months'] else None,
+            'processor_verified':False}
 
 
 class MasterSKU(BaseModel):
@@ -49,6 +88,19 @@ class MasterSKU(BaseModel):
     currency: str = Field(default='USD',pattern=r'^(USD|EUR|GBP|CAD|AUD|NZD|CHF)$')
     enabled: bool = True
     offers: list[MasterOffer] = Field(min_length=1,max_length=10)
+    planning_contract: PlanningContract | None = None
+
+    @model_validator(mode='after')
+    def payment_configuration(self):
+        if self.planning_contract:
+            if self.product_duration_months != self.planning_contract.term_months:
+                raise ValueError('Product duration must match the upfront term')
+            if self.product_id or len(self.offers) != 1 or any(o.billing_models or o.prepaid_cycles for o in self.offers):
+                raise ValueError('Catalog drafts have one upfront price and no processor mapping')
+        elif any(not o.billing_models for o in self.offers):
+            raise ValueError('Choose configured billing models')
+        return self
+
 
     @field_validator('offers')
     @classmethod
@@ -120,6 +172,22 @@ def product_contract(p):
         'tax_code':p.get('tax_code'),'shipping_restrictions':p.get('shipping_restrictions') or []}
 
 
+def product_contract_matches(expected, actual):
+    """Allow only Sticky's observed empty-weight defaults on non-shippable items.
+
+    Keep stored contracts/fingerprints unchanged; shipping, tax, restrictions and
+    explicit weights still require exact read-back.
+    """
+    if expected == actual:
+        return True
+    actual = dict(actual)
+    if (expected.get('is_shippable') == actual.get('is_shippable') == 0
+            and expected.get('weight') is None and expected.get('weight_unit_id') is None
+            and actual.get('weight') in (None, '0') and actual.get('weight_unit_id') in (None, 1)):
+        actual.update(weight=None, weight_unit_id=None)
+    return expected == actual
+
+
 def model_rows(api):
     obj=api.call('GET','/api/v2/billing_models')
     if str(obj.get('status','')).upper()!='SUCCESS':raise HTTPException(502,'Sticky billing models could not be verified')
@@ -141,25 +209,42 @@ def assignment_id(brand,campaign,sku):
 
 
 class MasterCatalog:
-    def local_fingerprint(self):
-        return fingerprint([self.records(k) for k in ('brand','sku','link','offering','master','assignment','therapy','purchase_option','plan_checkout')])
+    def activated_master(self, master):
+        """Use only operator-verified non-fulfilling payment-test mappings.
 
-    def prepare_setup(self,payload):
+        Editing a master invalidates its saved mapping; catalog planning never
+        grants permission to activate a physical medication product.
+        """
+        activation=self.get('test_catalog_activation',master.get('sku',''))
+        if activation and activation.get('payment_test_only') and activation.get('master_hash')==fingerprint(master):
+            configured=activation['master'];source=configured.get('product_template',{})
+            if configured.get('sku')!=master.get('sku') or enabled(source.get('is_shippable')) or enabled(source.get('taxable',source.get('is_taxable'))):
+                raise HTTPException(422,'Payment-test mapping must remain non-shippable and non-taxable')
+            return configured
+        if master.get('planning_contract'):
+            raise HTTPException(422,master['sku']+': verify planned billing and fulfillment before campaign assignment')
+        return master
+
+    def local_fingerprint(self):
+        return fingerprint([self.records(k) for k in ('brand','sku','link','offering','master','assignment','therapy','purchase_option','plan_checkout','checkout_template','site','template_draft','site_defaults','test_catalog_activation')])
+
+    def prepare_setup(self,payload,required_skus=None,site_brand=None):
         request=CampaignSetup.model_validate(payload).model_dump(mode='json')
         cid=request['campaign_id'];creating=cid is None
         if creating and not request['name']:raise HTTPException(422,'Enter a campaign name')
         if creating and not request['brand_id'] and any(b['name'].casefold()==request['name'].casefold() for b in self.records('brand')):
             raise HTTPException(409,'A campaign with this name is already managed. Select the existing campaign or use a different name.')
         with self.store.db() as db:
-            held=db.execute("SELECT data,result FROM admin_reviews WHERE kind='campaign_setup' AND status IN ('applying','reconcile')").fetchall()
+            held=db.execute("SELECT kind,data,result FROM admin_reviews WHERE kind IN ('campaign_setup','site') AND status IN ('applying','reconcile')").fetchall()
         for row in held:
-            prior=json.loads(row[0])['request']
-            created=json.loads(row[1] or '{}').get('created',{})
-            if (cid and cid in (prior.get('campaign_id'),created.get('campaign'))) or (creating and not prior.get('campaign_id') and prior.get('name','').casefold()==request['name'].casefold()):
+            prior=json.loads(row[1])['request']
+            prior_name=prior.get('campaign_name' if row[0]=='site' else 'name','')
+            created=json.loads(row[2] or '{}').get('created',{})
+            if (cid and cid in (prior.get('campaign_id'),created.get('campaign'))) or (creating and not prior.get('campaign_id') and prior_name.casefold()==request['name'].casefold()):
                 raise HTTPException(409,'This campaign setup needs reconciliation. Inspect its recorded objects before trying again.')
         template=self.api.detail(f"/api/v2/campaigns/{request['template_id'] if creating else cid}")
         matches=[b for b in self.records('brand') if cid and cid in brand_campaigns(b)]
-        selected=self.get('brand',request['brand_id']) if request['brand_id'] else None
+        selected=site_brand or (self.get('brand',request['brand_id']) if request['brand_id'] else None)
         if request['brand_id'] and not selected:raise HTTPException(422,'Save the brand first')
         if len(matches)>1 and not selected:raise HTTPException(422,'Select the brand for this campaign')
         brand=selected or (matches[0] if matches else {'id':'campaign-'+(str(cid) if cid else secrets.token_hex(10)),
@@ -168,7 +253,7 @@ class MasterCatalog:
         if not selected and not matches and self.get('brand',brand['id']):raise HTTPException(409,'This campaign identifier is already mapped. Resolve it in advanced settings.')
         campaign=dict(template)
         if creating:campaign.update(id=0,offers=[])
-        data,guards,preview,ops,local=self.prepare_master('provision',{'brand_id':brand['id']},context=(dict(brand,campaign_id=cid or 0),campaign))
+        data,guards,preview,ops,local=self.prepare_master('provision',{'brand_id':brand['id'],'skus':required_skus},context=(dict(brand,campaign_id=cid or 0),campaign))
         if creating:
             guards.append({'path':f"/api/v2/campaigns/{request['template_id']}",'keys':None,'hash':fingerprint(template)})
             routing=[p['provider']['id'] for p in template.get('alternative_payments',[]) if p.get('payment_method')=='stripe_link' and int(p.get('provider',{}).get('account_id') or 0)==250]
@@ -193,8 +278,30 @@ class MasterCatalog:
     def prepare_master(self,kind,payload,context=None):
         data=(MasterSKU if kind=='master' else Provision).model_validate(payload).model_dump(mode='json')
         if kind=='master':
+            before=self.get('master',data['sku'])
+            if before and before.get('planning_contract') and not data['planning_contract']:
+                raise HTTPException(422,'Verify the planned billing contract before converting this SKU to an active master')
+            if data['planning_contract']:
+                if before and not before.get('planning_contract'):
+                    raise HTTPException(409,'An active master already uses this SKU; do not replace its billing setup')
+                if any(a['sku']==data['sku'] for a in self.records('assignment')):
+                    raise HTTPException(409,'Assigned SKUs cannot be replaced with catalog drafts')
+                therapy=self.get('therapy',data['therapy_id'])
+                if not therapy or not therapy['enabled'] or data['treatment_id'] not in {t['id'] for t in therapy['treatments']}:
+                    raise HTTPException(422,'Choose an active therapy and one of its treatments')
+                if before and any(before.get(k)!=data[k] for k in ('therapy_id','treatment_id','product_duration_months')):
+                    raise HTTPException(422,'This SKU retains its agreed therapy and duration; edit its upfront price or shipment schedule instead')
+                if before and any(before['planning_contract'][k]!=data['planning_contract'][k] for k in ('charge','term_months','renewal_months','later_shipment_charge')):
+                    raise HTTPException(422,'Keep this SKU’s agreed upfront payment and renewal term')
+                for o in data['offers']:o.pop('prepaid_cycles',None)
+                data['product_setup']=planned_product_setup(data)
+                data.update(revision=(before or {}).get('revision',0)+1,billing_terms={})
+                preview={'before':before,'after':data,'stickyWrites':[], 'impact':'Saves the upfront price and shipment schedule, and rebuilds this SKU’s product setup from those settings. Processor activation still needs verification. Existing brand prices and subscriptions are unchanged.'}
+                return data, [], preview, [], self.local_fingerprint()
+            data.pop('planning_contract',None)
             for o in data['offers']:
                 if o.get('prepaid_cycles') is None:o.pop('prepaid_cycles',None)
+                if not o.get('prepaid_renewal'):o.pop('prepaid_renewal',None)
         guards=[];operations=[]
         def watch(path):
             obj=self.api.detail(path);guards.append({'path':path,'keys':None,'hash':fingerprint(obj)});return obj
@@ -243,7 +350,7 @@ class MasterCatalog:
             cid=brand['campaign_id'] if context else data.get('campaign_id') or brand['campaign_id']
             if not context and cid not in brand_campaigns(brand):raise HTTPException(422,'Select a campaign attached to this brand')
             with self.store.db() as db:
-                held=db.execute("SELECT data,result FROM admin_reviews WHERE kind IN ('provision','campaign_setup') AND status IN ('applying','reconcile')").fetchall()
+                held=db.execute("SELECT data,result FROM admin_reviews WHERE kind IN ('provision','campaign_setup','site') AND status IN ('applying','reconcile')").fetchall()
             if any(json.loads(r[0])['data'].get('campaign_id')==cid or (cid and json.loads(r[1] or '{}').get('created',{}).get('campaign')==cid) for r in held):
                 raise HTTPException(409,'This campaign has an unresolved master assignment. Reconcile its recorded object IDs before preparing another.')
             c=context[1] if context else watch(f'/api/v2/campaigns/{cid}')
@@ -269,6 +376,7 @@ class MasterCatalog:
             attached=[int(o['id']) for o in c.get('offers',[])];attach=list(attached)
             entries=[];assignments=[];affected=set();replacements=[]
             for index,master in enumerate(masters):
+                master=self.activated_master(master)
                 if master['currency']!=currency:raise HTTPException(422,'Master and campaign currencies differ; configure an explicit preset for this currency')
                 source=source_product(master,watch)
                 if any(o.get('prepaid_cycles') for o in master['offers']) and (enabled(source.get('is_shippable')) or enabled(source.get('taxable',source.get('is_taxable')))):
@@ -294,7 +402,7 @@ class MasterCatalog:
                     oid='master-'+aid+'-'+preset['id']
                     old=self.get('offering',oid)
                     desired={'id':oid,'brand_id':brand['id'],'campaign_id':cid,'sku':master['sku'],'name':preset['name'],
-                        'price':(old or {}).get('price',preset['price']),'billing_models':preset['billing_models'],'configuration':prepaid_configuration(preset.get('prepaid_cycles'))}
+                        'price':(old or {}).get('price',preset['price']),'billing_models':preset['billing_models'],'configuration':prepaid_configuration(preset.get('prepaid_cycles'),preset.get('prepaid_renewal',False))}
                     reuse=False
                     if old:
                         product=watch(f"/api/v2/products/{old['product_id']}");offer=watch(f"/api/v2/offers/{old['offer_id']}")
@@ -304,8 +412,8 @@ class MasterCatalog:
                             raise HTTPException(409,'An assigned offer changed in Sticky; reconcile its products/models before provisioning again')
                         if any(enabled(offer.get(k)) for k in ('is_archived','is_trial','is_series','is_seasonal')):
                             raise HTTPException(409,'An assigned offer has unsupported or archived terms; reconcile it first')
-                        if cycles_for(offer)!=cycles_for(old.get('configuration',{})):raise HTTPException(409,'Assigned prepaid terms changed; reconcile before applying')
-                        if (old_assignment or {}).get('source_hash')==fingerprint(source) and product_contract(product)!=product_contract(source):
+                        if cycles_for(offer)!=cycles_for(old.get('configuration',{})) or renewal_for(offer)!=renewal_for(old.get('configuration',{})):raise HTTPException(409,'Assigned prepaid terms changed; reconcile before applying')
+                        if (old_assignment or {}).get('source_hash')==fingerprint(source) and not product_contract_matches(product_contract(source),product_contract(product)):
                             raise HTTPException(409,'An assigned product shipping/tax configuration changed; reconcile it before assigning again')
                         reuse=all((record_campaign(old,brand) if k=='campaign_id' else old.get(k))==v for k,v in desired.items()) and (old_assignment or {}).get('source_hash')==fingerprint(source)
                     if reuse:
@@ -317,7 +425,7 @@ class MasterCatalog:
                         body={'type_id':1,'is_trial':0,**desired['configuration'],'recurring':{'cycle_type_id':1,'terminating_cycle_type_id':2},'name':brand['name']+' / '+preset['name'],
                             'products':[{'id':pid}],'billing_models':[{'id':mid} for mid in preset['billing_models']]}
                         operations.extend([{'method':'POST','path':'/api/v2/products','body':product,'save':pk,'verify':{'kind':'product','sku':master['sku'],'price':str(unit_price(desired['price'],preset.get('prepaid_cycles'))),'contract':product_contract(source)}},
-                            {'method':'POST','path':'/api/v2/offers','body':body,'save':ok,'verify':{'kind':'offer','product':pid,'models':preset['billing_models'],'prepaid_cycles':preset.get('prepaid_cycles')}}])
+                            {'method':'POST','path':'/api/v2/offers','body':body,'save':ok,'verify':{'kind':'offer','product':pid,'models':preset['billing_models'],'prepaid_cycles':preset.get('prepaid_cycles'),'prepaid_renewal':preset.get('prepaid_renewal',False)}}])
                         action='Create replacement managed offer' if old else 'Create managed offer'
                         if old:
                             prefix=f"{old['offer_id']}:{old['product_id']}:"
@@ -330,7 +438,7 @@ class MasterCatalog:
                             replacements.append({'oldPrefix':prefix,'product':pid,'offer':offerid,'sku':master['sku']})
                     if offerid not in attach:attach.append(offerid)
                     slots.append(desired|{'product_id':pid,'offer_id':offerid,'master_offer_id':preset['id']})
-                    entry['offers'].append({'prepaid_cycles':preset.get('prepaid_cycles'),'name':preset['name'],'price':desired['price'],'currency':currency,'billing_models':preset['billing_models'],
+                    entry['offers'].append({'prepaid_cycles':preset.get('prepaid_cycles'),'prepaid_renewal':preset.get('prepaid_renewal',False),'name':preset['name'],'price':desired['price'],'currency':currency,'billing_models':preset['billing_models'],
                         'billing_days':[available[mid].get('days') for mid in preset['billing_models']], 'action':action,'price_source':'Existing brand price' if old else 'Master default'})
                 link_id='master-'+aid
                 existing_link=self.get('link',link_id)
@@ -400,7 +508,7 @@ class MasterCatalog:
                             error='Billing terms changed after this master revision was assigned'
                         if o and money(o.get('upfrontPrice',o['basePrice']))!=money(current['price']):error='Assigned price differs from Sticky'
                         if o and o.get('prepaidCycles')!=cycles_for(current.get('configuration',{})):error='Assigned prepaid terms differ from Sticky'
-                        if product_contract(product)!=assignment['source_contract']:error='Assigned shipping/tax product settings changed'
+                        if not product_contract_matches(assignment['source_contract'],product_contract(product)):error='Assigned shipping/tax product settings changed'
                         if (c['currency'] or '').upper()!=assignment['currency']:error='Campaign currency changed'
                         if not c['countries']:error='Campaign countries are missing'
                         if o and o['shippable'] and not c['shipping']:error='Campaign shipping options are missing'

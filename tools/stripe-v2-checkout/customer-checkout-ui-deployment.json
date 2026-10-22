@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-22",
+  "app": "wlmd-stripe-test-0f89b1bb",
+  "admin_unchanged": true,
+  "delivery_mode": "Versioned static assets followed by atomic HTML replacement; no payment-worker restart",
+  "proof": {
+    "app": "wlmd-stripe-test-0f89b1bb",
+    "applied": true,
+    "worker_unchanged": true,
+    "database_unchanged": true,
+    "asset_hashes": {
+      "checkout-v2.css": "ea4cd6c40950a219a5987c90f5a7091338dd38f88a6c0c587f31ca7c59969ac2",
+      "plan-selector-v2.css": "4c6f2c2f478bb311c0680859ee4728967b514233bef4b1013bb691f6d4a8904a",
+      "checkout-v2.js": "f60de529cae50d7ed09c3ab1238773ceced3437a7d59c1851efb89dd138778c5",
+      "plan-selector-v2.js": "3c786fb0178b61e2c6d48d76008f59a692daf3f6df1799ca26d7758cea9cb73c",
+      "index.html": "c81379f5f761271aa6c41c8ff0015c5ea804d3195b74451f478071094a592fb6",
+      "plans.html": "e5415de61edbb24b437cfea0f39dc3f7f79dd9879dc21c4de69b659ab8e9081d"
+    },
+    "legacy_assets_preserved": true,
+    "payment_requests_submitted": 0,
+    "public_assets_verified": true,
+    "private_access_enforced": true,
+    "health": {
+      "status": "running",
+      "public_url_configured": true,
+      "authorization_contract_verified": true,
+      "synthetic": false,
+      "payments_blocked": false
+    }
+  },
+  "backend_tests": 183,
+  "browser_scenarios_verified": 74,
+  "browser_validation": "72 scenarios passed in the full run; two copy expectations were corrected without removing financial assertions, then both and the final mobile/exact-SKU scenario passed.",
+  "built_image_for_next_safe_container_deploy": "registry.fly.io/wlmd-stripe-test-0f89b1bb@sha256:d1858245a4a430f15637c63c33c6d9bf3680d05a4c81aaead53a5b9d6da515de",
+  "running_container_image_changed": false,
+  "payment_and_catalog_mutations": 0,
+  "real_payment_submitted": false,
+  "reference": "https://checkout.vigmd.com/wl_checkout/?product=semaglutide",
+  "external_setup_blocked": []
+}

@@ -1,0 +1,35 @@
+app = "wlmd-checkout-staging-0f89b1bb"
+primary_region = "iad"
+kill_signal = "SIGTERM"
+kill_timeout = "10s"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  CHECKOUT_PUBLIC_URL = "https://wlmd-checkout-staging-0f89b1bb.fly.dev"
+  CHECKOUT_STATE_DIR = "/data"
+  CHECKOUT_ENVIRONMENT = "staging"
+  CHECKOUT_AUTHORIZATION_VERIFIED = "0"
+
+[[mounts]]
+  source = "staging_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "512mb"

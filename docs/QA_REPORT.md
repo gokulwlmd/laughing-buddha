@@ -1,16 +1,17 @@
 # Admin and checkout QA report
 
-Run: 22 October 2026, 03:11 AM IST.
+Run: 22 October 2026, 02:13 PM IST.
 
-Status: **Passed after the targeted fixture correction described below** for the implemented workflows.
+Status: **Passed** for the implemented workflows below.
 
-- Backend: **144 tests**, 0 failures, 0 errors.
-- Browser: **62 distinct scenarios verified**, 0 unresolved failures. The initial full run had 61 passes and one test-readiness failure; the two affected sign-in/private-link checks passed on targeted rerun.
+Validation includes a targeted rerun after fixing the legacy plan-list rendering regression. The initial full browser run passed 65 cases and failed 4; the subsequent rerun covered 11 affected site/template/plan cases (11 passed, 0 failed). The table reports the latest actual result for each distinct case.
+
+
+- Backend: **167 tests**, 0 failures, 0 errors.
+- Browser: **69 passed**, 0 failed, 0 skipped, 0 flaky.
 - Browser engine: Chromium; desktop 1440×1000 and mobile 390×844.
 - Environment: disposable loopback server, synthetic owner/customer data, fake Sticky API and a Stripe.js contract stub. Production credentials are removed from the test process. External browser requests are blocked except the locally fulfilled Stripe stub.
 - No real card, processor authorization/capture, live refund, or live Sticky configuration write is made by this suite.
-
-The sign-in helper now waits for the owner workspace to finish rendering before navigating to a brand’s links. No runtime application change was needed for this test correction. AUTH-01 and LINK-01 both passed on rerun. See [the detailed verification receipt](PURCHASE_OPTIONS_QA_RESULTS.json).
 
 ## Browser test cases
 
@@ -43,13 +44,20 @@ The sign-in helper now waits for the owner workspace to finish rendering before 
 | PRE-05 | mobile prepaid shortcut keeps unsaved product fields and updates schedule and currency | Pass |
 | PRE-06 | physical product saves a prepaid catalog option with an explicit assignment limitation | Pass |
 | PRE-07 | missing 90-day model never substitutes a different schedule or erases the draft | Pass |
-| SIM-01 | six primary screens, local master and one-review existing campaign assignment | Pass |
+| SIM-01 | two primary screens with advanced catalog tools, local master and one-review existing campaign assignment | Pass |
 | SIM-02 | new campaign name and template include every master SKU and ready links | Pass |
 | SIM-03 | automatically selected choices and generated link address with public/private control | Pass |
 | SIM-04 | uncertain campaign creation cannot duplicate through a fresh setup | Pass |
-| SIM-05 | mobile master campaign and links need no advanced settings | Pass |
+| SIM-05 | mobile advanced catalog and campaign tools remain usable | Pass |
 | SIM-06 | choose a brand before checkout creation and retain all accessible campaign choices | Pass |
 | SIM-07 | existing Sticky SKU creates a checkout under the selected brand | Pass |
+| SITE-01 | template and site UI prepare all branded checkouts, repeat setup and preserve private URL | Pass |
+| SITE-02 | mobile site creation with new brand, customization and reviewed template update | Pass |
+| SITE-03 | missing gateway is incomplete and does not offer a ready link | Pass |
+| SITE-04 | slow initial state loads before navigation becomes available | Pass |
+| SITE-05 | draft template can be resumed and completed without losing a published template | Pass |
+| SITE-06 | next site uses saved setup with no Advanced navigation and publication is explicit | Pass |
+| SITE-07 | new therapy and incomplete plans save together as a recoverable draft | Pass |
 | PLN-01 | duration cards show each treatment price before selection and complete exactly one synthetic order | Pass |
 | PLN-02 | private plan invitation, mobile price comparison, subscription handoff and edit persistence | Pass |
 | PLN-03 | checkout can open one purchase option; matching SKU assignment and disabled checkout | Pass |
@@ -75,11 +83,13 @@ The sign-in helper now waits for the owner workspace to finish rendering before 
 | PAY-06 | unavailable session secret holds payment instead of creating another | Pass |
 | PAY-07 | price change requires a fresh reviewed total | Pass |
 | PAY-08 | uncertain capture stays held after refresh and is never repeated | Pass |
-| LINK-01 | private invitation is scoped and revocation is visible | Pass after fixture correction |
+| LINK-01 | private invitation is scoped and revocation is visible | Pass |
 | LINK-02 | inactive link cannot be opened and can be reactivated with approval | Pass |
 | UX-01 | mobile setup, review and catalog fit without horizontal overflow | Pass |
 
 ## Backend coverage
+
+`test_sites.py` covers reviewed site provisioning, template snapshots and updates, stable paths and repeat invitations, independent campaign prices, preserved overrides, live readiness and inaccessible campaigns, open-payment locks and cross-workflow reconciliation holds. `test_synthetic.py` verifies persistent demo state and forced network/payment isolation.
 
 The suite covers owner setup/sign-in/session storage, CSRF/origin checks, exact SKU mapping, duplicate SKU choices, server-owned pricing/tax calculations, separate brand offer prices, live-preview guards, explicit approval, refresh/discard, uncertain and partial-write holds, public/private access, invitation revocation, stale tabs, quote expiry, consent, resume after refresh, hold after a restart, captured receipts and repeat purchases. `test_brands.py` covers multiple campaigns per brand, distinct provisional IDs for new campaigns, price isolation, legacy mappings, design propagation, quote stability and target-campaign payment locks. `test_qa.py` contains checkout/admin regressions. `test_master.py` verifies versioned master saves, all five TIRZ intervals, independent brand prices, multiple SKUs/offers, assignment idempotency, private generated links, source/currency/model drift and partial-write holds.
 
@@ -135,3 +145,15 @@ npm --cache /workspace/.cache/npm --prefix qa ci --ignore-scripts
 ```
 
 Set `QA_PYTHON` to another virtualenv Python if needed. Chromium defaults to `/usr/bin/chromium`; set `QA_CHROMIUM_EXECUTABLE` for another installed Chromium or install Playwright's Chromium. Raw results and failure screenshots are ignored under `qa/results/`; the test definitions, lockfile and this report are saved in the repository.
+
+## Master Therapy 1 skeleton — 22 October 2026
+
+All 169 backend tests passed (`unittest discover`, 27.764s). All eight site browser scenarios passed (39.4s), including the new SITE-08 skeleton matrix, nonpayable draft save/resume and mobile width check. This targeted run covers all existing site scenarios; it does not claim a new full browser-suite run. Contract tests verify all 16 exact SKUs, upfront amounts remaining unset, matching renewal months, two/four shipments, unspecified delivery intervals, idempotent draft saves and rejection of activation/removal of the skeleton reference. No payment or live Sticky operations were performed.
+
+## Priced three-therapy catalog — 22 October 2026
+
+All 172 backend tests passed (28.959s). All 16 affected master/site browser scenarios passed (1.4m); after locking contract fields in the price editor, MST-01 and SITE-09 passed again (7.9s). The import tests create exactly 32 master SKUs, preserve existing configuration and owner drafts, keep later default-price edits on repeat import, reject collisions atomically and reject non-synthetic environments. Contract checks reject unverified activation and mappings; the browser verifies an edited full-term price while retaining the renewal term. No live processor or delivery execution was exercised.
+
+## Editable upfront shipments and PT-141 — 22 October 2026
+
+All 174 backend tests passed (30.915s), and all 24 affected master/prepaid/site browser scenarios passed (1.8m). New coverage changes an upfront SKU from four shipments every 90 days to three every 120, verifies review output and persistence of rebuilt prepaid cycles/product setup, then checks template summaries use the saved schedule. Backend checks cover separate renewing/non-renewing terms, malformed shipment settings, preservation of price and owner edits during migration, exact PT141 codes, and repeat imports that make no changes. These are local/fake-service tests and do not verify processor activation, medication fulfillment or future renewal execution.

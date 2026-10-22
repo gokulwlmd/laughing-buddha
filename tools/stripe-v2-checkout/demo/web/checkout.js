@@ -1,0 +1,3 @@
+'use strict';
+const data=JSON.parse(document.getElementById('checkout-data').textContent),$=id=>document.getElementById(id);
+document.documentElement.style.setProperty('--brand',data.color);document.title=data.site_name+' · Demo checkout';$('brand-name').textContent=data.site_name+' +';$('plan-name').textContent=data.plan.medication;$('plan-description').textContent=data.plan.duration_months+'-month '+(data.plan.purchase_type==='subscription'?'subscription':'one-time plan');$('price').textContent=new Intl.NumberFormat('en-US',{style:'currency',currency:data.plan.currency}).format(Number(data.plan.price));$('terms').textContent=data.plan.terms;$('finish').action=location.pathname+'/finish';

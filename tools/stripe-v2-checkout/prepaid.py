@@ -1,25 +1,25 @@
-"""Verified fixed-term prepaid contract. Renewal and discounts remain unsupported."""
+"""Verified fixed-term prepaid contract. Explicit renewal is supported; discounts and conversions remain unsupported."""
 from decimal import Decimal
 
 
 def active(value):return value not in (None,False,0,'0','')
 
 
-def profile(cycles):
-    return {'is_subscription':0,'is_cancel_immediate':0,'is_refund_allowed':1,
+def profile(cycles,renewal=False):
+    return {'is_subscription':int(renewal),'is_cancel_immediate':0,'is_refund_allowed':1,
         'is_initial_shipping_on_restart':0,'terms':[{'cycles':cycles,'discount_type_id':1,'discount_value':0}]}
 
 
-def configuration(cycles):
-    return {'type_id':2,'recurring':{'cycle_type_id':1,'terminating_cycle_type_id':2},'prepaid':profile(cycles)} if cycles else {}
+def configuration(cycles,renewal=False):
+    return {'type_id':2,'recurring':{'cycle_type_id':1,'terminating_cycle_type_id':2},'prepaid':profile(cycles,renewal)} if cycles else {}
 
 
 def cycles_for(offer):
-    """Fail closed on unverified/multiple/renewing/discounted prepaid terms."""
+    """Fail closed on unspecified renewal, conversions, multiple terms and discounts."""
     if not (active(offer.get('is_prepaid')) or offer.get('type_id')==2 or (offer.get('type') or {}).get('id')==2):return None
     p=offer.get('prepaid_profile') or offer.get('prepaid') or {}
-    if 'is_subscription' not in p or any(active(p.get(k)) for k in ('is_subscription','is_convert_to_standard')):
-        raise ValueError('Prepaid renewal and conversion need additional verification')
+    if p.get('is_subscription') not in (0,1,False,True,'0','1') or active(p.get('is_convert_to_standard')):
+        raise ValueError('Prepaid conversion or unspecified renewal needs additional verification')
     terms=p.get('terms',[])
     if len(terms)!=1:raise ValueError('Choose one fixed prepaid term per purchase option')
     term=terms[0];cycles=term.get('cycles')
@@ -39,6 +39,11 @@ def unit_price(total,cycles=None):
     return unit
 
 
-def order_terms_match(product,cycles):
+def renewal_for(offer):
+    if cycles_for(offer) is None:return False
+    return active((offer.get('prepaid_profile') or offer.get('prepaid') or {}).get('is_subscription'))
+
+
+def order_terms_match(product,cycles,renewal=False):
     rows=product.get('prepaid') or []
-    return len(rows)==1 and str(rows[0].get('total_cycles'))==str(cycles) and str(rows[0].get('current_cycle'))=='1' and str(rows[0].get('is_renew'))=='0'
+    return len(rows)==1 and str(rows[0].get('total_cycles'))==str(cycles) and str(rows[0].get('current_cycle'))=='1' and str(rows[0].get('is_renew'))==str(int(renewal))

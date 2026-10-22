@@ -1,0 +1,31 @@
+'use strict';
+const $=id=>document.getElementById(id),make=(tag,text)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;};
+const planId=decodeURIComponent(location.pathname.split('/')[2]);let data,groups=[],group=null,product=null,payment=null;
+function treatmentName(entry){return data.treatments.find(t=>t.id===entry.treatmentId)?.name||'Your treatment';}
+function money(option,entry){return new Intl.NumberFormat('en',{style:'currency',currency:entry.currency}).format(Number(option.upfrontPrice||option.basePrice));}
+function recurring(o){return o.prepaidCycles?Boolean(o.renewal):Boolean(o.recurring);}
+function paymentTitle(o){return recurring(o)?'Subscription':'One-time purchase';}
+function paymentTerms(o,entry){const amount=money(o,entry);return o.prepaidCycles?`${amount} upfront. ${o.prepaidCycles} scheduled deliveries, ${o.days} days apart. ${o.renewal?`Renews every ${o.renewalDays} days for the full plan price.`:'No automatic renewal.'}`:o.recurring?`${amount} per payment. Renews every ${o.days} days.`:`${amount} upfront. One payment, no automatic renewal.`;}
+function treatments(g){const map=new Map();for(const entry of g.entries){const key=entry.treatmentId||entry.sku;if(!map.has(key))map.set(key,{id:key,name:treatmentName(entry),entries:[],choices:[]});const treatment=map.get(key);treatment.entries.push(entry);if(entry.available)for(const option of entry.options)treatment.choices.push({option,entry});}return [...map.values()];}
+function priceSummary(t){if(!t.choices.length)return 'Temporarily unavailable';const prices=[...new Set(t.choices.map(c=>money(c.option,c.entry)))];if(prices.length===1)return prices[0]+' upfront';return t.choices.map(c=>money(c.option,c.entry)+' '+(recurring(c.option)?'subscription':'one-time')).filter((v,i,a)=>a.indexOf(v)===i).join(' / ');}
+function tile(title,detail,selected,handler,disabled=false){const button=make('button');button.type='button';button.setAttribute('aria-pressed',String(selected));button.disabled=disabled;button.append(make('strong',title));if(detail)button.append(make('span',detail));button.addEventListener('click',handler);return button;}
+function render(){
+ const durations=$('durations');durations.replaceChildren();
+ for(const g of groups){const entries=treatments(g),available=entries.some(t=>t.choices.length),button=tile(g.name,'',group?.id===g.id,()=>{group=g;product=null;payment=null;render();$('treatment-step').scrollIntoView({block:'nearest',behavior:'smooth'});},!available);button.dataset.duration=g.durationMonths;for(const t of entries){const line=make('span');line.className='treatment-price';line.append(make('strong',t.name),make('span',priceSummary(t)));button.append(line);}if(!entries.length)button.append(make('span','No treatments currently available'));durations.append(button);}
+ $('treatment-step').hidden=!group;const treatmentList=$('treatments');treatmentList.replaceChildren();
+ for(const t of group?treatments(group):[])treatmentList.append(tile(t.name,priceSummary(t),product?.id===t.id,()=>{product=t;payment=null;render();$('payment-step').scrollIntoView({block:'nearest',behavior:'smooth'});},!t.choices.length));
+ $('payment-step').hidden=!product;const payments=$('payments');payments.replaceChildren();
+ for(const choice of product?.choices||[]){const o=choice.option,button=tile(paymentTitle(o),'',payment?.option.key===o.key,()=>{payment=choice;render();});const price=make('span',money(o,choice.entry));price.className='payment-price';const copy=make('span',paymentTerms(o,choice.entry));copy.className='payment-copy';button.append(price,copy);payments.append(button);}
+ $('selection-title').textContent=group?.name||'Your next step starts here';const details=$('selection-details');details.replaceChildren();
+ if(product){const name=make('p',product.name);name.className='selection-product';details.append(name);}else details.append(make('p',group?'Choose your treatment to continue.':'Choose a plan length to see your options.'));
+ if(payment){details.append(make('p',paymentTitle(payment.option)),make('p',paymentTerms(payment.option,payment.entry)));const total=make('div');total.className='selection-total';total.append(make('span','Plan total'),make('strong',money(payment.option,payment.entry)));details.append(total);}else if(product)details.append(make('p','Choose a payment preference to see your total.'));
+ const next=$('plan-continue');next.hidden=!payment;if(payment)next.href='/plans/'+encodeURIComponent(planId)+'/choose?'+new URLSearchParams({sku:payment.entry.sku,option:payment.option.key,purchase_option_id:payment.entry.purchaseOptionId||''});else next.removeAttribute('href');
+}
+(async()=>{try{
+ const response=await fetch('/api/plans/'+encodeURIComponent(planId));if(!response.ok)throw Error(response.status===401?'Open your private checkout invitation to view these plans.':'These plans are temporarily unavailable. Please contact us for help.');data=await response.json();
+ if(data.paymentTestOnly){const notice=make('p','Live payment test: your card will be charged. No medication will be shipped.');notice.className='test-notice';notice.setAttribute('role','note');$('plan-content').prepend(notice);}
+ BrandDesign.apply(document.body,data.branding);$('brand-name').textContent=data.branding.name||'';$('plan-title').textContent=data.title;document.title=data.title;$('therapy-name').textContent=data.therapy;
+ if(data.branding.logo_url){$('brand-logo').src=data.branding.logo_url;$('brand-logo').hidden=false;}$('brand-support').textContent=[data.branding.support_email,data.branding.support_phone].filter(Boolean).join(' · ');
+ groups=data.purchaseOptions?.length?data.purchaseOptions.map(p=>({...p,entries:data.entries.filter(e=>e.purchaseOptionId===p.id)})):[...new Set(data.entries.map(e=>e.durationMonths).filter(Boolean))].map(d=>({id:'legacy-'+d,name:d+'-month plan',durationMonths:d,entries:data.entries.filter(e=>e.durationMonths===d)}));groups.sort((a,b)=>a.durationMonths-b.durationMonths);
+ if(groups.length===1&&groups[0].entries.some(e=>e.available))group=groups[0];render();$('plan-content').hidden=false;if(!data.entries.some(e=>e.available))throw Error('No plans are available right now. Please contact us for help.');
+ }catch(error){$('plan-error').textContent=error.message;$('plan-error').hidden=false;}})();
