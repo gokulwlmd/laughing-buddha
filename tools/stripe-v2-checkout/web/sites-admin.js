@@ -15,10 +15,11 @@ function newTemplate(t={}){
  f.elements.therapy_name.value=t.new_therapy?.name||'';f.elements.treatment_names.value=(t.new_therapy?.treatments||[]).map(x=>x.name).join(', ');
  f.elements.enabled.checked=t.enabled!==false;
  templateRows=structuredClone(t.plans||(t.purchase_option_ids||[]).map(id=>(state.purchaseOptions||[]).find(p=>p.id===id)).filter(Boolean));
+ if(templateSkeletonId){const skeleton=(state.therapySkeletons||[]).find(s=>s.id===templateSkeletonId);for(const p of templateRows)if(!p.skus.length){const wanted=(skeleton?.products||[]).filter(x=>x.duration_months===p.duration_months).map(x=>x.sku);p.skus=(state.masters||[]).filter(m=>wanted.includes(m.sku)&&m.therapy_id===t.therapy_id).map(m=>m.sku);p.payment_types=['once','subscription'];}}
  $('template-mode').textContent=t.id?'Edit checkout template':'New checkout template';$('template-editor').hidden=false;renderTemplateRows();$('template-editor').scrollIntoView({block:'start'});
 }
 function templateProducts(p){return (state.masters||[]).filter(m=>m.enabled&&!m.exclude_from_campaign_setup&&m.therapy_id===($('template-therapy').value==='__new'?templateDraftTherapyId:$('template-therapy').value)&&m.product_duration_months===Number(p.duration_months));}
-function catalogPrice(m){return (m.offers||[]).map(o=>new Intl.NumberFormat('en',{style:'currency',currency:m.currency||'USD'}).format(Number(o.price))+(o.prepaid_cycles?' upfront':o.billing_models.includes(2)&&o.billing_models.length===1?' one-time':' per payment')).join(' / ');}
+function catalogPrice(m){if(m.planning_contract)return m.offers.map(o=>new Intl.NumberFormat('en',{style:'currency',currency:m.currency||'USD'}).format(Number(o.price))+' upfront').join(' / ');return (m.offers||[]).map(o=>new Intl.NumberFormat('en',{style:'currency',currency:m.currency||'USD'}).format(Number(o.price))+(o.prepaid_cycles?' upfront':o.billing_models.includes(2)&&o.billing_models.length===1?' one-time':' per payment')).join(' / ');}
 function templateProblems(){
  const problems=[];if(templateSkeletonId)problems.push((state.therapySkeletons||[]).find(s=>s.id===templateSkeletonId)?.reason||'Master therapy draft needs billing verification.');if(!templateRows.length)problems.push('Add at least one plan.');
  for(const p of templateRows){if(!p.skus.length)problems.push(p.name+': choose a product.');if(!p.payment_types.length)problems.push(p.name+': choose how customers can pay.');
@@ -137,7 +138,7 @@ function skeletonMatrix(skeleton){
  for(const months of [1,3,6,12]){
   const products=skeleton.products.filter(p=>p.duration_months===months),shipments=products[0].shipments_per_term;
   const box=card(months+'-month plan',shipments?shipments+' shipments per term · later shipments have no extra charge':'Shipment count to be set');
-  for(const p of products)box.append(element('p',p.sku+' · '+p.treatment+' · '+(p.renewal_months?'Renews every '+months+' calendar month'+(months===1?'':'s'):'No renewal')+' · Price not set'));
+  for(const p of products)box.append(element('p',p.sku+' · '+p.treatment+' · '+(p.renewal_months?'Renews every '+months+' calendar month'+(months===1?'':'s'):'No renewal')+' · '+skeletonPrice(p)));
   group.append(box);
  }
  group.append(element('p','Shipment dates are still to be set. Billing renewal and shipment timing are separate.','hint'));
@@ -145,12 +146,12 @@ function skeletonMatrix(skeleton){
 }
 function renderTherapySkeletons(){
  list('therapy-skeleton-list',state.therapySkeletons||[],s=>{
-  const box=card(s.name,'Reusable skeleton · 2 treatments · 4 durations · 16 SKUs');
+  const box=card(s.name,'Reusable skeleton · '+s.therapy.treatments.length+' treatments · 4 durations · '+s.products.length+' SKUs');
   box.append(element('p',s.reason,'hint'));
   const details=element('details');details.append(element('summary','View all SKUs and payment rules'),skeletonMatrix(s));box.append(details);
   action(box,'Open skeleton draft',()=>{
    const saved=(state.templateDrafts||[]).find(d=>d.skeleton_id===s.id);
-   const draft=structuredClone(saved||state.skeletonDraft);
+   const draft=structuredClone(saved||(state.skeletonDrafts||[]).find(d=>d.skeleton_id===s.id));
    if((state.therapies||[]).some(t=>t.id===draft.therapy_id))draft.new_therapy=null;
    newTemplate(draft);
   });return box;
@@ -160,3 +161,5 @@ function renderSkeletonContract(){
  const target=$('template-skeleton-contract'),s=(state.therapySkeletons||[]).find(s=>s.id===templateSkeletonId);target.hidden=!s;target.replaceChildren();
  if(s){target.append(element('h3',s.name),skeletonMatrix(s));$('template-therapy').disabled=true;}
 }
+
+function skeletonPrice(product){const m=(state.masters||[]).find(m=>m.sku===product.sku);return m?catalogPrice(m):new Intl.NumberFormat('en',{style:'currency',currency:product.currency}).format(Number(product.price))+' starter upfront price';}

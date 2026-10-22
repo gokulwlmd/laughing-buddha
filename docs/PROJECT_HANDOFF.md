@@ -52,3 +52,7 @@ Run backend tests and browser scenarios with disposable state and fake services.
 ## Latest: Master Therapy 1 skeleton
 
 Weight Loss is now a built-in versioned skeleton in Checkout Templates, linked from Therapies. It includes the 16 exact SEMA/TIRZ SKUs and upfront/renewal/fulfillment rules in [MASTER_THERAPY_1.md](MASTER_THERAPY_1.md). The four-plan draft is saved only through the normal owner review flow; deployment itself does not modify stored owner/catalog/review/checkout records. No prices are invented. Activation remains blocked pending prices, exact schedules and verified renewing prepaid support. Existing site creation uses only completed published templates.
+
+## Latest: three therapies and 32 priced master SKUs
+
+The user authorized actual master database records with editable starter prices, adding Sermorelin and Metformin to Weight Loss. See [MASTER_THERAPY_CATALOG.md](MASTER_THERAPY_CATALOG.md) for all 32 SKU codes, price assumptions, term/renewal rules, missing delivery details and the atomic idempotent synthetic-only import. These priced master drafts use `planning_contract`; processor mappings remain empty and activation blocked pending verification. Default prices can be edited through the normal owner-reviewed master form. Existing brand prices, therapy records and saved drafts must not be overwritten.

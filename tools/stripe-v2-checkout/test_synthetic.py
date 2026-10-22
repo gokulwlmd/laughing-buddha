@@ -43,4 +43,61 @@ class SyntheticTests(unittest.TestCase):
             settings=Settings.environment();self.assertTrue(settings.synthetic);self.assertFalse(settings.authorization_verified)
 
 
+class StarterCatalogTests(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory()
+        self.app=create_app(Settings(public_url='http://localhost:8081',state_dir=Path(self.temp.name),synthetic=True))
+        self.admin=self.app.state.admin
+    def tearDown(self):self.temp.cleanup()
+    def snapshot(self):
+        with self.admin.store.db() as db:return db.execute('SELECT kind,id,data FROM admin_config ORDER BY kind,id').fetchall()
+    def test_import_adds_exact_32_skus_and_3_therapies_with_prices_preserving_existing_state(self):
+        from import_master_therapies import run
+        before=self.snapshot()
+        self.admin.put('template_draft','master-therapy-1',{'id':'master-therapy-1','name':'Owner custom draft'})
+        with patch.object(self.admin.api,'call',side_effect=AssertionError('No remote operations')):
+            result=run(self.app)
+        self.assertEqual(result['master_skus'],32)
+        after={(k,i):v for k,i,v in self.snapshot()}
+        for k,i,v in before:self.assertEqual(after[(k,i)],v)
+        self.assertEqual(self.admin.get('template_draft','master-therapy-1')['name'],'Owner custom draft')
+        self.assertEqual(len(self.admin.records('master')),40)
+        self.assertEqual(len(self.admin.records('therapy')),4)
+        for prefix,monthly in [('SEMA',249),('TIRZ',449),('SERM',199),('METFORM',49)]:
+            for months in (1,3,6,12):
+                for suffix in ('','-SUB'):
+                    m=self.admin.get('master',f'{prefix}-{months}M{suffix}')
+                    self.assertEqual(m['offers'][0]['price'],f'{monthly*months}.00')
+                    self.assertEqual(m['offers'][0]['billing_models'],[])
+                    self.assertEqual(m['planning_contract']['renewal_months'],months if suffix else None)
+                    self.assertIsNone(m['product_id'])
+                    if prefix in ('SERM','METFORM'):self.assertIsNone(m['planning_contract']['shipments_per_term'])
+        self.assertIsNone(self.admin.owner())
+        m=self.admin.get('master','SEMA-1M');m['offers'][0]['price']='260.00';self.admin.put('master','SEMA-1M',m)
+        snapshot=self.snapshot();self.assertTrue(run(self.app)['already_imported']);self.assertEqual(snapshot,self.snapshot())
+    def test_collision_rolls_back_whole_import_and_live_environment_is_rejected(self):
+        from import_master_therapies import run
+        self.admin.put('sku','SERM-1M',{'sku':'SERM-1M','name':'Existing custom SKU'})
+        before=self.snapshot()
+        with self.assertRaises(ValueError):run(self.app)
+        self.assertEqual(before,self.snapshot())
+        self.admin.cfg.synthetic=False
+        with self.assertRaises(ValueError):run(self.app)
+        self.assertEqual(before,self.snapshot())
+    def test_planning_price_can_change_but_activation_and_mapping_are_blocked(self):
+        from import_master_therapies import run
+        from master import MasterSKU
+        from fastapi import HTTPException
+        run(self.app);m=self.admin.get('master','SEMA-12M-SUB')
+        request={k:v for k,v in m.items() if k in MasterSKU.model_fields}
+        request['offers'][0]['price']='3000.00'
+        with patch.object(self.admin.api,'call',side_effect=AssertionError('No network')):
+            data,guards,_,ops,_=self.admin.prepare_master('master',request)
+        self.assertEqual(data['offers'][0]['price'],'3000.00');self.assertFalse(guards or ops)
+        with self.assertRaises(HTTPException):self.admin.prepare_master('master',request|{'planning_contract':None,'offers':[{'id':'upfront','name':'Bad conversion','price':'3000','billing_models':[3]}]})
+        brand=self.admin.get('brand','demo-brand');brand['campaign_id']=422;brand['campaign_ids']=[422];self.admin.put('brand','demo-brand',brand)
+        with self.assertRaisesRegex(HTTPException,'verify planned billing'):self.admin.prepare_master('provision',{'brand_id':'demo-brand','skus':['SEMA-12M-SUB']})
+        with self.assertRaisesRegex(HTTPException,'verify planned billing'):self.admin.template_source({'id':'example','therapy_id':'weight-loss','purchase_option_ids':['weight-loss-12m']})
+
+
 if __name__=='__main__':unittest.main()

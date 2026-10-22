@@ -61,10 +61,10 @@ test('SITE-07 new therapy and incomplete plans save together as a recoverable dr
 
 test('SITE-08 master therapy skeleton shows all terms and preserves a nonpayable draft',async({ownerPage:page,app})=>{
  await nav(page,'templates');const skeleton=page.locator('#therapy-skeleton-list');
- await expect(skeleton).toContainText('Master Therapy 1');await skeleton.getByText('View all SKUs and payment rules').click();
+ await expect(skeleton).toContainText('Master Therapy 1');await skeleton.getByText('View all SKUs and payment rules').first().click();
  for(const prefix of ['SEMA','TIRZ'])for(const months of [1,3,6,12])for(const suffix of ['','-SUB'])await expect(skeleton).toContainText(prefix+'-'+months+'M'+suffix);
  await expect(skeleton).toContainText('Renews every 6 calendar months');await expect(skeleton).toContainText('4 shipments per term');
- await skeleton.getByRole('button',{name:'Open skeleton draft'}).click();
+ await skeleton.getByRole('button',{name:'Open skeleton draft'}).first().click();
  await expect(page.locator('#template-plans .template-plan')).toHaveCount(4);
  await expect(page.locator('#template-form button[type=submit]')).toBeDisabled();
  await page.locator('#template-save-draft').click();await approve(page);await nav(page,'templates');
@@ -72,5 +72,15 @@ test('SITE-08 master therapy skeleton shows all terms and preserves a nonpayable
  await expect(page.locator('#template-skeleton-contract')).toContainText('TIRZ-12M-SUB');
  await expect(page.locator('#template-form button[type=submit]')).toBeDisabled();
  await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+ expect((await stats(page,app)).counts.new_order).toBe(0);
+});
+
+test('SITE-09 starter therapies and editable master upfront prices preserve the billing contract',async({ownerPage:page,app})=>{
+ await nav(page,'templates');await expect(page.locator('#therapy-skeleton-list')).toContainText('Master Therapy 2 · Sermorelin');await expect(page.locator('#therapy-skeleton-list')).toContainText('Master Therapy 3 · Metformin');
+ await save(page,'therapy',{id:'metformin',name:'Metformin',enabled:true,treatments:[{id:'metformin',name:'Metformin'}]});
+ await save(page,'master',{sku:'METFORM-12M-SUB',name:'Metformin 12 months subscription',therapy_id:'metformin',treatment_id:'metformin',product_duration_months:12,category:'Metformin',currency:'USD',enabled:true,offers:[{id:'upfront',name:'Full-term upfront price',price:'588.00',billing_models:[]}],planning_contract:{charge:'full_term_upfront',term_months:12,renewal_months:12,shipments_per_term:null,shipment_interval:null,later_shipment_charge:'0.00'}});
+ await page.locator('#refresh-workspace').click();await nav(page,'master');const card=page.locator('#master-list .record').filter({hasText:'METFORM-12M-SUB'});await expect(card).toContainText('$588.00 upfront');await expect(card).toContainText('Renews every 12 calendar months');
+ await card.getByRole('button',{name:'Edit default price'}).click();await page.locator('#master-planning-price').fill('600.00');await page.locator('#master-form button[type=submit]').click();await approve(page);await nav(page,'master');await expect(card).toContainText('$600.00 upfront');await expect(card).toContainText('Renews every 12 calendar months');
+ await nav(page,'templates');const met=page.locator('#therapy-skeleton-list .record').filter({hasText:'Master Therapy 3 · Metformin'}).first();await met.getByText('View all SKUs and payment rules').click();await expect(met).toContainText('$600.00 upfront');
  expect((await stats(page,app)).counts.new_order).toBe(0);
 });

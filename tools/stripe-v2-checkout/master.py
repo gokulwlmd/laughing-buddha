@@ -3,6 +3,7 @@ import hashlib
 import json
 import secrets
 from decimal import Decimal
+from typing import Literal
 from fastapi import HTTPException
 from pydantic import BaseModel,ConfigDict,Field,field_validator,model_validator
 from catalog import CatalogError,enabled,money,resolve,quote
@@ -18,7 +19,7 @@ class MasterOffer(BaseModel):
     id: str = Field(pattern=r'^[a-z0-9][a-z0-9-]{0,39}$')
     name: str = Field(min_length=1,max_length=100)
     price: Decimal = Field(gt=0,max_digits=10,decimal_places=2)
-    billing_models: list[int] = Field(min_length=1,max_length=30)
+    billing_models: list[int] = Field(min_length=0,max_length=30)
 
     prepaid_cycles: int | None = Field(default=None,ge=2,le=36,strict=True)
 
@@ -36,6 +37,22 @@ class MasterOffer(BaseModel):
         return value
 
 
+class PlanningContract(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    charge: Literal['full_term_upfront'] = 'full_term_upfront'
+    term_months: int = Field(ge=1, le=36, strict=True)
+    renewal_months: int | None = Field(default=None, ge=1, le=36, strict=True)
+    shipments_per_term: int | None = Field(default=None, ge=1, le=36, strict=True)
+    shipment_interval: None = None
+    later_shipment_charge: Literal['0.00'] = '0.00'
+
+    @model_validator(mode='after')
+    def matching_term(self):
+        if self.renewal_months is not None and self.renewal_months != self.term_months:
+            raise ValueError('Renewal must match the full upfront term')
+        return self
+
+
 class MasterSKU(BaseModel):
     model_config=ConfigDict(extra='forbid',str_strip_whitespace=True)
     sku: str = Field(min_length=1,max_length=200)
@@ -49,6 +66,19 @@ class MasterSKU(BaseModel):
     currency: str = Field(default='USD',pattern=r'^(USD|EUR|GBP|CAD|AUD|NZD|CHF)$')
     enabled: bool = True
     offers: list[MasterOffer] = Field(min_length=1,max_length=10)
+    planning_contract: PlanningContract | None = None
+
+    @model_validator(mode='after')
+    def payment_configuration(self):
+        if self.planning_contract:
+            if self.product_duration_months != self.planning_contract.term_months:
+                raise ValueError('Product duration must match the upfront term')
+            if self.product_id or len(self.offers) != 1 or any(o.billing_models or o.prepaid_cycles for o in self.offers):
+                raise ValueError('Catalog drafts have one upfront price and no processor mapping')
+        elif any(not o.billing_models for o in self.offers):
+            raise ValueError('Choose configured billing models')
+        return self
+
 
     @field_validator('offers')
     @classmethod
@@ -194,6 +224,24 @@ class MasterCatalog:
     def prepare_master(self,kind,payload,context=None):
         data=(MasterSKU if kind=='master' else Provision).model_validate(payload).model_dump(mode='json')
         if kind=='master':
+            before=self.get('master',data['sku'])
+            if before and before.get('planning_contract') and not data['planning_contract']:
+                raise HTTPException(422,'Verify the planned billing contract before converting this SKU to an active master')
+            if data['planning_contract']:
+                if before and not before.get('planning_contract'):
+                    raise HTTPException(409,'An active master already uses this SKU; do not replace its billing setup')
+                if any(a['sku']==data['sku'] for a in self.records('assignment')):
+                    raise HTTPException(409,'Assigned SKUs cannot be replaced with catalog drafts')
+                therapy=self.get('therapy',data['therapy_id'])
+                if not therapy or not therapy['enabled'] or data['treatment_id'] not in {t['id'] for t in therapy['treatments']}:
+                    raise HTTPException(422,'Choose an active therapy and one of its treatments')
+                if before and any(before.get(k)!=data[k] for k in ('therapy_id','treatment_id','product_duration_months','planning_contract')):
+                    raise HTTPException(422,'This SKU retains its agreed therapy and billing contract; edit its name, category or price instead')
+                for o in data['offers']:o.pop('prepaid_cycles',None)
+                data.update(revision=(before or {}).get('revision',0)+1,billing_terms={})
+                preview={'before':before,'after':data,'stickyWrites':[], 'impact':'Saves an editable master catalog price. Billing and fulfillment need verification before assignment. Existing brand prices and subscriptions are unchanged.'}
+                return data, [], preview, [], self.local_fingerprint()
+            data.pop('planning_contract',None)
             for o in data['offers']:
                 if o.get('prepaid_cycles') is None:o.pop('prepaid_cycles',None)
         guards=[];operations=[]
@@ -270,6 +318,7 @@ class MasterCatalog:
             attached=[int(o['id']) for o in c.get('offers',[])];attach=list(attached)
             entries=[];assignments=[];affected=set();replacements=[]
             for index,master in enumerate(masters):
+                if master.get('planning_contract'):raise HTTPException(422,master['sku']+': verify planned billing and fulfillment before campaign assignment')
                 if master['currency']!=currency:raise HTTPException(422,'Master and campaign currencies differ; configure an explicit preset for this currency')
                 source=source_product(master,watch)
                 if any(o.get('prepaid_cycles') for o in master['offers']) and (enabled(source.get('is_shippable')) or enabled(source.get('taxable',source.get('is_taxable')))):

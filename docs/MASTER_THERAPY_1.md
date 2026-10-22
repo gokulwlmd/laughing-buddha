@@ -17,10 +17,10 @@ Each `-SUB` SKU renews after its stated duration: 1, 3, 6 or 12 months. Non-SUB 
 
 Open **Checkout Templates → Master Therapy 1 · Weight Loss → Open skeleton draft**. The four duration plans are prefilled and the complete 16-SKU contract stays visible. Save through the existing review flow to persist a local draft and, if absent, its Weight Loss therapy. Reopening keeps the skeleton reference. The built-in recipe is available without creating or overwriting any database records. It does not alter existing Weight Loss therapies, master SKUs, prices, sites or published checkouts.
 
-Prices and processor mappings are intentionally unset. Planned SKU codes are distinct from selected, approved master products; no fake prices or automatic assignments are created. The draft cannot be activated while this contract remains unverified. Existing independent templates continue working normally.
+Editable starter prices have now been assigned; see [the three-therapy catalog](MASTER_THERAPY_CATALOG.md). Processor mappings remain unset. Planned SKU codes are distinct from selected, approved master products; no processor assignments are created. The draft cannot be activated while this contract remains unverified. Existing independent templates continue working normally.
 
 ## Before activation
 
-Supply each SKU's full-term price/currency; configure and verify master product/offer mappings, exact billing renewal and shipment schedules. Native prepaid renewal and real fulfillment remain unsupported by the currently verified payment path. Preserve those payment gates. No live Sticky objects, orders, medication fulfillment or production database changes are authorized by saving this skeleton.
+Review each SKU's starter full-term price/currency; configure and verify master product/offer mappings, exact billing renewal and shipment schedules. Native prepaid renewal and real fulfillment remain unsupported by the currently verified payment path. Preserve those payment gates. No live Sticky objects, orders, medication fulfillment or production database changes are authorized by saving this skeleton.
 
 Once those requirements are implemented and verified, the complete template should be included when creating a site, inheriting that site's branding. Existing site prices and published settings must continue to require explicit reviewed updates.

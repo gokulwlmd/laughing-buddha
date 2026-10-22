@@ -6,7 +6,7 @@ from pydantic import Field, field_validator
 from plans import Form, Therapy, PurchaseOption, fingerprint, ReadCache
 from master import brand_campaigns
 from catalog import resolve, CatalogError
-from therapy_skeletons import SKELETON_ID, BLOCKER
+from therapy_skeletons import all_skeletons, BLOCKER
 
 
 class CheckoutTemplate(Form):
@@ -94,8 +94,9 @@ class SiteCatalog:
         if saved_draft.get('skeleton_id') and request['skeleton_id'] != saved_draft['skeleton_id']:
             raise HTTPException(422, 'Keep the master therapy skeleton attached to this draft')
         if request['skeleton_id']:
-            if request['skeleton_id'] != SKELETON_ID or request['therapy_id'] != 'weight-loss':
-                raise HTTPException(422, 'Choose the Weight Loss master therapy skeleton')
+            skeleton=next((s for s in all_skeletons() if s['id']==request['skeleton_id']),None)
+            if not skeleton or request['therapy_id'] != skeleton['therapy']['id']:
+                raise HTTPException(422, 'Choose the matching master therapy skeleton')
             if not request['draft']:
                 raise HTTPException(422, BLOCKER)
         before = self.get('checkout_template', request['id'])
@@ -172,6 +173,7 @@ class SiteCatalog:
             for sku in purchase['skus']:
                 master = self.get('master', sku) or {}
                 self.therapy_for(master, therapy['id'])
+                if master.get('planning_contract'):raise HTTPException(422,sku+': verify planned billing and fulfillment before activating this template')
                 if not master.get('enabled') or master.get('exclude_from_campaign_setup') or master['product_duration_months'] != purchase['duration_months']:
                     raise HTTPException(422, sku + ': choose an enabled master SKU with matching product duration')
                 masters[sku] = master

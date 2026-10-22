@@ -146,7 +146,7 @@ class PlanCatalog:
                 master=self.get('master',sku)
                 self.therapy_for(master or {},data['therapy_id'])
                 if master['product_duration_months']!=data['duration_months']:raise HTTPException(422,sku+': product duration must match the purchase option')
-                supported=set()
+                supported=({'subscription' if master['planning_contract']['renewal_months'] else 'once'} if master.get('planning_contract') else set())
                 for offer in master['offers']:
                     if offer.get('prepaid_cycles'):supported.add('prepaid')
                     else:

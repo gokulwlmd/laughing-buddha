@@ -19,14 +19,14 @@ class SiteTests(unittest.TestCase):
     provision = helpers.PurchaseOptionTests.provision
     save = helpers.PurchaseOptionTests.save
 
-    def test_master_therapy_skeleton_records_exact_contract_without_prices(self):
+    def test_master_therapy_skeleton_records_exact_contract_with_starter_prices(self):
         from therapy_skeletons import weight_loss_skeleton
         skeleton = weight_loss_skeleton()
         products = skeleton['products']
         self.assertEqual(len(products), 16)
         self.assertEqual({p['sku'] for p in products}, {f'{t}-{m}M{s}' for t in ('SEMA','TIRZ') for m in (1,3,6,12) for s in ('','-SUB')})
         for p in products:
-            self.assertIsNone(p['price'])
+            self.assertEqual(p['price'],format(__import__('decimal').Decimal('249.00' if p['sku'].startswith('SEMA') else '449.00')*p['duration_months'],'.2f'))
             self.assertEqual(p['charge'], 'full_term_upfront')
             self.assertEqual(p['renewal_months'], p['duration_months'] if p['sku'].endswith('-SUB') else None)
             self.assertEqual(p['shipments_per_term'], {6:2,12:4}.get(p['duration_months']))
@@ -34,7 +34,7 @@ class SiteTests(unittest.TestCase):
             self.assertEqual(p['later_shipment_charge'], '0.00')
         self.assertFalse(skeleton['ready'])
         products[0]['price'] = '123'
-        self.assertIsNone(weight_loss_skeleton()['products'][0]['price'])
+        self.assertEqual(weight_loss_skeleton()['products'][0]['price'],'249.00')
 
     def test_master_skeleton_draft_preserves_contract_and_cannot_publish(self):
         from therapy_skeletons import skeleton_draft

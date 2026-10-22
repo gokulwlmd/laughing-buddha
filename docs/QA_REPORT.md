@@ -149,3 +149,7 @@ Set `QA_PYTHON` to another virtualenv Python if needed. Chromium defaults to `/u
 ## Master Therapy 1 skeleton — 22 October 2026
 
 All 169 backend tests passed (`unittest discover`, 27.764s). All eight site browser scenarios passed (39.4s), including the new SITE-08 skeleton matrix, nonpayable draft save/resume and mobile width check. This targeted run covers all existing site scenarios; it does not claim a new full browser-suite run. Contract tests verify all 16 exact SKUs, upfront amounts remaining unset, matching renewal months, two/four shipments, unspecified delivery intervals, idempotent draft saves and rejection of activation/removal of the skeleton reference. No payment or live Sticky operations were performed.
+
+## Priced three-therapy catalog — 22 October 2026
+
+All 172 backend tests passed (28.959s). All 16 affected master/site browser scenarios passed (1.4m); after locking contract fields in the price editor, MST-01 and SITE-09 passed again (7.9s). The import tests create exactly 32 master SKUs, preserve existing configuration and owner drafts, keep later default-price edits on repeat import, reject collisions atomically and reject non-synthetic environments. Contract checks reject unverified activation and mappings; the browser verifies an edited full-term price while retaining the renewal term. No live processor or delivery execution was exercised.

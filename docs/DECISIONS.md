@@ -51,3 +51,7 @@ Catalog products and their billing rules remain managed under Advanced. The temp
 ## Master Therapy 1 skeleton (22 October 2026)
 
 The Weight Loss skeleton defines separate SEMA/TIRZ SKUs for 1/3/6/12-month terms, with and without `-SUB`. All terms are paid in full upfront; `-SUB` renews the full payment after the same calendar-month duration. Six-month terms contain two shipments, twelve-month terms four. Further shipments within the term have no extra charge. Prices, exact shipment timing and short-term shipment counts remain unspecified. The versioned recipe is visible in the admin and can be saved as a draft; it must not activate unverified prepaid renewal or invent prices. See [the full contract](MASTER_THERAPY_1.md).
+
+## Three priced master therapies (22 October 2026)
+
+The owner authorized creating actual Weight Loss, Sermorelin and Metformin SKU records with editable standard starter pricing. The selected USD monthly references are SEMA 249, TIRZ 449, SERM 199 and METFORM 49; multiply by 1/3/6/12 for full-term upfront amounts, no discount. Separate SUB/non-SUB master records start at equal prices. This supersedes the earlier unset-price decision. Shipment counts for the two new therapies remain unspecified. Save the 32 masters as billing-contract drafts without inventing processor mappings or turning off activation guards. Existing brand prices and owner drafts are preserved. See [the catalog/import contract](MASTER_THERAPY_CATALOG.md).
