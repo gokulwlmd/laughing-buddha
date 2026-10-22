@@ -20,7 +20,7 @@ from decimal import Decimal
 from urllib import error, parse, request as urlrequest
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -78,6 +78,7 @@ class Settings:
     # Set only after verifying the live authorize_payment contract for this fixture.
     authorization_verified: bool = False
     synthetic: bool = False
+    deferred_gateway_ids: tuple[int, ...] = ()
 
     @classmethod
     def environment(cls):
@@ -89,7 +90,8 @@ class Settings:
         synthetic = os.environ.get('CHECKOUT_ENVIRONMENT') in ('staging','development')
         return cls(public_url=origin,
             state_dir=Path(os.environ.get('CHECKOUT_STATE_DIR', HERE / '.state')),
-            authorization_verified=not synthetic and os.environ.get('CHECKOUT_AUTHORIZATION_VERIFIED') == '1', synthetic=synthetic)
+            authorization_verified=not synthetic and os.environ.get('CHECKOUT_AUTHORIZATION_VERIFIED') == '1', synthetic=synthetic,
+            deferred_gateway_ids=tuple(int(i.strip()) for i in os.environ.get('CHECKOUT_DEFERRED_GATEWAY_IDS','').split(',') if i.strip()))
 
 
 class Contact(BaseModel):
@@ -151,6 +153,7 @@ class Store:
             if 'link_id' not in {row[1] for row in db.execute('PRAGMA table_info(checkouts)')}:
                 db.execute('ALTER TABLE checkouts ADD COLUMN link_id TEXT')
             db.execute('CREATE TABLE IF NOT EXISTS purchase_successors (previous_id TEXT PRIMARY KEY, next_id TEXT NOT NULL UNIQUE)')
+            db.execute('CREATE TABLE IF NOT EXISTS checkout_visitors (checkout_id TEXT PRIMARY KEY, browser_hash TEXT NOT NULL)')
             # Preserve the paid receipt and any uncertain legacy attempt; never reset it.
             old = db.execute('SELECT status,contact,intent_id,order_id FROM purchase WHERE id=1').fetchone()
             db.execute('INSERT OR IGNORE INTO checkouts(id,campaign,sku,status,contact,intent_id,order_id) VALUES(?,?,?,?,?,?,?)',
@@ -165,6 +168,25 @@ class Store:
         with self.db() as db:
             db.execute("INSERT INTO checkouts(id,campaign,sku,status,link_id) VALUES(?,?,?,'new',?)", (key,campaign,sku,link_id))
         return key
+
+    def visitor(self, key):
+        with self.db() as db:
+            row=db.execute('SELECT browser_hash FROM checkout_visitors WHERE checkout_id=?',(key,)).fetchone()
+            return row[0] if row else None
+
+    def create_visit(self, campaign, sku, link_id, browser):
+        key=secrets.token_urlsafe(24)
+        with self.db() as db:
+            db.execute("INSERT INTO checkouts(id,campaign,sku,status,link_id) VALUES(?,?,?,'new',?)",(key,campaign,sku,link_id))
+            db.execute('INSERT INTO checkout_visitors VALUES(?,?)',(key,hashlib.sha256(browser.encode()).hexdigest()))
+        return key
+
+    def bind_successor(self, previous, current):
+        owner=self.visitor(previous)
+        if owner:
+            with self.db() as db:
+                db.execute('INSERT OR IGNORE INTO checkout_visitors VALUES(?,?)',(current,owner))
+                assert db.execute('SELECT browser_hash FROM checkout_visitors WHERE checkout_id=?',(current,)).fetchone()[0]==owner
 
     def successor(self, previous):
         with self.db() as db:
@@ -261,23 +283,35 @@ def create_app(settings=None, sticky=None):
             return 'purchase_' + hashlib.sha256(f'{campaign}:{sku}:{link_id}'.encode()).hexdigest()[:20]
         return 'purchase_' + hashlib.sha256(f'{campaign}:{sku}'.encode()).hexdigest()[:20]
 
+    def browser_cookie(req,response):
+        browser=req.cookies.get('__Host-checkout-browser','')
+        if not re.fullmatch(r'[A-Za-z0-9_-]{32,100}',browser):
+            response.set_cookie('__Host-checkout-browser',secrets.token_urlsafe(32),secure=True,httponly=True,samesite='lax',max_age=86400*30)
+
     def session(req, allow_previous=False):
         campaign, sku = context(req)
+        expected = req.headers.get('x-checkout-attempt')
+        owner=store.visitor(expected) if expected else None
+        if owner is not None:
+            browser=req.cookies.get('__Host-checkout-browser','')
+            row=store.read(expected)
+            if not hmac.compare_digest(owner,hashlib.sha256(browser.encode()).hexdigest()) or not row or row['campaign']!=campaign or row['sku']!=sku or row.get('link_id')!=req.query_params.get('link_id'):
+                raise HTTPException(409,'This checkout belongs to another visit. Open the checkout link to start your own.')
+            return expected,row
         key = req.cookies.get(cookie_name(campaign, sku, req.query_params.get('link_id')))
         row = store.read(key) if key else None
         if not row or row['campaign'] != campaign or row['sku'] != sku or row.get('link_id') != req.query_params.get('link_id'):
             raise HTTPException(409, 'Open this campaign/SKU checkout link first')
-        expected = req.headers.get('x-checkout-attempt')
         if not allow_previous and ((expected and expected != key) or (req.method == 'POST' and not expected)):
             raise HTTPException(409, 'This tab refers to another purchase. Reload the checkout before continuing.')
         return key, row
 
-    def catalog(req):
-        c = resolve(api, *context(req))
+    def catalog(req, legacy=False):
         if req.query_params.get('link_id'):
             link, brand = admin.link_access(req)
-            c = admin.filter_catalog(c,link,brand)
-        return c
+            c = resolve(api, *context(req), allowed_keys=None if legacy else link['options'])
+            return admin.filter_catalog(c,link,brand)
+        return resolve(api, *context(req))
 
     def customer(contact):
         parts = contact['name'].split(maxsplit=1)
@@ -301,6 +335,10 @@ def create_app(settings=None, sticky=None):
             address = '127.0.0.1'
         return {**customer(contact), 'creditCardType': 'stripe_link',
             'forceGatewayId': q['gatewayId'], 'campaignId': q['campaignId'], 'ipAddress': address}
+
+    def checkout_html(token):
+        html=(HERE/'web/index.html').read_text().replace('<!--CHECKOUT_CONTEXT-->', '<meta name="checkout-csrf" content="'+token+'">')
+        return HTMLResponse(html)
 
     def checkout_path(campaign, sku):
         return f'/checkout/{campaign}/' + parse.quote(sku, safe='')
@@ -358,7 +396,8 @@ def create_app(settings=None, sticky=None):
         except HTTPException as exc:
             if exc.status_code==401:return FileResponse(HERE/'web/access.html',status_code=401)
             raise
-        response = FileResponse(HERE / 'web/index.html')
+        response = checkout_html(csrf())
+        browser_cookie(req,response)
         if not hmac.compare_digest(req.cookies.get('checkout_access',''),invite):
             response.set_cookie('checkout_access',invite,secure=True,httponly=True,samesite='lax',max_age=3600)
         name = cookie_name(campaign_id, sku)
@@ -385,7 +424,8 @@ def create_app(settings=None, sticky=None):
             return response
         if link['visibility']=='private' and not hmac.compare_digest(req.cookies.get('link_access_'+link_id,''),admin.private_token(link)):
             return FileResponse(HERE/'web/access.html',status_code=401)
-        response = FileResponse(HERE/'web/index.html')
+        response = checkout_html(admin.checkout_csrf(link))
+        browser_cookie(req,response)
         name = cookie_name(brand['campaign_id'],link['sku'],link_id)
         key = req.cookies.get(name)
         row = store.read(key) if key else None
@@ -393,6 +433,20 @@ def create_app(settings=None, sticky=None):
             key=store.create(brand['campaign_id'],link['sku'],link_id)
             response.set_cookie(name,key,secure=True,httponly=True,samesite='lax',max_age=86400*30)
         return response
+
+    @app.get('/api/checkout-context')
+    def checkout_context(req:Request):
+        access(req)
+        return {'csrfToken':admin.checkout_csrf(admin.link(req.query_params['link_id'])[0]) if req.query_params.get('link_id') else csrf()}
+
+    @app.post('/api/start-checkout')
+    def start_checkout(body:CaptureRequest,req:Request):
+        access(req,True)
+        browser=req.cookies.get('__Host-checkout-browser','')
+        if not re.fullmatch(r'[A-Za-z0-9_-]{32,100}',browser):raise HTTPException(409,'Open the checkout link first.')
+        campaign,sku=context(req)
+        key=store.create_visit(campaign,sku,req.query_params.get('link_id'),browser)
+        return {'status':'new','attemptId':key}
 
     @app.get('/api/config')
     def configuration(req: Request):
@@ -402,7 +456,8 @@ def create_app(settings=None, sticky=None):
         ready = bool(cfg.public_url and cfg.authorization_verified and not c['blockedReason'])
         return {k: c[k] for k in ('campaignId','campaignName','sku','options','shipping','countries','currency','publishableKey')} | {
             'csrfToken': admin.checkout_csrf(admin.link(req.query_params['link_id'])[0]) if req.query_params.get('link_id') else csrf(), 'branding': c.get('branding'), 'checkoutTitle': c.get('checkoutTitle'), 'ready': ready, 'blockedReason': c['blockedReason'] or ('' if ready else 'The secure checkout connection is still being configured.'),
-            'status': row['status'], 'attemptId': row['id'],'paymentTestOnly':c.get('paymentTestOnly',False)}
+            'status': row['status'], 'attemptId': row['id'],'paymentTestOnly':c.get('paymentTestOnly',False),
+            'deferredPayment': {'captureMethod':'manual','setupFutureUsage':'off_session'} if c['gatewayId'] in cfg.deferred_gateway_ids else None}
 
     @app.get('/api/status')
     def status(req: Request):
@@ -437,6 +492,7 @@ def create_app(settings=None, sticky=None):
         elif row['status'] != 'captured':
             raise HTTPException(409, 'Complete or reconcile the current payment before starting another purchase')
         new_key = store.start_next(previous)
+        store.bind_successor(previous,new_key)
         next_row = store.read(new_key)
         response = JSONResponse({'status': next_row['status'], 'attemptId': new_key})
         response.set_cookie(cookie_name(row['campaign'],row['sku'],row.get('link_id')), new_key,
@@ -474,7 +530,7 @@ def create_app(settings=None, sticky=None):
         if q['option']['recurring'] and not body.recurring_consent:
             raise HTTPException(422, 'Accept the displayed recurring billing terms to continue')
         contact = json.loads(row['contact'])
-        c = catalog(req)
+        c = catalog(req, legacy=q.get('catalogVersion',1)!=2)
         current = quote(api,c,q['selection'],q['shippingId'],contact)
         if any(current[k] != q[k] for k in ('amount','currency','fingerprint','option')):
             raise HTTPException(409, 'Campaign configuration or price changed. Review a fresh quote.')
@@ -502,7 +558,7 @@ def create_app(settings=None, sticky=None):
         if row['status'] != 'awaiting_card' or key not in cached:
             raise HTTPException(409, 'This payment needs review before continuing. Please contact support; do not start another payment.')
         q=json.loads(row['quote'])
-        c=catalog(req)
+        c=catalog(req, legacy=q.get('catalogVersion',1)!=2)
         if c['fingerprint']!=q['fingerprint'] or c['blockedReason']:
             raise HTTPException(409, 'The payment configuration changed. Please contact support before continuing.')
         return cached[key] | {'contact':json.loads(row['contact']),'option':q['option']}
@@ -519,7 +575,7 @@ def create_app(settings=None, sticky=None):
             return {'status':'captured','orderId':row['order_id'],'amount':q['amount']}
         if row['status'] != 'awaiting_card' or not row.get('intent_id'):
             raise HTTPException(409, 'No capturable payment is available. Check its status before retrying.')
-        c = catalog(req)
+        c = catalog(req, legacy=q.get('catalogVersion',1)!=2)
         current = quote(api,c,q['selection'],q['shippingId'],json.loads(row['contact'])) if not c['blockedReason'] else None
         if not current or any(current[k] != q[k] for k in ('fingerprint','amount','currency','option')):
             raise HTTPException(409, 'Campaign configuration or price changed; reconcile this authorization before capture')

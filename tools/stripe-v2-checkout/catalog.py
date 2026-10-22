@@ -24,17 +24,34 @@ def enabled(value):
     return value not in (None, False, 0, '0', '')
 
 
-def resolve(api, campaign_id, sku):
+def resolve(api, campaign_id, sku, allowed_keys=None):
     c = api.detail(f'/api/v2/campaigns/{campaign_id}')
     if enabled(c.get('is_archived')) or c.get('is_active') in (False, 0, '0'):
         raise CatalogError('This campaign is inactive')
     offers = c.get('offers', [])
-    # Campaign lists are authoritative. Never search the account-wide product list.
-    offers = [o if 'products' in o else api.detail('/api/v2/offers/' + str(o['id'])) for o in offers]
-    offers = [o for o in offers if not enabled(o.get('is_archived'))]
-    ids = sorted({int(p['id']) for o in offers for p in o.get('products', [])})
+    allowed = None
+    if allowed_keys is not None:
+        try:
+            allowed = {tuple(int(part) for part in key.split(':')) for key in allowed_keys}
+            if not allowed or any(len(key) != 3 or min(key) <= 0 for key in allowed):raise ValueError()
+        except (ValueError, TypeError, AttributeError):
+            raise CatalogError('The published payment choices are invalid') from None
+        # Only server-owned published keys reach this path. Campaign membership
+        # remains authoritative; never fetch arbitrary/account-wide SKU matches.
+        offers = [o for o in offers if int(o['id']) in {key[0] for key in allowed}]
+    def offer_detail(o):
+        return o if 'products' in o else api.detail('/api/v2/offers/' + str(o['id']))
     with ThreadPoolExecutor(max_workers=8) as pool:
+        offers = list(pool.map(offer_detail, offers))
+    offers = [o for o in offers if not enabled(o.get('is_archived'))]
+    ids = sorted({int(p['id']) for o in offers for p in o.get('products', [])
+        if allowed is None or any(key[:2] == (int(o['id']), int(p['id'])) for key in allowed)})
+    links = [x.get('provider', {}) for x in c.get('alternative_payments', []) if x.get('payment_method') == 'stripe_link']
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        # The gateway and selected product are independent read-only requests.
+        gateway_future = pool.submit(api.detail, f"/api/v2/providers/payment/profiles/{int(links[0]['id'])}") if allowed is not None and len(links)==1 and int(links[0].get('account_id') or 0)==250 else None
         products = list(pool.map(lambda i: api.detail(f'/api/v2/products/{i}'), ids))
+        gateway = gateway_future.result() if gateway_future else None
     matched = {i: p for i, p in zip(ids, products) if p.get('sku') == sku and not enabled(p.get('archived_flag'))}
     if not matched:
         raise CatalogError('This SKU is not in an active offer on this campaign')
@@ -59,6 +76,8 @@ def resolve(api, campaign_id, sku):
                 if enabled(m.get('is_archived')):
                     continue
                 mid = int(m['id'])
+                if allowed is not None and (int(o['id']), pid, mid) not in allowed:
+                    continue
                 days = int(m.get('days') or 0)
                 model_reason = reason
                 if prepaid_cycles and (mid==2 or enabled(m.get('discount'))):model_reason='Prepaid requires a recurring shipment interval without a model discount'
@@ -81,7 +100,7 @@ def resolve(api, campaign_id, sku):
         route_error = 'Enable Stripe Link with a Stripe Connect v2 gateway on this campaign to accept payment here.'
     else:
         gateway_id = int(links[0]['id'])
-        g = api.detail(f'/api/v2/providers/payment/profiles/{gateway_id}')
+        g = gateway if gateway is not None else api.detail(f'/api/v2/providers/payment/profiles/{gateway_id}')
         fields = g.get('fields', {}).get('account_fields', {})
         public = fields.get('publishable_key', '')
         raw_currency = g.get('currency')
@@ -102,8 +121,10 @@ def resolve(api, campaign_id, sku):
     stable_campaign = {k:c.get(k) for k in ('id','c_id','is_active','is_archived','tax_provider_id','fulfillment_id',
         'countries','shipping_profiles','offers','volume_discounts','fraud_providers','postback_profiles',
         'email_provider_id','membership_provider_id','coupon_profiles')}
-    result['fingerprint'] = hashlib.sha256(json.dumps({'campaign': stable_campaign, 'products': products, 'gateway': {
+    scope = {'publishedChoices':sorted(allowed),'selectedOffers':offers} if allowed is not None else {}
+    result['fingerprint'] = hashlib.sha256(json.dumps({**scope, 'campaign': stable_campaign, 'products': products, 'gateway': {
         'id': gateway_id, 'public': public, 'currency': currency, 'error': route_error}}, sort_keys=True).encode()).hexdigest()
+    if allowed is not None:result['catalogVersion'] = 2
     return result
 
 
@@ -138,4 +159,4 @@ def quote(api, catalog, selection, shipping_id, contact):
     return {'amount': int(total * 100), 'total': str(total), 'currency': catalog['currency'],
         'selection': selection, 'shippingId': shipping_id, 'option': option,
         'campaignId': catalog['campaignId'], 'sku': catalog['sku'], 'gatewayId': catalog['gatewayId'],
-        'fingerprint': catalog['fingerprint']}
+        'fingerprint': catalog['fingerprint'], 'catalogVersion':catalog.get('catalogVersion',1)}

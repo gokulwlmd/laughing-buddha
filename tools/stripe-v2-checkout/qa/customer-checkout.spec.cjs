@@ -19,7 +19,26 @@ test('CUS-01 distinct one-time and SUB SKUs share one treatment card and retain 
 });
 
 test('CUS-02 uncertain authorization shows immediate status help and never submits another payment',async({ownerPage:page,app})=>{
- await brand(page);await sku(page);await link(page);await checkout(page,app);await control(page,app,{authorize_timeout:true});await page.locator('#authorize').click();await expect(page.locator('#message')).toContainText('uncertain');
+ await brand(page);await sku(page);await link(page);await checkout(page,app);await control(page,app,{authorize_timeout:true});await page.locator('#authorize').click();await expect(page.locator('#payment-hold')).toBeVisible();
  const before=(await stats(page,app)).counts;await page.reload();await expect(page.locator('#payment-hold')).toBeVisible();await expect(page.locator('#hold-description')).toContainText('contact the store');await expect(page.locator('#contact')).toBeHidden();await expect(page.locator('#payment')).toBeHidden();await expect(page.locator('#new-purchase')).toBeHidden();
  await page.locator('#check-payment-status').click();await expect(page.locator('#hold-help')).toContainText('still unconfirmed');expect((await stats(page,app)).counts).toEqual(before);expect(before.authorize_payment).toBe(1);expect(before.new_order).toBe(0);await page.screenshot({path:test.info().outputPath('payment-status-help.png'),fullPage:true});
+});
+
+test('CUS-03 the original Payment Element confirms the Sticky-owned intent and captures exactly once',async({ownerPage:page,app})=>{
+ await brand(page);await sku(page);await link(page);await checkout(page,app);
+ let paymentCalls=0;page.on('request',r=>{if(/\/api\/(authorize|capture)\?/.test(r.url()))paymentCalls++;});
+ await page.locator('#authorize').click();await expect(page.locator('#payment')).toBeVisible();await expect(page.locator('#pay')).toBeEnabled();expect(paymentCalls).toBe(1);expect((await stats(page,app)).counts.authorize_payment).toBe(1);
+ expect(await page.evaluate(()=>window.__qaElementTypes)).toContain('payment');expect(await page.evaluate(()=>window.__qaElementTypes)).not.toContain('card');
+ await page.locator('#pay').evaluate(b=>{b.click();b.click();});await expect(page.locator('#success')).toBeVisible();const state=await stats(page,app);expect(state.counts.authorize_payment).toBe(1);expect(state.counts.new_order).toBe(1);
+});
+
+test('CUS-04 a fresh shared-link visit works while the previous visit remains held',async({ownerPage:page,app})=>{
+ await brand(page);await sku(page);await link(page);await checkout(page,app);await control(page,app,{authorize_timeout:true});await page.locator('#authorize').click();await expect(page.locator('#payment-hold')).toBeVisible();const old=await page.evaluate(()=>attemptId);
+ await page.reload();await expect(page.locator('#payment-hold')).toBeVisible();expect(await page.evaluate(()=>attemptId)).toBe(old);
+ await page.goto(app.origin+'/c/qa-link');await expect(page.locator('#contact')).toBeVisible();const fresh=await page.evaluate(()=>attemptId);expect(fresh).not.toBe(old);await page.reload();await expect(page.locator('#contact')).toBeVisible();expect(await page.evaluate(()=>attemptId)).toBe(fresh);
+ const previous=await(await page.request.get(app.origin+'/api/status?link_id=qa-link',{headers:{'X-Checkout-Attempt':old}})).json();expect(previous.status).toBe('authorization_pending');expect((await stats(page,app)).counts.authorize_payment).toBe(1);expect((await stats(page,app)).counts.new_order).toBe(0);
+});
+
+test('CUS-05 incomplete payment details never confirm or capture the prepared intent',async({ownerPage:page,app})=>{
+ await brand(page);await sku(page);await link(page);await checkout(page,app);await page.evaluate(()=>window.__qaIncompletePayment=true);await page.locator('#authorize').click();await page.locator('#pay').click();await expect(page.locator('#message')).toContainText('complete payment details');expect((await stats(page,app)).counts.authorize_payment).toBe(1);expect((await stats(page,app)).counts.new_order).toBe(0);
 });

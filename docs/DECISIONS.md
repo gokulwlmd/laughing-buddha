@@ -95,3 +95,12 @@ For this release, publish versioned static files and atomically update HTML with
 ## Medication before price; explicit payment preference
 
 On 22 October 2026 the owner requested Medication → plan length/pricing → one-time or subscription, with immediate local selection changes. Only the selected medication's prices appear; changing medication clears duration/payment. Defer Stripe.js until review/payment. Preserve live server validation, full upfront totals, exact renewal intervals and explicit recurring consent. Do not clear an uncertain payment to improve checkout speed: display status/help immediately and require authoritative reconciliation before a new attempt. Use v3 assets while retaining v2 for open pages.
+
+
+## Scoped catalog checks and independent shared-link visits
+
+Resolve published choices against current campaign membership, fetch only attached products/offers and read independent product/gateway data concurrently. Keep authoritative checks before payment and legacy quote fingerprints. Use request-local prefetching only. Fresh navigation starts a browser-owned anonymous visit; reload/bank return resumes the tab's pinned attempt. Preserve all old pending rows and access/CSRF boundaries. Remove the duplicate catalog read from the plan handoff.
+
+## Preserve the existing Stripe v2 checkout interface
+
+On 22 October 2026 the owner objected to the classic card box introduced during performance work. Restore the original Payment Element/Express Checkout and confirmPayment flow on Sticky-created intents. Do not substitute payment widgets as a performance workaround. The gateway has remained Sticky Stripe Connect v2 throughout. The earlier Card Element rollout is superseded; v6 was never deployed. Fast deferred authorization is not active in v7. The variable upstream delay and full customer experience still need verification; do not claim that passing fake-service tests proves live speed or processing.

@@ -76,11 +76,11 @@ test('PAY-04 Stripe-style redirect return removes secret and captures same inten
 });
 
 test('PAY-05 page refresh resumes the existing card authorization',async({ownerPage:page,app})=>{
- await prepare(page);await checkout(page,app);await authorize(page);await page.reload();await expect(page.locator('#payment')).toBeVisible();await expect(page.locator('#message')).toContainText('Your payment is ready to continue');await pay(page);expect((await stats(page,app)).counts.authorize_payment).toBe(1);
+ await prepare(page);await checkout(page,app);await authorize(page);await page.evaluate(()=>window.__qaStripeMode='decline');await page.locator('#pay').click();await expect(page.locator('#message')).toContainText('declined');await page.reload();await expect(page.locator('#payment')).toBeVisible();await expect(page.locator('#pay')).toBeEnabled();expect((await stats(page,app)).counts.authorize_payment).toBe(1);await pay(page);expect((await stats(page,app)).counts.authorize_payment).toBe(1);
 });
 
 test('PAY-06 unavailable session secret holds payment instead of creating another',async({ownerPage:page,app})=>{
- await prepare(page);await checkout(page,app);await authorize(page);await page.route('**/api/resume?*',r=>r.fulfill({status:409,contentType:'application/json',body:JSON.stringify({detail:'This payment needs review before continuing. Please contact support; do not start another payment.'})}));await page.reload();await expect(page.locator('#message')).toContainText('needs review');await expect(page.locator('#contact')).toBeHidden();await expect(page.locator('#new-purchase')).toBeHidden();expect((await stats(page,app)).counts.authorize_payment).toBe(1);
+ await prepare(page);await checkout(page,app);await authorize(page);await page.evaluate(()=>window.__qaStripeMode='decline');await page.locator('#pay').click();await expect(page.locator('#message')).toContainText('declined');await page.route('**/api/resume?*',r=>r.fulfill({status:409,contentType:'application/json',body:JSON.stringify({detail:'This payment needs review before continuing. Please contact support; do not start another payment.'})}));await page.reload();await expect(page.locator('#message')).toContainText('needs review');await expect(page.locator('#contact')).toBeHidden();await expect(page.locator('#new-purchase')).toBeHidden();expect((await stats(page,app)).counts.authorize_payment).toBe(1);
 });
 
 test('PAY-07 price change requires a fresh reviewed total',async({ownerPage:page,app})=>{

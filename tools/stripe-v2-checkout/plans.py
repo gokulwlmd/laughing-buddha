@@ -1,5 +1,6 @@
 """Therapy catalog and branded multi-SKU plan selection; no payment writes."""
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 import hmac
 import json
 from pathlib import Path
@@ -7,7 +8,7 @@ from urllib.parse import urlencode
 from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from catalog import resolve, CatalogError
+from catalog import resolve, CatalogError, enabled
 from master import brand_campaigns
 
 HERE=Path(__file__).resolve().parent
@@ -91,6 +92,18 @@ class ReadCache:
     def detail(self,path):
         if path not in self.cache:self.cache[path]=self.api.detail(path)
         return self.cache[path]
+    def prefetch_choices(self,campaign_id,keys):
+        if not keys:return
+        allowed={tuple(int(part) for part in key.split(':')) for key in keys}
+        c=self.detail(f'/api/v2/campaigns/{campaign_id}')
+        offers=[o for o in c.get('offers',[]) if int(o['id']) in {key[0] for key in allowed}]
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            offers=list(pool.map(lambda o:o if 'products' in o else self.detail('/api/v2/offers/'+str(o['id'])),offers))
+        products={int(p['id']) for o in offers if not enabled(o.get('is_archived')) for p in o.get('products',[]) if any(key[:2]==(int(o['id']),int(p['id'])) for key in allowed)}
+        paths=[f'/api/v2/products/{pid}' for pid in sorted(products)]
+        links=[x.get('provider',{}) for x in c.get('alternative_payments',[]) if x.get('payment_method')=='stripe_link']
+        if len(links)==1 and int(links[0].get('account_id') or 0)==250:paths.append(f"/api/v2/providers/payment/profiles/{int(links[0]['id'])}")
+        with ThreadPoolExecutor(max_workers=8) as pool:list(pool.map(self.detail,paths))
 
 class PlanCatalog:
     def plan_token(self,plan):
@@ -225,14 +238,21 @@ class PlanCatalog:
 
     def plan_options(self,plan,brand,therapy):
         from admin import branding
-        cache=ReadCache(self.api);entries=[]
+        cache=ReadCache(self.api);entries=[];children={}
+        for entry in plan['entries']:
+            key=choice_id(plan['id'],entry['sku'],entry.get('purchase_option_id',''))
+            try:children[key]=self.link(key)[0]
+            except HTTPException:pass
+        # Warm only published, campaign-attached choices concurrently. Without
+        # this, narrowing each SKU would serialize a large multi-plan page.
+        cache.prefetch_choices(plan['campaign_id'],{option for child in children.values() for option in child['options']})
         for entry in plan['entries']:
             master=self.get('master',entry['sku']);item={'sku':entry['sku'],'purchaseOptionId':entry.get('purchase_option_id',''),'available':False,'reason':'This plan is temporarily unavailable.'}
             try:
                 _,treatment=self.therapy_for(master or {},therapy['id'])
                 item.update(name=master['name'],durationMonths=master['product_duration_months'],treatmentId=treatment['id'])
                 child,_=self.link(choice_id(plan['id'],entry['sku'],entry.get('purchase_option_id','')))
-                c=self.filter_catalog(resolve(cache,plan['campaign_id'],entry['sku']),child,brand)
+                c=self.filter_catalog(resolve(cache,plan['campaign_id'],entry['sku'],allowed_keys=child['options']),child,brand)
                 options=[{k:o[k] for k in ('key','recurring','days','basePrice','blockedReason','prepaidCycles','upfrontPrice','renewal','renewalDays') if k in o} for o in c['options'] if o['key'] in child['options'] and not o['blockedReason']]
                 if c['blockedReason'] or not options:raise ValueError('Not ready')
                 item.update(available=True,reason='',currency=c['currency'],options=options)
@@ -294,9 +314,8 @@ class PlanCatalog:
             master=self.get('master',sku);self.therapy_for(master or {},therapy['id'])
             child,_=self.link(choice_id(key,sku,purchase_option_id))
             if option not in child['options']:raise HTTPException(422,'Choose an enabled purchase option')
-            c=resolve(self.api,plan['campaign_id'],sku)
-            selected=next((o for o in c['options'] if o['key']==option),None)
-            if c['blockedReason'] or not selected or selected['blockedReason']:raise HTTPException(409,'This purchase option is unavailable; choose another plan')
+            # This handoff grants only an already-published child. Its config,
+            # quote and Pay endpoints perform the live availability checks.
             response=RedirectResponse('/c/'+child['id']+'?'+urlencode({'selection':option}),status_code=303)
             response.set_cookie('link_access_'+child['id'],self.private_token(child),secure=True,httponly=True,samesite='lax',max_age=86400)
             return response

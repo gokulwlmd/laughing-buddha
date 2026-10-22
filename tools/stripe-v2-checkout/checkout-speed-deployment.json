@@ -1,0 +1,58 @@
+{
+  "app": "wlmd-stripe-test-0f89b1bb",
+  "applied": true,
+  "worker_unchanged": true,
+  "database_unchanged": true,
+  "asset_hashes": {
+    "checkout-v3.css": "a40fded108f7544f8c86bcd4376d5b24135a495c80b4380ca4aef097b098988b",
+    "plan-selector-v3.css": "e82a9e8fcaa233b4ecccb04a5ae1a19cf85d72c0d38a485dff99d8ce36cb208b",
+    "checkout-v7.js": "9b4f8e091823f93a8d63e9773bc032ef914cc1e19f2f1a38967b7e17a2fa5a8e",
+    "plan-selector-v3.js": "225b8c864abd9ca0ee176b8f012b57aa665db3d144a6455e051fe66b05f7626a",
+    "index.html": "3c37eb6aaaf7aaf5d7d194d9c1abb1f2e8dde215f0fb8cc9a5be00d7cd7fa13d",
+    "plans.html": "b7bf1156a283f36c9d0e499a6f20d7e94c76292c59ca3fe52e552e399b2dffd6"
+  },
+  "legacy_assets_preserved": true,
+  "payment_requests_submitted": 0,
+  "date": "2026-10-22",
+  "backend_image": "registry.fly.io/wlmd-stripe-test-0f89b1bb@sha256:a8408b33e0db2a596fea4e3706eadd918df51f2b3e1f4c7213ae0deeed04e72a",
+  "active_checkout_script": "checkout-v7.js",
+  "payment_interface": "Stripe Payment Element + Express Checkout; confirmPayment; Sticky-created intent and capture",
+  "delivery": "Static overlay on existing image; next container build must include current repository source",
+  "backend_tests": {
+    "passed": 196,
+    "scope": "Backend/session/catalog source; before static widget correction"
+  },
+  "browser_tests": {
+    "passed": 13,
+    "scope": [
+      "BRD-01",
+      "CUS-02",
+      "CUS-03",
+      "CUS-04",
+      "CUS-05",
+      "PAY-01",
+      "PAY-02",
+      "PAY-03",
+      "PAY-04",
+      "PAY-05",
+      "PAY-06",
+      "PAY-07",
+      "PAY-08"
+    ],
+    "services": "Fake Sticky and Stripe contract stub"
+  },
+  "latest_read_only_timings": {
+    "catalog_seconds": 8.38,
+    "review_quote_seconds": 6.304,
+    "full_customer_flow_measured": false
+  },
+  "speed_issue_resolved": false,
+  "real_payment_submitted": false,
+  "new_external_setup_required": false,
+  "limits": [
+    "Live real-card processing and full customer speed were not certified by this correction.",
+    "Old unresolved attempts remain held; no reset, retry, cancellation or capture.",
+    "Previously deployed v4/v5 scripts remain for existing tabs.",
+    "v6 was built but never deployed."
+  ]
+}
