@@ -36,6 +36,8 @@ flyctl ips allocate-v4 --shared --app wlmd-checkout-staging-0f89b1bb
 
 Check existing resources first; do not repeat creation blindly or replace the live infrastructure. Keep one staging worker and one machine because SQLite and payment intent handling are not designed for horizontal scaling. Staging can stop while idle. Volume storage remains billable while the app is stopped.
 
+Staging was provisioned and deployed on 22 October 2026. Hosted health, private admin access and tested asset hashes passed. See [the non-secret deployment record](../tools/stripe-v2-checkout/staging-deployment.json). The staging owner still needs to complete their own account setup.
+
 ## Manual deployment button
 
 In GitHub, configure an environment named **staging** and its secret **FLY_STAGING_API_TOKEN**, using a Fly deploy token scoped exclusively to the staging app. A local Fly login is not automatically a GitHub Actions secret. Supply the token directly to GitHub Secrets; never commit it or paste it in chat. Use a short expiry and renew deliberately. Do not use the live app's deploy token or an account-wide token.

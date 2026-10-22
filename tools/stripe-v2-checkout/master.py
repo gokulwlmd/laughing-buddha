@@ -151,11 +151,12 @@ class MasterCatalog:
         if creating and not request['brand_id'] and any(b['name'].casefold()==request['name'].casefold() for b in self.records('brand')):
             raise HTTPException(409,'A campaign with this name is already managed. Select the existing campaign or use a different name.')
         with self.store.db() as db:
-            held=db.execute("SELECT data,result FROM admin_reviews WHERE kind='campaign_setup' AND status IN ('applying','reconcile')").fetchall()
+            held=db.execute("SELECT kind,data,result FROM admin_reviews WHERE kind IN ('campaign_setup','site') AND status IN ('applying','reconcile')").fetchall()
         for row in held:
-            prior=json.loads(row[0])['request']
-            created=json.loads(row[1] or '{}').get('created',{})
-            if (cid and cid in (prior.get('campaign_id'),created.get('campaign'))) or (creating and not prior.get('campaign_id') and prior.get('name','').casefold()==request['name'].casefold()):
+            prior=json.loads(row[1])['request']
+            prior_name=prior.get('campaign_name' if row[0]=='site' else 'name','')
+            created=json.loads(row[2] or '{}').get('created',{})
+            if (cid and cid in (prior.get('campaign_id'),created.get('campaign'))) or (creating and not prior.get('campaign_id') and prior_name.casefold()==request['name'].casefold()):
                 raise HTTPException(409,'This campaign setup needs reconciliation. Inspect its recorded objects before trying again.')
         template=self.api.detail(f"/api/v2/campaigns/{request['template_id'] if creating else cid}")
         matches=[b for b in self.records('brand') if cid and cid in brand_campaigns(b)]

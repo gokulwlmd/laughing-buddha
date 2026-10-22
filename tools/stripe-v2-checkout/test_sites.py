@@ -117,6 +117,14 @@ class SiteTests(unittest.TestCase):
         for data in (self.site|{'id':'another-site'},self.site|{'campaign_id':167},self.site|{'brand_id':'other'}):
             self.assertIn(self.post('reviews',{'kind':'site','data':data}).status_code,(409,422))
 
+    def test_uncertain_new_campaign_cannot_be_recreated_from_advanced_setup(self):
+        self.seed();request={k:v for k,v in self.site.items() if k!='campaign_id'}|{'campaign_name':'Held site campaign'}
+        self.fake.deny_new_campaign=True
+        self.assertEqual(self.apply(self.review('site',request)).status_code,502)
+        before=copy.deepcopy(self.fake.calls)
+        self.assertEqual(self.post('reviews',{'kind':'campaign_setup','data':{'brand_id':'test-brand','name':'Held site campaign','template_id':422}}).status_code,409)
+        self.assertEqual(self.fake.calls,before)
+
     def test_readiness_rechecks_gateway_and_does_not_change_legacy_links(self):
         self.seed();legacy=copy.deepcopy(self.state()['links']);self.save('site',self.site)
         self.assertEqual(self.state()['links'],legacy)
