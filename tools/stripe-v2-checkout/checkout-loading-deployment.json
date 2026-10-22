@@ -1,0 +1,73 @@
+{
+  "version": "checkout-v9",
+  "delivery": "static overlay; original live worker and database preserved",
+  "proof": {
+    "app": "wlmd-stripe-test-0f89b1bb",
+    "applied": true,
+    "worker_unchanged": true,
+    "database_unchanged": true,
+    "asset_hashes": {
+      "checkout-v3.css": "a40fded108f7544f8c86bcd4376d5b24135a495c80b4380ca4aef097b098988b",
+      "plan-selector-v3.css": "e82a9e8fcaa233b4ecccb04a5ae1a19cf85d72c0d38a485dff99d8ce36cb208b",
+      "checkout-v9.js": "83f79e2dfb366950b8eca87be65f7a478e044cea174aad8d2f7b4ec6f27c2ab6",
+      "plan-selector-v3.js": "225b8c864abd9ca0ee176b8f012b57aa665db3d144a6455e051fe66b05f7626a",
+      "index.html": "ae2f4573b8395a575d94784fae134f4072f3dbb6ad44b4df00c983b45cbff3b2",
+      "plans.html": "b7bf1156a283f36c9d0e499a6f20d7e94c76292c59ca3fe52e552e399b2dffd6"
+    },
+    "legacy_assets_preserved": true,
+    "payment_requests_submitted": 0
+  },
+  "hosted_read_only_comparison": [
+    {
+      "version": "v8",
+      "click_to_typing_ms": 6878,
+      "click_to_validated_config_ms": 6881,
+      "financial_calls": 0
+    },
+    {
+      "version": "v9",
+      "click_to_typing_ms": 2517,
+      "click_to_validated_config_ms": 17919,
+      "financial_calls": 0
+    }
+  ],
+  "upstream_breakdown": {
+    "catalog_seconds": 5.027,
+    "requests": [
+      {
+        "method": "GET",
+        "endpoint": "/api/v2/campaigns/422",
+        "seconds": 4.257
+      },
+      {
+        "method": "GET",
+        "endpoint": "/api/v2/providers/payment/profiles/254",
+        "seconds": 0.437
+      },
+      {
+        "method": "GET",
+        "endpoint": "/api/v2/products/55866",
+        "seconds": 0.766
+      },
+      {
+        "method": "POST",
+        "endpoint": "/api/v2/order_total/calculate",
+        "seconds": 0.309
+      }
+    ],
+    "quote_positive": true,
+    "financial_requests": 0
+  },
+  "validation": {
+    "customer_browser_cases": 7,
+    "payment_browser_regressions": 8,
+    "demo_backend_cases": 15,
+    "real_financial_calls": 0
+  },
+  "limits": [
+    "Typing is faster; full card-entry/payment latency remains unresolved.",
+    "Live configuration took 17.919 seconds in the v9 sample.",
+    "No live authorization/capture was used for timing.",
+    "The live backend image and earlier pending site-setup deployment are unchanged."
+  ]
+}

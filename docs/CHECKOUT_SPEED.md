@@ -25,3 +25,47 @@ The earlier backend releases used the owner's approved restarts, preserving all 
 ## State input correction
 
 The US state dropdown shows full names and submits two-letter codes before quotes and authorization. All 50 states, DC, territories and military addresses are included. Other supported countries retain free-text regions. Three targeted fake-service browser checks passed; the state case verifies CA/NY in quotes and NY in both Sticky billingState/shippingState. The static update preserves the worker/database and existing held attempts. This input fix does not establish the original upstream error or live payment success.
+
+## Nonblocking customer entry and demo catalog refresh
+
+checkout-v9.js is live as a static update without restarting the payment worker.
+A new attempt reveals contact/address inputs as soon as its browser-owned state
+is confirmed, while the remote configuration loads. Country/state, plan
+selection and submission remain gated on validated configuration. Enter cannot
+submit early, and text already entered is retained. Held, captured, resumed and
+bank-return paths keep their existing state handling. Stripe.js downloads in
+parallel with configuration; the original Payment Element, consent,
+authorization and capture sequence is unchanged.
+
+The separate demo service now returns its last validated catalog immediately
+while a refresh runs in the background. Refreshes are single-flight; the fresh
+window is 60 seconds, with a hard 120-second display-data age limit. Failures do
+not extend that deadline. This reduces repeated 16-product catalog reads and
+prevents a refresh from freezing all demo requests. This cache is only for the
+demo's public plan display/handoff mapping. It never caches a payment quote,
+authorization, client secret or capture, and it changes no financial validation
+in the existing checkout.
+
+Hosted read-only comparison on 22 October: retained v8 reached a typable form in
+6.878 seconds; v9 reached it in 2.517 seconds, measured from the demo Continue
+click, including cross-app navigation. These are single samples, not an SLA.
+The full validated configuration took 6.881 seconds in the v8 run and 17.919
+seconds in the v9 run, showing significant upstream variability. Do not claim
+that time to card entry or the complete payment flow is solved.
+
+A separate in-machine breakdown measured campaign GET 4.257 seconds, selected
+product 0.766 seconds, gateway 0.437 seconds (the latter two concurrent), and
+read-only total calculation 0.309 seconds. A legacy campaign read took 1.215
+seconds but lacks the active/archive and alternative-payment fields needed for
+the existing guards; it was not substituted. Requesting gzip returned the same
+110,030-byte identity response and roughly 5-second timing, so no transport
+change was made. These checks submitted no authorization or order.
+
+Validation: seven customer browser cases passed, including a deliberately held
+catalog response, early-Enter prevention, retained inputs, state codes and held
+attempts. Eight additional payment cases passed, covering consent, decline,
+redirect, refresh, lost secrets, price drift, duplicate capture and uncertainty.
+Fifteen targeted demo backend cases passed, including nonblocking refresh,
+single-flight reads and hard expiry. Fake-service checks do not certify live
+processor timing. Original worker identity and database hashes matched across
+the static deployment. Legacy assets remain for already-open pages.

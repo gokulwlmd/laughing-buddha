@@ -52,3 +52,19 @@ test('CUS-06 all US states are selectable and only state codes reach Sticky',asy
  await page.locator('#edit').click();await page.locator('#state').selectOption({label:'New York'});await page.locator('#contact button').click();await expect(page.locator('#review')).toBeVisible();expect(posted.contact.region).toBe('NY');
  await page.locator('#authorize').click();await expect(page.locator('#payment')).toBeVisible();const state=await stats(page,app);expect(state.counts.authorize_payment).toBe(1);expect(state.authorizationStates).toEqual([['NY','NY']]);
 });
+
+test('CUS-07 customers can type during slow catalog reads but cannot submit until validated',async({ownerPage:page,app})=>{
+ await brand(page);await sku(page);await link(page);
+ let release;const gate=new Promise(resolve=>release=resolve);let loaded;
+ const catalogStarted=new Promise(resolve=>loaded=resolve);
+ await page.route('**/api/config?**',async route=>{loaded();await gate;await route.continue();});
+ const before=(await stats(page,app)).counts;
+ await page.goto(app.origin+'/c/qa-link');await catalogStarted;
+ await expect(page.locator('#contact')).toBeVisible();await expect(page.locator('#contact button')).toBeDisabled();
+ await page.locator('[name=name]').fill('Early Customer');await page.locator('[name=email]').fill('early@example.test');
+ await page.locator('[name=email]').press('Enter');
+ expect((await stats(page,app)).counts).toEqual(before);await expect(page.locator('#country')).toBeDisabled();
+ release();await expect(page.locator('#contact button')).toBeEnabled();await expect(page.locator('#country')).toBeEnabled();
+ await expect(page.locator('[name=name]')).toHaveValue('Early Customer');await expect(page.locator('[name=email]')).toHaveValue('early@example.test');
+ expect((await stats(page,app)).counts).toEqual(before);
+});

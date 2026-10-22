@@ -109,8 +109,9 @@ frontend origins, additional sites and developer access management are future
 production API work. The earlier local demo retains its simulated completion
 and return flow; that does not describe this public mode.
 
-The catalog is read through the existing public plan API, cached for 15 seconds,
-and fails closed if billing mappings cannot be verified. Pricing, contact
+The catalog is read through the existing public plan API, refreshed after 60 seconds in the background, with a hard 120-second
+display-data age limit. Refreshes are single-flight, and errors do not extend
+that deadline. Cold/expired data fails closed if mappings cannot be verified. Pricing, contact
 validation, quotes and payments remain authoritative on the existing checkout.
 API callers cannot send amounts, campaigns, gateways, arbitrary destinations or
 return URLs. Handoff links are independent, bounded to 1,000 concurrent links,

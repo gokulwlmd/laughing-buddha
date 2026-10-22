@@ -25,6 +25,8 @@ HERE = Path(__file__).parent
 LIVE_ORIGIN = 'https://wlmd-stripe-test-0f89b1bb.fly.dev'
 PUBLISHED_PLAN = 'site-api-demo-weight-loss'
 SITE_ID = 'payment-test'
+CATALOG_FRESH_SECONDS = 60
+CATALOG_MAX_AGE_SECONDS = 120
 
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, *args):
@@ -95,19 +97,48 @@ def create_public_app(origin=None, read_catalog=read_live_catalog, clock=time.ti
         raise ValueError('DEMO_PUBLIC_ORIGIN must be an HTTPS origin')
     app = FastAPI(title='Site API · live checkout demo',docs_url=None,redoc_url=None,openapi_url=None)
     app.mount('/assets',StaticFiles(directory=HERE/'web'),name='assets')
-    cache = {}; sessions = {}; lock = threading.Lock()
+    cache = {}; sessions = {}; lock = threading.Lock(); refresh_lock = threading.Lock()
 
-    def current():
-        with lock:
-            if cache.get('expires',0) > clock():
-                return cache['value']
+    def refresh(background=False):
+        # Only catalog reads run here. Never cache authorization or payment state.
+        if not refresh_lock.acquire(blocking=not background):
+            return
+        try:
+            with lock:
+                if cache.get('expires',0) > clock():
+                    return
             try:
                 value = map_catalog(read_catalog())
             except Exception:
-                # No raw upstream payloads/URLs/processor data in public errors.
-                raise HTTPException(503,'The connected checkout is temporarily unavailable. Please try again shortly.') from None
-            cache.update(value=value,expires=clock()+15)
+                with lock:
+                    cache['retry_at'] = clock()+3
+                if not background:
+                    raise HTTPException(503,'The connected checkout is temporarily unavailable. Please try again shortly.') from None
+                return
+            with lock:
+                cache.update(value=value,expires=clock()+CATALOG_FRESH_SECONDS,usable_until=clock()+CATALOG_MAX_AGE_SECONDS,retry_at=0)
+        finally:
+            refresh_lock.release()
+
+    def current():
+        with lock:
+            now=clock()
+            value=cache.get('value')
+            fresh=cache.get('expires',0)>now
+            usable=cache.get('usable_until',0)>now
+            retry=cache.get('retry_at',0)>now
+        if value and fresh:
             return value
+        if value and usable:
+            # A periodic upstream read must not freeze the customer page.
+            # Display data has a hard 120-second age limit; the real checkout
+            # still recalculates/revalidates before any authorization/capture.
+            if not retry and not refresh_lock.locked():
+                threading.Thread(target=refresh,kwargs={'background':True},daemon=True).start()
+            return value
+        refresh()
+        with lock:
+            return cache['value']
 
     def site(site_id):
         if site_id != SITE_ID:

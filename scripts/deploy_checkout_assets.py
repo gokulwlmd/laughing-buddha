@@ -13,8 +13,8 @@ import shlex
 import subprocess
 
 APP='wlmd-stripe-test-0f89b1bb'
-BASE='47cd10f037295e782965ac6b34ad0d47fed2c56b'
-ASSETS=['checkout-v3.css','plan-selector-v3.css','checkout-v8.js','plan-selector-v3.js','index.html','plans.html']
+BASE='ab1da3645398fdb5833947d8e229118121a17b53'
+ASSETS=['checkout-v3.css','plan-selector-v3.css','checkout-v9.js','plan-selector-v3.js','index.html','plans.html']
 ROOT=Path(__file__).resolve().parents[1]
 
 
@@ -24,13 +24,11 @@ def main():
     args=parser.parse_args()
     files={name:(ROOT/'tools/stripe-v2-checkout/web'/name).read_text() for name in ASSETS}
     before={name:hashlib.sha256(subprocess.check_output(['git','show',BASE+':tools/stripe-v2-checkout/web/'+name],cwd=ROOT)).hexdigest() for name in ('index.html','plans.html')}
-    # Current v7 HTML restores the original Stripe payment widget.
-    before['index.html']='3c37eb6aaaf7aaf5d7d194d9c1abb1f2e8dde215f0fb8cc9a5be00d7cd7fa13d'
     bundle=base64.b64encode(json.dumps({'files':files,'before':before,'apply':args.apply}).encode()).decode()
     code="""import base64,json,hashlib,os,sqlite3,tempfile
 from pathlib import Path
 payload=json.loads(base64.b64decode(__BUNDLE__))
-root=Path('/app/web');backup=Path('/data/ui-backups/customer-checkout-v8-20261022')
+root=Path('/app/web');backup=Path('/data/ui-backups/customer-checkout-v9-20261022')
 def digest(data):return hashlib.sha256(data).hexdigest()
 def processes():
  result={}

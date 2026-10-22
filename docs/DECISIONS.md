@@ -133,3 +133,18 @@ Expose site plans and create a hosted checkout link from a server-owned plan_id.
 - Local sample mode retains its simulated completion; public mode clearly
   states real charges/no medication fulfillment. No financial action is part
   of automated hosted verification.
+
+## Load customer input independently of live configuration
+
+Show the contact form after fresh-attempt status is confirmed; let people type
+while read-only catalog validation runs. Gate plan/country/state/submission on
+that validation and preserve entered text. Preload Stripe.js alongside it.
+Retain the original intent-first Stripe v2 payment flow and all fresh financial
+checks. Publish this UI through versioned static assets without a worker restart.
+
+The demo's public plan display may use a validated snapshot for at most 120
+seconds, refreshing after 60 seconds without blocking visitors. Single-flight
+refresh avoids redundant full-catalog reads. This does not authorize stale
+quotes/payments or relax private link, consent, state or price-drift checks.
+Do not report the overall payment speed problem as resolved from an earlier
+editable form or a cached catalog response.

@@ -1,7 +1,7 @@
 import copy
 import unittest
 from fastapi.testclient import TestClient
-from demo.public import create_public_app, map_catalog, PUBLISHED_PLAN
+from demo.public import create_public_app, map_catalog, PUBLISHED_PLAN, CATALOG_FRESH_SECONDS, CATALOG_MAX_AGE_SECONDS
 from demo.publish import publication, DEMO_ID
 from plans import choice_id
 
@@ -65,7 +65,7 @@ class PublicDemoTests(unittest.TestCase):
         self.assertEqual(self.client.get(self.base+'/plans').status_code,200)
         self.assertEqual(self.client.get(self.base+'/plans').status_code,200)
         self.assertEqual(self.calls,1)
-        self.data['paymentTestOnly']=False;self.now+=16
+        self.data['paymentTestOnly']=False;self.now+=CATALOG_MAX_AGE_SECONDS+1
         self.assertEqual(self.client.get(self.base+'/plans').status_code,503)
         self.assertEqual(self.client.post(self.base+'/checkout',json={'plan_id':'sema-1m'}).status_code,503)
 
@@ -124,3 +124,27 @@ class PublicDemoTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):publish(a)
             with a.store.db() as db:
                 self.assertEqual(db.execute("SELECT data FROM admin_config WHERE kind='plan_checkout'").fetchone()[0],'{}')
+
+
+    def test_refresh_keeps_a_valid_display_catalog_responsive_and_expires_stale_data(self):
+        import threading
+        started=threading.Event();release=threading.Event();finished=threading.Event()
+        calls=[]
+        def read():
+            calls.append(1)
+            if len(calls)>1:
+                started.set();release.wait(3);finished.set()
+                raise ValueError('upstream unavailable')
+            return fixture()
+        client=TestClient(create_public_app('https://demo.example',read,lambda:self.now),base_url='https://demo.example')
+        try:
+            self.assertEqual(client.get(self.base+'/plans').status_code,200)
+            self.now+=CATALOG_FRESH_SECONDS+1
+            # The second request returns while the background read remains blocked.
+            self.assertEqual(client.get(self.base+'/plans').status_code,200)
+            self.assertTrue(started.wait(1))
+            self.assertFalse(finished.is_set())
+            self.assertEqual(client.get(self.base+'/plans').status_code,200)
+            self.assertEqual(len(calls),2)
+        finally:
+            release.set();finished.wait(1);client.close()

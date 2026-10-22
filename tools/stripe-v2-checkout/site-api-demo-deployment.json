@@ -2,7 +2,7 @@
   "app": "wlmd-site-api-demo-0f89b1bb",
   "url": "https://wlmd-site-api-demo-0f89b1bb.fly.dev",
   "machine": "81909dc929e428",
-  "image": "registry.fly.io/wlmd-site-api-demo-0f89b1bb@sha256:5332f65c319dc0a689cbaccd6354a1872cd29b68a046a347d158f3f40c6f02cc",
+  "image": "registry.fly.io/wlmd-site-api-demo-0f89b1bb@sha256:14ab1ce7b207309d4a6f22515733040acc04f1c40dbdd1023228846480c80ea2",
   "mode": "real Stripe v2 checkout handoff",
   "processor_credentials_copied": false,
   "publication": {
@@ -14,17 +14,23 @@
   },
   "verification": {
     "full_backend_tests_passed": 213,
-    "targeted_demo_tests_passed": 14,
+    "targeted_demo_tests_passed": 15,
     "hosted_frontend_and_fresh_contact_form": true,
     "financial_api_calls": 0,
     "original_live_worker_restarted": false
   },
   "runtime_file_sha256": {
-    "demo/public.py": "091b376c39b27eec6953a41990c28d10a2d54c827d1a65f4dfdbf432b661bf3e",
+    "demo/public.py": "821d8158bc8377db723ac0119a1c3f06b41d7b09967f73b45b7998f9bfdd13a8",
     "demo/publish.py": "001fe0ef94d1dc839540db900cccdb043a1b95f53270a9fa64d1ac0b5ef16f55",
     "demo/web/frontend.js": "41fb32e748165e6e1c3d119bef978586dd1479a51afc3f6fcbf0053266d7f13a",
     "demo/Dockerfile": "c191e59bf74d6c6e4750af9d2053cbc04013c08a4956b2075678577ac8992a81",
     "demo/Dockerfile.dockerignore": "9856bb95efcf1ae6a4e031c6610c3c8a3150df966518dbe16a90245bfbec54af",
     "fly-demo.toml": "63240a166038ce6554b44a40e09977c0b8c3b470087d350688208c74b34eb831"
+  },
+  "catalog_refresh": {
+    "fresh_seconds": 60,
+    "maximum_display_age_seconds": 120,
+    "background_single_flight": true,
+    "payment_checks_cached": false
   }
 }

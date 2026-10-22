@@ -151,3 +151,21 @@ status/webhooks and production developer/site access management are not built.
 The API's short-lived handoff links are memory-only. See demo/README.md,
 fly-demo.toml and site-api-demo-deployment.json. Existing local sample mode is
 still available separately and remains non-payment.
+
+## Latest: faster entry, remaining upstream payment latency
+
+checkout-v9.js reveals editable contact inputs after a fresh attempt is checked,
+while validated configuration loads. Submission/country/state remain gated;
+held/resume/receipt/bank-return behavior and Stripe Payment Element are retained.
+The static release preserved the worker and database. The separate demo now
+uses single-flight background catalog refresh (60 seconds fresh, 120 seconds
+maximum display age); financial quote/auth/capture checks are unchanged.
+
+One hosted comparison measured Continue-to-typing at 6.878 seconds on v8 versus
+2.517 seconds on v9. Configuration validation remained variable and reached
+17.919 seconds in the new run. Overall card-entry/payment latency is NOT solved.
+Sticky campaign retrieval is the dominant measured wait. See CHECKOUT_SPEED.md
+and checkout-loading-deployment.json. Seven customer browser checks, eight
+payment regressions and fifteen targeted demo backend cases passed without
+submitting any real financial request. No new credential or account setup is
+required. The existing permanent site-setup backend fix is still undeployed.
