@@ -116,3 +116,20 @@ Sticky returns weight 0 and unit 1 when omitted on new non-shippable products. T
 ## Two calls for external frontend integrations
 
 Expose site plans and create a hosted checkout link from a server-owned plan_id. Frontend developers do not manage customer/payment steps, set prices, or receive Sticky/Stripe credentials. The first deliverable is an isolated, non-payment local demo with two sample sites and per-site Swagger. It does not expose or publish live site catalogs. Production access rules, real hosted-checkout handoff and authoritative return status require separate implementation.
+
+## Public developer demo uses existing Stripe v2 checkout
+
+- The owner requested a public working demo and explicitly chose the existing
+  real Stripe v2 checkout over simulated payments.
+- Host the frontend/two-call API in a separate Fly app, without processor
+  credentials or a copy of the live database. Read approved prices through a
+  separate public payment-test plan publication on campaign 422.
+- Preserve original private links and payment attempts. Publish new parent/child
+  records only; make no remote product/offer/gateway changes and do not restart
+  the existing payment worker.
+- Public demo POST accepts only plan_id. Checkout details, quotes, cards and
+  payment confirmation remain on the existing hosted checkout. Do not advertise
+  a custom return URL or paid status API until authoritative integration exists.
+- Local sample mode retains its simulated completion; public mode clearly
+  states real charges/no medication fulfillment. No financial action is part
+  of automated hosted verification.

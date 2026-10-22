@@ -80,3 +80,65 @@ Production work remains separate: map the two endpoints to approved published
 site catalogs and the existing hosted checkout, provide the chosen site access
 policy, integrate authoritative payment-return status, and review release to
 Fly. The demo's Finish action must never be interpreted as a paid receipt.
+
+## Public demo with the existing real checkout
+
+Public frontend: <https://wlmd-site-api-demo-0f89b1bb.fly.dev/>
+
+Swagger: <https://wlmd-site-api-demo-0f89b1bb.fly.dev/sites/payment-test/docs>
+
+The owner explicitly chose the real Stripe v2 checkout for the public demo.
+`demo.public` is a separate Fly service with **no processor credentials**. It
+reads only the newly published campaign-422 weight-loss payment-test catalog.
+Its two endpoints are:
+
+```text
+GET  /api/v1/sites/payment-test/plans
+POST /api/v1/sites/payment-test/checkout
+     {"plan_id":"sema-1m"}
+     -> {"checkout_url":"https://…/go/…"}
+```
+
+Opening the returned link hands the selected SKU and approved payment choice
+to the existing hosted checkout. The browser enters details and pays using the
+existing Stripe Payment Element/Express Checkout flow. These are **real charges
+if the customer chooses to pay**, with no medication fulfillment. Neither API
+call authorizes or captures a payment. The demo receipt stays on the existing
+checkout; automatic return URLs, signed payment status/webhooks, arbitrary
+frontend origins, additional sites and developer access management are future
+production API work. The earlier local demo retains its simulated completion
+and return flow; that does not describe this public mode.
+
+The catalog is read through the existing public plan API, cached for 15 seconds,
+and fails closed if billing mappings cannot be verified. Pricing, contact
+validation, quotes and payments remain authoritative on the existing checkout.
+API callers cannot send amounts, campaigns, gateways, arbitrary destinations or
+return URLs. Handoff links are independent, bounded to 1,000 concurrent links,
+expire after 15 minutes, and disappear if the demo service restarts. Browser
+payment isolation and durable attempt protection remain with the live app.
+
+`demo.publish` creates a separate public parent and sixteen new private child
+links from the already approved payment-test checkout. Original private links
+and all existing records are retained. It makes no Sticky writes, creates no
+owner/session/review approval, validates upstream availability, refuses changed
+or partial existing publications, and records the publication. The operator
+saved an on-volume backup before applying the owner's explicit public-demo
+request. This utility must not publish unrelated private catalogs by default.
+
+Redeploy only the separate demo service from `tools/stripe-v2-checkout`:
+
+```sh
+flyctl deploy --config fly-demo.toml --remote-only --ha=false --strategy immediate --yes
+```
+
+The Dockerfile-specific allowlist includes only demo runtime files, skeleton and
+pinned dependencies. The live app's Docker allowlist still excludes this demo.
+No volume or secrets are configured for the demo service. One worker/machine
+and disabled automatic stopping keep its short-lived handoff links available.
+Do not deploy `fly.toml` as part of updating this demo.
+
+`test_site_api_public` verifies real handoff mapping, one-time prepaid versus
+renewing prepaid, server-controlled prices/routes, expiry, scoped Swagger,
+fail-closed upstream handling and atomic/idempotent publication. The explicit
+`qa/site-api-public-smoke.cjs` checks the hosted frontend and fresh contact form
+without entering contact/card details or invoking authorize/capture/resume.

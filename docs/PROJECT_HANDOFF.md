@@ -125,3 +125,29 @@ Validation: 200 backend tests passed, including no-duplicate recovery and price/
 The owner requested a minimal developer integration with no Sticky or Stripe credentials. An isolated working demo is in tools/stripe-v2-checkout/demo: GET site plans, POST selected plan_id/registered return_url, then open the returned branded checkout_url. Two sample sites have independent branding/prices and separate Swagger/OpenAPI documents. The frontend/API use separate loopback ports 8872/8871. No live app imports, state, credentials, gateway requests, card input or real orders are involved. Finish demo returns to the sample frontend and never represents payment success.
 
 Seven new backend tests and three browser scenarios passed; full backend discovery passed 207 tests. QA now discovers all test modules. Run instructions, scope, API sample and production gaps are in demo/README.md. The live Fly worker remains untouched under the owner's instruction to leave their open payment test alone. The earlier permanent site-default fix is still built but undeployed; this new demo does not change that deployment state.
+
+## Public Site API demo connected to real checkout
+
+The owner requested a public working URL and explicitly selected the existing
+real Stripe v2 checkout. The separate demo is live at
+https://wlmd-site-api-demo-0f89b1bb.fly.dev/ with site-specific Swagger at
+https://wlmd-site-api-demo-0f89b1bb.fly.dev/sites/payment-test/docs.
+It serves actual campaign-422 weight-loss plan prices and returns an opaque
+handoff URL for a selected plan. The browser then uses the existing Stripe v2
+checkout. Real charges occur only if the user completes payment; no medication
+is shipped. No processor credentials were copied into the demo service or given
+to frontend developers.
+
+A separate public payment-test parent and sixteen new private child links were
+published from existing approved choices. Every pre-existing configuration row
+was verified unchanged, and an on-volume backup was saved. No Sticky objects,
+routing, prices, owner sessions or historical payments were changed. The live
+worker was not restarted; the previously pending permanent site setup image is
+still undeployed. Public access applies only to this new demo publication.
+
+The demo supports GET plans and POST plan_id to obtain checkout_url. Its receipt
+stays on the existing hosted checkout; return URLs, authoritative server payment
+status/webhooks and production developer/site access management are not built.
+The API's short-lived handoff links are memory-only. See demo/README.md,
+fly-demo.toml and site-api-demo-deployment.json. Existing local sample mode is
+still available separately and remains non-payment.
