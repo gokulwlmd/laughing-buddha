@@ -3,7 +3,7 @@ import copy
 from decimal import Decimal
 
 SKELETON_ID = 'master-therapy-1-v1'
-BLOCKER = ('Catalog draft: verify calendar-month billing, shipment schedules '
+BLOCKER = ('Catalog draft: verify day-based billing, shipment schedules '
            'and prepaid renewal before activating this checkout.')
 # Explicit implementation-selected starter prices, not market or clinical claims.
 RECIPES = [
@@ -29,6 +29,7 @@ def all_skeletons():
                         'price_basis': 'Editable starter price; monthly reference multiplied by term',
                         'charge': 'full_term_upfront',
                         'renewal_months': months if renew else None,
+                        'renewal_days': months*30 if renew else None,
                         'shipments_per_term': {6: 2, 12: 4}.get(months),
                         'shipment_interval': 90 if months in (6, 12) else None, 'later_shipment_charge': '0.00',
                     })

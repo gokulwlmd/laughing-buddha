@@ -87,7 +87,7 @@ $('master-prepaid').addEventListener('click',async event=>{event.target.disabled
 $('master-category').addEventListener('change',updateCategoryInput);
 $('master-form').elements.new_category.addEventListener('input',updateCategoryInput);
 
-function planningTerms(m){const c=m.planning_contract;return 'Pay upfront · Full '+c.term_months+'-month term · '+(c.renewal_months?'Renews every '+c.renewal_months+' calendar months':'One-time charge · No renewal')+(c.shipments_per_term?' · '+c.shipments_per_term+' shipments included'+(c.shipment_interval?' · Every '+c.shipment_interval+' days':''):' · Shipment count to be set');}
+function planningTerms(m){const c=m.planning_contract;return 'Pay upfront · Full '+c.term_months+'-month term · '+(c.renewal_months?'Renews every '+(c.renewal_months*30)+' days':'One-time charge · No renewal')+(c.shipments_per_term?' · '+c.shipments_per_term+' shipments included'+(c.shipment_interval?' · Every '+c.shipment_interval+' days':''):' · Shipment count to be set');}
 function planningMasterCard(m){
  const e=card(m.name,m.sku+' · Catalog draft · '+m.category);e.append(element('p',planningTerms(m)),element('p',catalogPrice(m)),element('p','Edit the upfront price and shipments together. Processor activation still needs verification.','hint'));
  action(e,'Edit upfront plan',()=>{
@@ -99,7 +99,7 @@ function planningMasterCard(m){
   const price=number('Total upfront price','master-planning-price',m.offers[0].price,0.01);price.step='0.01';price.required=true;
   const count=number('Number of shipments','master-planning-shipments',m.planning_contract.shipments_per_term,1,36);count.step='1';
   const interval=number('Ship every (days)','master-planning-interval',m.planning_contract.shipment_interval,1,730);interval.step='1';
-  box.append(element('p',m.planning_contract.renewal_months?'Renewal: full upfront payment repeats every '+m.planning_contract.renewal_months+' calendar months.':'Renewal: none. This SKU charges once.','hint'));
+  box.append(element('p',m.planning_contract.renewal_months?'Renewal: full upfront payment repeats every '+(m.planning_contract.renewal_months*30)+' days.':'Renewal: none. This SKU charges once.','hint'));
   const preview=element('div',undefined,'prepaid-preview');preview.id='master-planning-preview';preview.setAttribute('aria-live','polite');box.append(preview);
   function update(){const n=Number(count.value),days=Number(interval.value),multi=n>1;interval.disabled=!multi;interval.required=multi;if(!multi)interval.value='';preview.replaceChildren(element('strong','Product setup preview'));
    const amount=new Intl.NumberFormat('en',{style:'currency',currency:$('master-form').elements.currency.value||'USD'}).format(Number(price.value));

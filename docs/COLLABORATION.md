@@ -1,6 +1,6 @@
 # GitHub collaboration and Fly staging
 
-Work from separate local clones and feature branches, open pull requests, and merge after review and passing tests. GitHub is the shared code and decision history; Fly hosts a separate shared staging application. The live Fly app and its database remain independent.
+Work from separate local clones and feature branches, open pull requests, and merge after review and passing tests. GitHub is the shared code and decision history. As explicitly requested on 22 October 2026, the existing live Fly app is the shared product workspace. The synthetic staging workflow below remains available but is optional; do not make it a prerequisite for ordinary product work. Preserve the live database and payment records during updates.
 
 ## Branch and review workflow
 

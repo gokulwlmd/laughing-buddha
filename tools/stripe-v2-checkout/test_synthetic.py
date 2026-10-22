@@ -76,6 +76,38 @@ class StarterCatalogTests(unittest.TestCase):
         self.assertIsNone(self.admin.owner())
         m=self.admin.get('master','SEMA-1M');m['offers'][0]['price']='260.00';self.admin.put('master','SEMA-1M',m)
         snapshot=self.snapshot();self.assertTrue(run(self.app)['already_imported']);self.assertEqual(snapshot,self.snapshot())
+    def test_explicit_live_promotion_preserves_existing_skus_and_never_calls_sticky(self):
+        from import_master_therapies import promote_live
+        self.admin.cfg.synthetic=False
+        self.admin.cfg.public_url='https://wlmd-stripe-test-0f89b1bb.fly.dev'
+        self.admin.put('master','TIRZ-1M',{'sku':'TIRZ-1M','name':'Existing live configuration'})
+        self.admin.put('sku','TIRZ-1M',{'sku':'TIRZ-1M','product_id':2856})
+        before=self.snapshot()
+        with patch.object(self.admin.api,'call',side_effect=AssertionError('No network calls')):
+            result=promote_live(self.app)
+        self.assertEqual(result['master_skus'],39)
+        self.assertEqual(result['preserved_existing_skus'],['TIRZ-1M'])
+        after={(k,i):v for k,i,v in self.snapshot()}
+        for k,i,v in before:self.assertEqual(after[(k,i)],v)
+        self.assertNotIn('TIRZ-1M',self.admin.get('purchase_option','weight-loss-1m')['skus'])
+        self.assertEqual(len(self.admin.records('purchase_option')),20)
+        saved=self.snapshot()
+        self.assertTrue(promote_live(self.app)['already_imported'])
+        self.assertEqual(saved,self.snapshot())
+        self.assertIsNone(self.admin.owner())
+
+    def test_live_promotion_rejects_other_hosts_and_existing_plan_collisions_atomically(self):
+        from import_master_therapies import promote_live
+        before=self.snapshot()
+        with self.assertRaises(ValueError):promote_live(self.app)
+        self.assertEqual(before,self.snapshot())
+        self.admin.cfg.synthetic=False
+        self.admin.cfg.public_url='https://wlmd-stripe-test-0f89b1bb.fly.dev'
+        self.admin.put('purchase_option','metformin-1m',{'id':'metformin-1m','owner_value':True})
+        before=self.snapshot()
+        with self.assertRaises(ValueError):promote_live(self.app)
+        self.assertEqual(before,self.snapshot())
+
     def test_collision_rolls_back_whole_import_and_live_environment_is_rejected(self):
         from import_master_therapies import run
         self.admin.put('sku','SERM-1M',{'sku':'SERM-1M','name':'Existing custom SKU'})
@@ -117,6 +149,7 @@ class StarterCatalogTests(unittest.TestCase):
             self.assertEqual(data['product_setup']['prepaid_cycles'],3)
             self.assertEqual(data['product_setup']['upfront_price'],master['offers'][0]['price'])
             self.assertEqual(data['product_setup']['renewal_months'],renewal)
+            self.assertEqual(data['product_setup']['renewal_days'],renewal*30 if renewal else None)
             self.assertEqual(data['product_setup']['per_shipment_product_price'],'996.00')
             self.assertEqual(preview['after']['product_setup'],data['product_setup'])
             self.admin.finalize_master('master',data,lambda x:x)

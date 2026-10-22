@@ -12,11 +12,12 @@ from therapy_skeletons import all_skeletons, skeleton_draft
 RUN_ID = 'master-therapies-starter-v1'
 
 
-def _import(application, skeletons, run_id):
+def _import(application, skeletons, run_id, *, authorized_live=False):
     expected=sum(len(s['products']) for s in skeletons)
     admin = application.state.admin
     host = urlparse(admin.cfg.public_url).hostname
-    if not admin.cfg.synthetic or host not in ('localhost', '127.0.0.1', 'wlmd-checkout-staging-0f89b1bb.fly.dev'):
+    live = authorized_live and not admin.cfg.synthetic and host == 'wlmd-stripe-test-0f89b1bb.fly.dev'
+    if not live and (not admin.cfg.synthetic or host not in ('localhost', '127.0.0.1', 'wlmd-checkout-staging-0f89b1bb.fly.dev')):
         raise ValueError('Import is restricted to local development and isolated synthetic staging')
     with admin.store.db() as db:
         db.execute('BEGIN IMMEDIATE')
@@ -59,6 +60,8 @@ def _import(application, skeletons, run_id):
             draft = skeleton_draft(skeleton, assigned=True)
             draft['new_therapy'] = None
             for plan in draft['plans']:
+                if ('purchase_option',plan['id']) in existing:
+                    raise ValueError('Existing purchase option '+plan['id']+'; no records were overwritten')
                 data, *_ = view.prepare_plan('purchase_option',plan)
                 add('purchase_option',plan['id'],data)
             # Keep any owner-created draft, including its name, choices and edits.
@@ -73,6 +76,23 @@ def _import(application, skeletons, run_id):
                    'sticky_writes':0,'payment_writes':0,'owner_session_created':False}
         db.execute('INSERT INTO admin_setup_runs VALUES(?,?,?)',(run_id,time.time(),json.dumps(details)))
         return {'already_imported':False,'master_skus':expected,'created_records':len(pending),'sticky_writes':0,'payment_writes':0}
+
+
+def promote_live(application):
+    """Explicit owner-authorized additive promotion; never replace existing live SKUs."""
+    if application.state.admin.cfg.synthetic or urlparse(application.state.admin.cfg.public_url).hostname != 'wlmd-stripe-test-0f89b1bb.fly.dev':
+        raise ValueError('Live promotion requires the existing live application')
+    skeletons=all_skeletons()
+    preserved=[]
+    for skeleton in skeletons:
+        products=[]
+        for product in skeleton['products']:
+            if application.state.admin.get('master',product['sku']) or application.state.admin.get('sku',product['sku']):
+                preserved.append(product['sku'])
+            else:products.append(product)
+        skeleton['products']=products
+    result=_import(application,skeletons,'owner-authorized-live-master-catalog-v1',authorized_live=True)
+    return result|{'preserved_existing_skus':preserved,'catalog_activation':'Drafts only; existing offers and payment records unchanged'}
 
 
 def run(application):

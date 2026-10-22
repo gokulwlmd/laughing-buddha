@@ -65,6 +65,7 @@ def planned_product_setup(master):
     except ValueError:per_shipment=None
     return {'payment_setup':'prepaid' if prepaid else 'upfront','upfront_price':master['offers'][0]['price'],
             'currency':master['currency'],'term_months':c['term_months'],'renewal_months':c['renewal_months'],
+            'renewal_days':c['renewal_months']*30 if c['renewal_months'] else None,
             'prepaid_cycles':count if prepaid else None,'shipment_count':count,'shipment_interval_days':days,
             'shipment_days':[i*(days or 0) for i in range(count)] if count else [],
             'later_shipment_charge':'0.00','per_shipment_product_price':per_shipment,

@@ -138,7 +138,7 @@ function skeletonMatrix(skeleton){
  for(const months of [1,3,6,12]){
   const products=skeleton.products.filter(p=>p.duration_months===months);
   const box=card(months+'-month plan','Pay upfront · Shipment settings are saved per SKU');
-  for(const p of products)box.append(element('p',p.sku+' · '+p.treatment+' · '+(p.renewal_months?'Renews every '+months+' calendar month'+(months===1?'':'s'):'No renewal')+' · '+skeletonPrice(p)+' · '+skeletonShipments(p)));
+  for(const p of products)box.append(element('p',p.sku+' · '+p.treatment+' · '+(p.renewal_months?'Renews every '+(months*30)+' days':'No renewal')+' · '+skeletonPrice(p)+' · '+skeletonShipments(p)));
   group.append(box);
  }
  group.append(element('p','The first shipment is at purchase. Later shipments are prepaid. Edit each SKU’s shipment count and interval in Master SKUs; renewal stays separate.','hint'));
