@@ -108,3 +108,7 @@ On 22 October 2026 the owner objected to the classic card box introduced during 
 ## US states are selected by name and sent by code
 
 Use a state dropdown for US billing addresses. Show full state names, submit only the two-letter values, and preserve the same code for Sticky billingState and shippingState. Include all 50 states, DC, territories and military addresses. Preserve free-text regions for other supported countries. Do not change existing held attempts to adopt corrected input.
+
+## Compare non-shippable weight defaults without weakening fulfillment checks
+
+Sticky returns weight 0 and unit 1 when omitted on new non-shippable products. Treat only that observed default as equivalent to an absent weight/unit. Preserve stored contract fingerprints and require every other field to match. Retain strict shipping, tax, restrictions, explicit weights and prices. Before a write, journal its index/stage; never retry an uncertain operation. The legacy first-product failure may resume its previously approved plan only after read-only verification of the recorded ID, unchanged configuration and absence of campaign payments, with a private backup and audit record.

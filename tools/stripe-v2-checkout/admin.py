@@ -18,7 +18,7 @@ from catalog import CatalogError, resolve, enabled, money
 from prepaid import renewal_for, cycles_for, unit_price
 from plans import PlanCatalog
 from sites import SiteCatalog
-from master import MasterCatalog, clone_product, model_rows, offer_models, product_contract, source_product, brand_campaigns, attach_campaign, record_campaign
+from master import MasterCatalog, clone_product, model_rows, offer_models, product_contract, product_contract_matches, source_product, brand_campaigns, attach_campaign, record_campaign
 
 LOCK = threading.RLock()
 HERE = Path(__file__).resolve().parent
@@ -586,77 +586,86 @@ class Admin(MasterCatalog,PlanCatalog,SiteCatalog):
                     with self.store.db() as db:
                         if db.execute("SELECT 1 FROM checkouts WHERE link_id=? AND status NOT IN ('new','captured') LIMIT 1",(affected_link,)).fetchone():raise HTTPException(409,'This link has an open payment; reconcile it before editing')
                 with self.store.db() as db:db.execute("UPDATE admin_reviews SET status='applying' WHERE id=?",(body.review_id,))
-                completed={}
-                try:
-                    def references(value):
-                        if isinstance(value,dict) and set(value)=={'$ref'}:
-                            return completed[value['$ref']]
-                        if plan.get('version',1)==1 and isinstance(value,str) and value in ('$product','$offer','$campaign'):
-                            return completed[value[1:]]
-                        if isinstance(value,list):return [references(x) for x in value]
-                        if isinstance(value,dict):return {k:references(v) for k,v in value.items()}
-                        return value
-                    for op in plan['operations']:
-                        payload=references(op['body']);obj=self.api.call(op['method'],op['path'],payload)
-                        if str(obj.get('status','')).upper()!='SUCCESS':raise ValueError('Sticky did not confirm the write')
-                        if op.get('save'):
-                            oid=obj.get('data',{}).get('id') or obj.get('data',{}).get('c_id')
-                            if not oid:raise ValueError('Sticky did not return the new object ID')
-                            completed[op['save']]=int(oid)
-                        with self.store.db() as db:db.execute('UPDATE admin_reviews SET result=? WHERE id=?',(json.dumps({'created':completed}),body.review_id))
-                        if op.get('save'):
-                            checked=self.api.detail(op['path']+'/'+str(completed[op['save']]))
-                            if op.get('verify'):
-                                expected=references(op['verify'])
-                                if expected['kind']=='product' and (checked.get('sku')!=expected['sku'] or money(checked.get('price'))!=money(expected['price'])):
-                                    raise ValueError('Master product read-back did not match')
-                                if expected['kind']=='product' and expected.get('contract')!=product_contract(checked):
-                                    raise ValueError('Master shipping/tax product read-back did not match')
-                                if expected['kind']=='offer' and ({int(p['id']) for p in checked.get('products',[])}!={expected['product']} or offer_models(checked)!=set(expected['models'])):
-                                    raise ValueError('Master offer read-back did not match')
-                                if expected['kind']=='offer' and (cycles_for(checked)!=expected.get('prepaid_cycles') or renewal_for(checked)!=expected.get('prepaid_renewal',False)):raise ValueError('Prepaid terms read-back did not match')
-                                if expected['kind']=='campaign':
-                                    routes=[p.get('provider',{}) for p in checked.get('alternative_payments',[]) if p.get('payment_method')=='stripe_link']
-                                    if (set(expected['offers'])!={int(o['id']) for o in checked.get('offers',[])} or
-                                        len(routes)!=1 or int(routes[0].get('id') or 0)!=expected['gateway'] or int(routes[0].get('account_id') or 0)!=250 or
-                                        set(expected['countries'])!={int(x['id']) for x in checked.get('countries',[])} or
-                                        set(expected['shipping'])!={int(x['id']) for x in checked.get('shipping_profiles',[])}):
-                                        raise ValueError('Campaign payment, offers or fulfillment read-back did not match')
-                            if op['save']=='product' and (checked.get('sku')!=payload['sku'] or money(checked.get('price'))!=money(payload['price'])):
-                                raise ValueError('Product price/SKU read-back did not match')
-                            if op['save']=='offer' and (cycles_for(checked)!=cycles_for(data.get('configuration',{})) or renewal_for(checked)!=renewal_for(data.get('configuration',{}))):raise ValueError('Prepaid terms read-back did not match')
-                            if op['save']=='offer' and (set(int(p['id']) for p in checked.get('products',[]))!={completed['product']} or set(int(m['id']) for m in checked.get('billing_models',[]))!=set(data['billing_models'])):
-                                raise ValueError('Offer read-back did not match')
-                        elif op['method']=='PUT':
-                            checked=self.api.detail(op['path'])
-                            if 'offers' in payload and not set(payload['offers']).issubset({int(o['id']) for o in checked.get('offers',[])}):raise ValueError('Offer attachment read-back did not match')
-                    if kind in ('brand','sku','link'):
-                        if kind=='link' and data.get('_link_brand'):
-                            brand=data.pop('_link_brand');self.put('brand',brand['id'],brand)
-                        self.put(kind,self.identity(kind,data),data)
-                    elif kind in ('therapy','purchase_option','plan_checkout'):
-                        self.finalize_plan(kind,data)
-                    elif kind=='template_editor':
-                        self.finalize_template_editor(data)
-                    elif kind=='checkout_template':
-                        self.put(kind,data['id'],data)
-                    elif kind=='site_checkout':
-                        self.finalize_plan('plan_checkout',data)
-                    elif kind=='offer':
-                        old=self.get('offering',data['id'])
-                        if old:
-                            for link in self.records('link'):
-                                if link['brand_id']!=data['brand_id'] or link['sku']!=data['sku'] or record_campaign(link,self.get('brand',data['brand_id']))!=data['campaign_id']:continue
-                                updated=[f"{completed['offer']}:{completed['product']}:{key.split(':')[2]}" if key.startswith(f"{old['offer_id']}:{old['product_id']}:") else key for key in link['options']]
-                                if updated!=link['options']:
-                                    link['options']=updated;link['revision']=link.get('revision',1)+1;self.put('link',link['id'],link)
-                        self.put('offering',data['id'],data|{'product_id':completed['product'],'offer_id':completed['offer']})
-                    elif kind=='campaign':
-                        brand=attach_campaign(self.get('brand',data['brand_id']),completed['campaign']);self.put('brand',brand['id'],brand)
-                    extra=self.finalize_site(data,references) if kind=='site' else self.finalize_master(kind,data,references) if kind in ('master','provision','campaign_setup') else {}
-                    result={'status':'applied','created':completed,**extra}
-                    with self.store.db() as db:db.execute("UPDATE admin_reviews SET status='applied',result=? WHERE id=?",(json.dumps(result),body.review_id))
-                    return result
-                except Exception:
-                    with self.store.db() as db:db.execute("UPDATE admin_reviews SET status='reconcile',result=? WHERE id=?",(json.dumps({'status':'reconcile','created':completed}),body.review_id))
-                    raise HTTPException(502,'The change is held for reconciliation. Inspect the recorded object IDs before retrying; no automatic retry was made.') from None
+                return self.execute_plan(body.review_id,kind,plan)
+
+    def execute_plan(self,review_id,kind,plan,completed=None,start_index=0):
+        completed=dict(completed or {})
+        data=plan['data']
+        stage='preparing';operation_index=start_index
+        try:
+            def references(value):
+                if isinstance(value,dict) and set(value)=={'$ref'}:
+                    return completed[value['$ref']]
+                if plan.get('version',1)==1 and isinstance(value,str) and value in ('$product','$offer','$campaign'):
+                    return completed[value[1:]]
+                if isinstance(value,list):return [references(x) for x in value]
+                if isinstance(value,dict):return {k:references(v) for k,v in value.items()}
+                return value
+            for operation_index,op in enumerate(plan['operations'][start_index:],start_index):
+                payload=references(op['body']);stage='submitting'
+                with self.store.db() as db:db.execute('UPDATE admin_reviews SET result=? WHERE id=?',(json.dumps({'created':completed,'operation_index':operation_index,'stage':stage}),review_id))
+                obj=self.api.call(op['method'],op['path'],payload)
+                if str(obj.get('status','')).upper()!='SUCCESS':raise ValueError('Sticky did not confirm the write')
+                if op.get('save'):
+                    oid=obj.get('data',{}).get('id') or obj.get('data',{}).get('c_id')
+                    if not oid:raise ValueError('Sticky did not return the new object ID')
+                    completed[op['save']]=int(oid)
+                stage='verifying'
+                with self.store.db() as db:db.execute('UPDATE admin_reviews SET result=? WHERE id=?',(json.dumps({'created':completed,'operation_index':operation_index,'stage':stage}),review_id))
+                if op.get('save'):
+                    checked=self.api.detail(op['path']+'/'+str(completed[op['save']]))
+                    if op.get('verify'):
+                        expected=references(op['verify'])
+                        if expected['kind']=='product' and (checked.get('sku')!=expected['sku'] or money(checked.get('price'))!=money(expected['price'])):
+                            raise ValueError('Master product read-back did not match')
+                        if expected['kind']=='product' and not product_contract_matches(expected.get('contract',{}),product_contract(checked)):
+                            raise ValueError('Master shipping/tax product read-back did not match')
+                        if expected['kind']=='offer' and ({int(p['id']) for p in checked.get('products',[])}!={expected['product']} or offer_models(checked)!=set(expected['models'])):
+                            raise ValueError('Master offer read-back did not match')
+                        if expected['kind']=='offer' and (cycles_for(checked)!=expected.get('prepaid_cycles') or renewal_for(checked)!=expected.get('prepaid_renewal',False)):raise ValueError('Prepaid terms read-back did not match')
+                        if expected['kind']=='campaign':
+                            routes=[p.get('provider',{}) for p in checked.get('alternative_payments',[]) if p.get('payment_method')=='stripe_link']
+                            if (set(expected['offers'])!={int(o['id']) for o in checked.get('offers',[])} or
+                                len(routes)!=1 or int(routes[0].get('id') or 0)!=expected['gateway'] or int(routes[0].get('account_id') or 0)!=250 or
+                                set(expected['countries'])!={int(x['id']) for x in checked.get('countries',[])} or
+                                set(expected['shipping'])!={int(x['id']) for x in checked.get('shipping_profiles',[])}):
+                                raise ValueError('Campaign payment, offers or fulfillment read-back did not match')
+                    if op['save']=='product' and (checked.get('sku')!=payload['sku'] or money(checked.get('price'))!=money(payload['price'])):
+                        raise ValueError('Product price/SKU read-back did not match')
+                    if op['save']=='offer' and (cycles_for(checked)!=cycles_for(data.get('configuration',{})) or renewal_for(checked)!=renewal_for(data.get('configuration',{}))):raise ValueError('Prepaid terms read-back did not match')
+                    if op['save']=='offer' and (set(int(p['id']) for p in checked.get('products',[]))!={completed['product']} or set(int(m['id']) for m in checked.get('billing_models',[]))!=set(data['billing_models'])):
+                        raise ValueError('Offer read-back did not match')
+                elif op['method']=='PUT':
+                    checked=self.api.detail(op['path'])
+                    if 'offers' in payload and not set(payload['offers']).issubset({int(o['id']) for o in checked.get('offers',[])}):raise ValueError('Offer attachment read-back did not match')
+            stage='finalizing'
+            if kind in ('brand','sku','link'):
+                if kind=='link' and data.get('_link_brand'):
+                    brand=data.pop('_link_brand');self.put('brand',brand['id'],brand)
+                self.put(kind,self.identity(kind,data),data)
+            elif kind in ('therapy','purchase_option','plan_checkout'):
+                self.finalize_plan(kind,data)
+            elif kind=='template_editor':
+                self.finalize_template_editor(data)
+            elif kind=='checkout_template':
+                self.put(kind,data['id'],data)
+            elif kind=='site_checkout':
+                self.finalize_plan('plan_checkout',data)
+            elif kind=='offer':
+                old=self.get('offering',data['id'])
+                if old:
+                    for link in self.records('link'):
+                        if link['brand_id']!=data['brand_id'] or link['sku']!=data['sku'] or record_campaign(link,self.get('brand',data['brand_id']))!=data['campaign_id']:continue
+                        updated=[f"{completed['offer']}:{completed['product']}:{key.split(':')[2]}" if key.startswith(f"{old['offer_id']}:{old['product_id']}:") else key for key in link['options']]
+                        if updated!=link['options']:
+                            link['options']=updated;link['revision']=link.get('revision',1)+1;self.put('link',link['id'],link)
+                self.put('offering',data['id'],data|{'product_id':completed['product'],'offer_id':completed['offer']})
+            elif kind=='campaign':
+                brand=attach_campaign(self.get('brand',data['brand_id']),completed['campaign']);self.put('brand',brand['id'],brand)
+            extra=self.finalize_site(data,references) if kind=='site' else self.finalize_master(kind,data,references) if kind in ('master','provision','campaign_setup') else {}
+            result={'status':'applied','created':completed,**extra}
+            with self.store.db() as db:db.execute("UPDATE admin_reviews SET status='applied',result=? WHERE id=?",(json.dumps(result),review_id))
+            return result
+        except Exception:
+            with self.store.db() as db:db.execute("UPDATE admin_reviews SET status='reconcile',result=? WHERE id=?",(json.dumps({'status':'reconcile','created':completed,'operation_index':operation_index,'stage':stage}),review_id))
+            raise HTTPException(502,'The change is held for reconciliation. Inspect the recorded object IDs before retrying; no automatic retry was made.') from None

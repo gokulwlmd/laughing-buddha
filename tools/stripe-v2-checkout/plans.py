@@ -92,6 +92,13 @@ class ReadCache:
     def detail(self,path):
         if path not in self.cache:self.cache[path]=self.api.detail(path)
         return self.cache[path]
+    def call(self,method,path,body=None):
+        if method == 'GET' and body is None:
+            key=('GET',path)
+            if key not in self.cache:self.cache[key]=self.api.call(method,path)
+            return self.cache[key]
+        return self.api.call(method,path,body)
+
     def prefetch_choices(self,campaign_id,keys):
         if not keys:return
         allowed={tuple(int(part) for part in key.split(':')) for key in keys}

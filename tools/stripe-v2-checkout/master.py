@@ -172,6 +172,22 @@ def product_contract(p):
         'tax_code':p.get('tax_code'),'shipping_restrictions':p.get('shipping_restrictions') or []}
 
 
+def product_contract_matches(expected, actual):
+    """Allow only Sticky's observed empty-weight defaults on non-shippable items.
+
+    Keep stored contracts/fingerprints unchanged; shipping, tax, restrictions and
+    explicit weights still require exact read-back.
+    """
+    if expected == actual:
+        return True
+    actual = dict(actual)
+    if (expected.get('is_shippable') == actual.get('is_shippable') == 0
+            and expected.get('weight') is None and expected.get('weight_unit_id') is None
+            and actual.get('weight') in (None, '0') and actual.get('weight_unit_id') in (None, 1)):
+        actual.update(weight=None, weight_unit_id=None)
+    return expected == actual
+
+
 def model_rows(api):
     obj=api.call('GET','/api/v2/billing_models')
     if str(obj.get('status','')).upper()!='SUCCESS':raise HTTPException(502,'Sticky billing models could not be verified')
@@ -397,7 +413,7 @@ class MasterCatalog:
                         if any(enabled(offer.get(k)) for k in ('is_archived','is_trial','is_series','is_seasonal')):
                             raise HTTPException(409,'An assigned offer has unsupported or archived terms; reconcile it first')
                         if cycles_for(offer)!=cycles_for(old.get('configuration',{})) or renewal_for(offer)!=renewal_for(old.get('configuration',{})):raise HTTPException(409,'Assigned prepaid terms changed; reconcile before applying')
-                        if (old_assignment or {}).get('source_hash')==fingerprint(source) and product_contract(product)!=product_contract(source):
+                        if (old_assignment or {}).get('source_hash')==fingerprint(source) and not product_contract_matches(product_contract(source),product_contract(product)):
                             raise HTTPException(409,'An assigned product shipping/tax configuration changed; reconcile it before assigning again')
                         reuse=all((record_campaign(old,brand) if k=='campaign_id' else old.get(k))==v for k,v in desired.items()) and (old_assignment or {}).get('source_hash')==fingerprint(source)
                     if reuse:
@@ -492,7 +508,7 @@ class MasterCatalog:
                             error='Billing terms changed after this master revision was assigned'
                         if o and money(o.get('upfrontPrice',o['basePrice']))!=money(current['price']):error='Assigned price differs from Sticky'
                         if o and o.get('prepaidCycles')!=cycles_for(current.get('configuration',{})):error='Assigned prepaid terms differ from Sticky'
-                        if product_contract(product)!=assignment['source_contract']:error='Assigned shipping/tax product settings changed'
+                        if not product_contract_matches(assignment['source_contract'],product_contract(product)):error='Assigned shipping/tax product settings changed'
                         if (c['currency'] or '').upper()!=assignment['currency']:error='Campaign currency changed'
                         if not c['countries']:error='Campaign countries are missing'
                         if o and o['shippable'] and not c['shipping']:error='Campaign shipping options are missing'

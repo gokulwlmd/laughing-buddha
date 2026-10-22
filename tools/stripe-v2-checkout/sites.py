@@ -293,6 +293,9 @@ class SiteCatalog:
         return data, guards, preview, ops, local
 
     def finalize_site(self, data, references):
+        # All remote writes finished; reuse only this finalization's fresh reads.
+        self = copy.copy(self)
+        self.api = ReadCache(self.api)
         extra = self.finalize_master('campaign_setup', data, references)
         site = references(data['site'])
         # Save incomplete setup too, so a retry reuses the recorded campaign and offers.
