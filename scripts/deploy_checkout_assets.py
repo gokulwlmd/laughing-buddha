@@ -11,10 +11,11 @@ import json
 from pathlib import Path
 import shlex
 import subprocess
+import zlib
 
 APP='wlmd-stripe-test-0f89b1bb'
-BASE='ab1da3645398fdb5833947d8e229118121a17b53'
-ASSETS=['checkout-v3.css','plan-selector-v3.css','checkout-v9.js','plan-selector-v3.js','index.html','plans.html']
+BASE='c396f15a8b11795b3bde45e3b32b6c5662cad092'
+ASSETS=['red-hat-display-latin-v1.woff2','red-hat-display-OFL.txt','checkout-font-v1.css','brand-design-v2.js','checkout-v4.css','plan-selector-v4.css','checkout-v9.js','plan-selector-v4.js','index.html','plans.html']
 ROOT=Path(__file__).resolve().parents[1]
 
 
@@ -22,13 +23,14 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apply',action='store_true',help='Apply the explicitly requested live UI update')
     args=parser.parse_args()
-    files={name:(ROOT/'tools/stripe-v2-checkout/web'/name).read_text() for name in ASSETS}
+    files={name:base64.b64encode((ROOT/'tools/stripe-v2-checkout/web'/name).read_bytes()).decode() for name in ASSETS}
     before={name:hashlib.sha256(subprocess.check_output(['git','show',BASE+':tools/stripe-v2-checkout/web/'+name],cwd=ROOT)).hexdigest() for name in ('index.html','plans.html')}
-    bundle=base64.b64encode(json.dumps({'files':files,'before':before,'apply':args.apply}).encode()).decode()
-    code="""import base64,json,hashlib,os,sqlite3,tempfile
+    bundle=base64.b64encode(zlib.compress(json.dumps({'files':files,'before':before,'apply':args.apply}).encode())).decode()
+    code="""import base64,json,hashlib,os,sqlite3,tempfile,zlib
 from pathlib import Path
-payload=json.loads(base64.b64decode(__BUNDLE__))
-root=Path('/app/web');backup=Path('/data/ui-backups/customer-checkout-v9-20261022')
+payload=json.loads(zlib.decompress(base64.b64decode(__BUNDLE__)))
+payload['files']={name:base64.b64decode(content) for name,content in payload['files'].items()}
+root=Path('/app/web');backup=Path('/data/ui-backups/customer-checkout-reference-20261023')
 def digest(data):return hashlib.sha256(data).hexdigest()
 def processes():
  result={}
@@ -45,7 +47,7 @@ def state_hashes():
  result={t:digest(repr(c.execute('SELECT * FROM '+t+' ORDER BY 1').fetchall()).encode()) for t in ('admin_owner','admin_reviews','admin_config','checkouts','purchase','purchase_successors')}
  c.close();return result
 running=processes();assert len(running)==1,'Expected one running payment worker'
-state_before=state_hashes();wanted={name:digest(content.encode()) for name,content in payload['files'].items()}
+state_before=state_hashes();wanted={name:digest(content) for name,content in payload['files'].items()}
 for name in ('index.html','plans.html'):
  current=digest((root/name).read_bytes())
  assert current in (payload['before'][name],wanted[name]),'Entry point changed outside this release: '+name
@@ -59,7 +61,7 @@ if payload['apply']:
   if name in ('index.html','plans.html') and not (backup/name).exists():
    (backup/name).write_bytes(destination.read_bytes());os.chmod(backup/name,0o600)
   with tempfile.NamedTemporaryFile(dir=root,prefix='.customer-ui-',delete=False) as temp:
-   temp.write(content.encode());temporary=Path(temp.name)
+   temp.write(content);temporary=Path(temp.name)
   os.chown(temporary,10001,10001);os.chmod(temporary,0o644);os.replace(temporary,destination)
  assert all(digest((root/name).read_bytes())==expected for name,expected in wanted.items())
 assert processes()==running,'The payment worker changed during the update'
@@ -67,7 +69,7 @@ print(json.dumps({'app':'wlmd-stripe-test-0f89b1bb','applied':payload['apply'],'
 """.replace('__BUNDLE__',repr(bundle))
     result=subprocess.run([str(Path.home()/'.fly/bin/flyctl'),'ssh','console','--app',APP,'--command',shlex.join(['python','-c',code])],capture_output=True,text=True,timeout=90)
     if result.returncode:
-        raise SystemExit(result.stderr)
+        raise SystemExit('Fly static deployment failed: '+result.stderr.split('Error: ssh shell:')[0][-2000:])
     proof=json.loads(result.stdout)
     if args.apply:(Path('/private/tmp')/'customer-checkout-live-proof.json').write_text(json.dumps(proof,indent=2))
     print(json.dumps(proof))

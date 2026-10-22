@@ -247,3 +247,20 @@ measured 0.312–0.335 s versus 6.843 s before; cached configuration measured
 end-to-end live payment improvement is not established. See SITE_API_SPEED.md
 and tools/stripe-v2-checkout/site-api-speed-deployment.json. The API volume and
 existing sessions survived; the original payment worker was not restarted.
+
+## Hosted checkout reference redesign (23 October 2026)
+
+The owner requested the VigMD checkout's visual layout for the hosted customer
+checkout. The plan picker and details page now share a white canvas, compact
+Red Hat Display type, clear choices and a pale order summary. Plan selection
+starts with the requested/first available medication, lists durations longest
+first and requires explicit duration/payment choices. Site accent colors,
+upfront prices, shipment schedules, renewal terms and the existing Stripe v2
+checkout-v9.js behavior are retained. Font assets and OFL are self-hosted.
+
+Read CHECKOUT_REFERENCE_DESIGN.md before editing these pages. The versioned
+static overlay is designed to preserve the running payment worker and database.
+Use tools/stripe-v2-checkout/checkout-reference-deployment.json for actual live
+publication and final test evidence. Hosted visual checks must not submit a
+payment; local financial regression tests use the fake backend. No customer
+screenshots or private checkout URLs are committed.

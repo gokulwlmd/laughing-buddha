@@ -193,3 +193,15 @@ retain their authoritative checks. Use bounded cookie-free HTTPS connections
 and overlap independent read-only preparation checks. Never retry writes after
 network uncertainty. Deploy these optimizations in the API app so the existing
 payment worker can retain the open card forms and process-local secrets.
+
+## Reference checkout presentation (23 October 2026)
+
+Match the owner's VigMD reference with a white layout, compact self-hosted
+Red Hat Display typography (OFL), medication tabs, horizontal duration cards
+and a pale order summary. Retain each site's accent/button colors and use
+original artwork. Default only the medication; require explicit duration and
+payment choices. Show durations longest first and full upfront totals clearly,
+with accurate shipment and renewal terms. Preserve the existing Stripe v2
+payment logic in checkout-v9.js. Publish through versioned static assets so the
+payment worker and database can remain in place. See CHECKOUT_REFERENCE_DESIGN.md
+and the final deployment metadata for the implemented scope and verification.
