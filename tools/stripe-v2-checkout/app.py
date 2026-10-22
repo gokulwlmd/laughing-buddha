@@ -134,6 +134,7 @@ class QuoteRequest(BaseModel):
     contact: Contact
     selection: str = Field(max_length=80)
     shipping_id: int | None = Field(default=None, gt=0)
+    dollar_test: bool = False
 
 
 class AuthorizeRequest(BaseModel):
@@ -248,6 +249,10 @@ def create_app(settings=None, sticky=None):
         seed_demo(admin)
     app.state.admin = admin
     admin.attach(app)
+    from refill_rules import install_refill_admin
+    install_refill_admin(app, admin)
+    from dollar_testing import install_testing_admin, available as dollar_test_available, test_catalog
+    install_testing_admin(app, admin)
 
     def csrf():
         return hmac.new(invite.encode(), b'checkout-csrf', hashlib.sha256).hexdigest()
@@ -352,6 +357,8 @@ def create_app(settings=None, sticky=None):
         response.headers['Referrer-Policy'] = 'no-referrer'
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' https://js.stripe.com; style-src 'self' 'unsafe-inline'; frame-src https://*.stripe.com https://*.stripe.network; connect-src 'self' https://*.stripe.com https://*.stripe.network; img-src 'self' data: https:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+        if req.url.path.startswith('/portal/') and req.url.path.endswith('/docs'):
+            response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
         return response
 
     @app.exception_handler(CatalogError)
@@ -456,7 +463,7 @@ def create_app(settings=None, sticky=None):
         ready = bool(cfg.public_url and cfg.authorization_verified and not c['blockedReason'])
         return {k: c[k] for k in ('campaignId','campaignName','sku','options','shipping','countries','currency','publishableKey')} | {
             'csrfToken': admin.checkout_csrf(admin.link(req.query_params['link_id'])[0]) if req.query_params.get('link_id') else csrf(), 'branding': c.get('branding'), 'checkoutTitle': c.get('checkoutTitle'), 'ready': ready, 'blockedReason': c['blockedReason'] or ('' if ready else 'The secure checkout connection is still being configured.'),
-            'status': row['status'], 'attemptId': row['id'],'paymentTestOnly':c.get('paymentTestOnly',False),
+            'status': row['status'], 'attemptId': row['id'],'paymentTestOnly':c.get('paymentTestOnly',False), 'dollarTestAvailable':dollar_test_available(admin,req,c),
             'deferredPayment': {'captureMethod':'manual','setupFutureUsage':'off_session'} if c['gatewayId'] in cfg.deferred_gateway_ids else None}
 
     @app.get('/api/status')
@@ -507,6 +514,10 @@ def create_app(settings=None, sticky=None):
         if row['status'] != 'new':
             raise HTTPException(409, 'An existing payment must be reconciled before changing this checkout')
         c = catalog(req)
+        if body.dollar_test:
+            if not dollar_test_available(admin,req,c):
+                raise HTTPException(403, '$1 testing is not enabled for this checkout')
+            c = test_catalog(c)
         q = quote(api, c, body.selection, body.shipping_id, body.contact.model_dump())
         q.update({'id': secrets.token_urlsafe(24), 'expires': time.time()+600})
         if not store.claim('new','new',key,quote=json.dumps(q),contact=json.dumps(body.contact.model_dump())):
@@ -531,6 +542,10 @@ def create_app(settings=None, sticky=None):
             raise HTTPException(422, 'Accept the displayed recurring billing terms to continue')
         contact = json.loads(row['contact'])
         c = catalog(req, legacy=q.get('catalogVersion',1)!=2)
+        if q.get('option',{}).get('dollarTest'):
+            if not dollar_test_available(admin,req,c):
+                raise HTTPException(409, '$1 testing was disabled. Review a fresh total before paying.')
+            c = test_catalog(c)
         current = quote(api,c,q['selection'],q['shippingId'],contact)
         if any(current[k] != q[k] for k in ('amount','currency','fingerprint','option')):
             raise HTTPException(409, 'Campaign configuration or price changed. Review a fresh quote.')
@@ -576,6 +591,7 @@ def create_app(settings=None, sticky=None):
         if row['status'] != 'awaiting_card' or not row.get('intent_id'):
             raise HTTPException(409, 'No capturable payment is available. Check its status before retrying.')
         c = catalog(req, legacy=q.get('catalogVersion',1)!=2)
+        if q.get('option',{}).get('dollarTest'):c = test_catalog(c)
         current = quote(api,c,q['selection'],q['shippingId'],json.loads(row['contact'])) if not c['blockedReason'] else None
         if not current or any(current[k] != q[k] for k in ('fingerprint','amount','currency','option')):
             raise HTTPException(409, 'Campaign configuration or price changed; reconcile this authorization before capture')
@@ -589,9 +605,12 @@ def create_app(settings=None, sticky=None):
             'creditCardNumber':'','expirationDate':'','CVV':'',
             'tranType':'Capture','transactionId':row['intent_id']}
         if option.get('prepaidCycles'):payload['offers'][0]['prepaid_cycles']=option['prepaidCycles']
+        if option.get('dollarTest'):
+            payload['offers'][0].update(price=option['testUnitPrice'],preserve_price=1)
         if q['shippingId'] is not None:
             payload['shippingId'] = q['shippingId']
-        # No price override: preserve Sticky offer, tax and shipping rules.
+        # Only the explicitly enabled, server-calculated $1 test path overrides
+        # price. It preserves that same price for subscription renewals.
         obj = api.call('POST','/api/v1/new_order',payload)
         order_id = obj.get('order_id')
         if order_id:
@@ -611,12 +630,34 @@ def create_app(settings=None, sticky=None):
             str(products[0].get('product_qty')) == '1' and str(products[0].get('offer',{}).get('id')) == str(option['offerId']) and
             str(products[0].get('is_recurring')) == ('1' if option['recurring'] else '0'))
         if option.get('prepaidCycles'):valid=valid and order_terms_match(products[0],option['prepaidCycles'],option.get('renewal',False)) if valid else False
+        renews_payment = option.get('renewal', False) if option.get('prepaidCycles') else option['recurring']
+        if valid and option.get('dollarTest') and renews_payment:
+            # A correct initial total alone does not prove that the subscription
+            # retained the agreed testing price. Sticky reports the full prepaid
+            # renewal price here (not the per-cycle quote/capture override).
+            # Non-renewing prepaid plans use recurring shipment cycles but have
+            # no next full-term payment; order_terms_match verifies is_renew=0.
+            try:
+                valid = Decimal(str(products[0].get('next_subscription_product_price'))) == Decimal('1.00')
+            except Exception:
+                valid = False
         if not valid:
             raise StickyError('The payment result needs reconciliation; no second capture will be submitted')
         store.claim('capture_pending','captured',key,order_id=str(order_id))
         cached.pop(key,None)
         return {'status':'captured','orderId':str(order_id),'amount':q['amount']}
 
+    def member_receipt(req, mutation=True):
+        access(req, mutation)
+        _, row = session(req)
+        return row
+
+    from member_portal import install as install_member_portal
+    members = install_member_portal(app, admin, store, cfg, receipt_access=member_receipt)
+
+    @app.post('/api/portal-enrollment')
+    def portal_enrollment(body: CaptureRequest, req: Request):
+        return members.receipt_invite(member_receipt(req))
     app.mount('/assets', StaticFiles(directory=HERE / 'web'), name='assets')
     return app
 

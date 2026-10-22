@@ -280,3 +280,51 @@ admin progress views and site Swagger. Its persona switch is not real patient
 authentication. Partial leads are display fixtures. No production order import,
 Sticky intake handoff, clinical decision, refill, store or funnel builder is
 connected yet. Existing live checkout and API deployments remain unchanged.
+
+
+## Latest: real Sticky member portal (23 October 2026)
+
+The owner rejected synthetic portal orders. The implementation now lives in
+`tools/stripe-v2-checkout/member_portal`, integrated into the real checkout app.
+See its README for accounts, exact APIs, order import/renewal lineage, address
+updates, subscription holds, per-SKU refill/early-request policies and the $1
+checkout toggle. The old `patient_demo` module is an offline fixture only, apart
+from its reusable mock questionnaire functions. Never serve it as real orders.
+
+Existing Fly/Sticky authentication was verified without requesting credentials.
+Read-only inspection found both the campaign 422 test site and markrx campaign
+423. Historical captured receipts need current Sticky status reconciliation;
+do not display every locally captured row as currently paid. No customer or
+credential data belongs in this handoff.
+
+Eight new actual Sticky Dry Run orders verified $1 full-term renewals and $0
+included cycles. Their sanitized evidence is documented in the member README.
+The gateway, catalog prices and existing live order records were preserved.
+Medical-provider APIs and the tokenized saved-card replacement contract remain
+external dependencies. Code readiness is not a claim of production deployment;
+check the release record and process version before directing members to it.
+
+Private real-data preview is running at `http://127.0.0.1:8873` through a Fly
+proxy to an additional process on port 8081. Owner entry is
+`/portal-admin/master-therapy-test-422`; member entry is
+`/portal/master-therapy-test-422`. Use the existing owner login. The preview
+reuses the existing server-side Sticky credentials and database in place; no
+credentials or customer data were copied locally. No orders were fabricated.
+The original checkout worker and all existing payment rows were unchanged.
+The old synthetic localhost listener was stopped. See
+`tools/stripe-v2-checkout/member-portal-preview.json` for verification.
+
+This private process/tunnel is a development preview, not a durable public
+deployment. The public checkout's new $1 toggle, receipt enrollment and the
+external session API enrollment endpoint still need their normal releases.
+At preflight, the existing worker had 15 awaiting-card and 2 authorization-
+pending attempts; preserve them and honor the owner's prior request to leave
+open payments untouched before restarting. The portal does not auto-import
+account-wide orders: sync site-bound receipts or explicitly import exact
+matching order IDs, then issue a member invitation.
+
+Customer experience: send patients to `/portal/{site_id}`. The separate
+`/portal-admin/{site_id}` area is labeled **Administration · staff only** and
+contains order import and checkout testing. It is not the patient experience.
+An existing owner cookie never signs someone into a patient account or grants
+patient order access. Admin has an explicit link to open the customer portal.

@@ -212,10 +212,38 @@ Keep branded patient accounts and records separate per site initially. The owner
 will provide intake and doctor-messaging APIs; use clearly marked backend mock
 questions and messages until then. The medical team will fetch information from
 Sticky, so its intake destination/mapping remains an integration dependency;
-do not pretend a mock submission reached a clinician. Start with an isolated
-synthetic demo of orders, saved intake and site/therapy admin views. Use the same
+do not pretend a mock submission reached a clinician. The initial isolated
+order demo was rejected by the owner; the real-order decision below supersedes it. Use the same
 site-scoped APIs for the UI and Swagger. Preserve charge-first and individual
 SKU refill rules. No clinical approval or medication release follows from
 payment, billing cadence or completed intake. Real patient authentication,
 medical-data hosting and the paid-but-declined/incomplete intake policy remain
 required before connecting real patients.
+
+
+## Real Sticky member records and configurable requests (23 October 2026)
+
+The owner explicitly rejected demo orders. Member order and subscription views
+must use actual Sticky records, including real Sticky test orders. Use the
+existing campaign and authentication; do not introduce another fake order store.
+Accounts and grants remain separate per site. A public email alone cannot claim
+an order; enrollment comes from an owned completed checkout or an owner-issued,
+order-bound invitation. External Sticky orders require an explicit verified site
+mapping; renewal descendants inherit only the verified parent grant.
+
+The owner approved $1 initial payments AND $1 full subscription renewals when
+checkout testing is enabled. Included intermediate prepaid cycles stay $0.
+Normal prices stay independent; a request may select test mode but cannot choose
+its own amount. Dry Run verification confirmed both two- and four-cycle renewals.
+
+Address updates, card replacement and early-refill requests belong in the portal.
+Current order addresses and future subscription addresses are separate actions.
+Early-refill windows, minimum days, check-ins and cooldowns belong to individual
+SKU policies. Requests go to review and do not themselves bill or ship. Payment
+and included delivery schedules do not establish medical approval.
+
+Card replacement must use a verified Stripe Connect v2 hosted/tokenized flow.
+The available Sticky docs do not establish that replacement contract; leave it
+unavailable until supplied. Intake and doctor messaging remain the explicitly
+requested mock adapters. See the member portal README for exact delivered and
+pending boundaries.

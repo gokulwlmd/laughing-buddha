@@ -66,6 +66,7 @@ class QuoteBody(StrictBody):
     model_config=ConfigDict(extra='forbid',json_schema_extra={'example':{'contact':{'name':'API Integration Test','email':'customer@example.invalid','phone':'+12025550100','address':'1 Test Way','city':'San Francisco','region':'CA','postal_code':'94105','country':'US'},'shipping_id':None}})
     contact: Contact
     shipping_id: int | None = Field(default=None,gt=0)
+    dollar_test: bool = False
 
 class PaymentBody(StrictBody):
     model_config=ConfigDict(extra='forbid',json_schema_extra={'example':{'quote_id':'COPY_QUOTE_ID','accept_terms':False}})
@@ -102,6 +103,7 @@ class Configuration(BaseModel):
     shipping: list[dict]
     plan: dict
     payment_test_only: bool
+    dollar_test_available: bool = False
 
 
 class DisplayConfigurationCache:
@@ -156,6 +158,11 @@ class PaymentResult(BaseModel):
     amount: int
     currency: str
     status: str = 'awaiting_card'
+
+class PortalEnrollmentResult(BaseModel):
+    site_id: str
+    enrollment_url: str
+    expires_at: str | None = None
 
 
 def digest(value):
@@ -434,7 +441,7 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
                 raise HTTPException(409,'This plan is not currently available for payment')
             # No upstream CSRF, purchase cookies, customer data or account secrets.
             public_option={k:option[k] for k in ('recurring','days','basePrice','prepaidCycles','upfrontPrice','renewal','renewalDays','shippable') if k in option}
-            return Configuration(publishable_key=cfg['publishableKey'],currency=cfg['currency'],countries=cfg['countries'],shipping=cfg['shipping'],plan=public_option,payment_test_only=cfg.get('paymentTestOnly',False))
+            return Configuration(publishable_key=cfg['publishableKey'],currency=cfg['currency'],countries=cfg['countries'],shipping=cfg['shipping'],plan=public_option,payment_test_only=cfg.get('paymentTestOnly',False),dollar_test_available=cfg.get('dollarTestAvailable',False))
         try:
             value=display_configuration.get((row['link_id'],row['selection']),load,lambda:upstream_status(row,req))
         except UpstreamError as exc:raise translated(exc)
@@ -450,7 +457,7 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
             contact=body.contact.model_dump()
             if contact['country']=='US' and contact['region'] not in US_REGIONS:
                 raise HTTPException(422,'Use the two-letter US state code')
-            try:value=call(row,'POST','/api/quote',{'contact':contact,'selection':row['selection'],'shipping_id':body.shipping_id},req)
+            try:value=call(row,'POST','/api/quote',{'contact':contact,'selection':row['selection'],'shipping_id':body.shipping_id,**({'dollar_test':True} if body.dollar_test else {})},req)
             except UpstreamError as exc:raise translated(exc)
             store.update(row['id'],quote_id=value['id'],phase='quoted')
             o=value['option'];consent=bool(o['recurring'])
@@ -527,5 +534,21 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
                 raise translated(exc)
             store.update(row['id'],phase='captured',busy=None,held=None)
             return status_result(store.read(row['id']),value)
+
+    @router.post('/{session_id}/portal',response_model=PortalEnrollmentResult,summary='Open the member portal for this completed checkout')
+    def portal(site_id:str,session_id:str,body:Empty,req:Request,credentials:HTTPAuthorizationCredentials|None=Security(bearer)):
+        row=auth(site_id,session_id,req,credentials)
+        with store.lock(row['id']):
+            try:
+                current=upstream_status(row,req)
+                if current['status']!='captured':
+                    raise HTTPException(409,'Complete the checkout before creating a member account')
+                result=call(row,'POST','/api/portal-enrollment',{},req)
+                url=parse.urlsplit(result.get('enrollment_url',''))
+                upstream=parse.urlsplit(getattr(transport,'upstream',PUBLIC_UPSTREAM))
+                if url.scheme!='https' or url.netloc!=upstream.netloc or not url.path.startswith('/portal/') or url.username or url.password:
+                    raise UpstreamError(detail='The member portal link could not be verified')
+                return PortalEnrollmentResult.model_validate(result)
+            except UpstreamError as exc:raise translated(exc)
 
     app.include_router(router)

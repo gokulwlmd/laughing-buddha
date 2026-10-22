@@ -19,3 +19,13 @@
 !therapy_campaign_setup.py
 
 !reconcile_site.py
+!refill_rules.py
+!dollar_testing.py
+!member_portal/
+!member_portal/*.py
+!member_portal/web/
+!member_portal/web/**
+!patient_demo/
+!patient_demo/__init__.py
+!patient_demo/app.py
+!patient_demo/provider.py

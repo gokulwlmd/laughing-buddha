@@ -1,4 +1,4 @@
-# Patient portal: agreed direction and first demo
+# Patient portal: real Sticky orders and care workflows
 
 Updated 23 October 2026. This is a new development track, separate from the
 existing live payment engine and its stored orders.
@@ -34,7 +34,7 @@ first integrated pilot should use one site and Weight Loss before rollout to
 the remaining therapies. Provider APIs, clinical content and operating policies
 are dependencies for real-patient release, not for this sample demonstration.
 
-## Current demo
+## Superseded first demo
 
 `tools/stripe-v2-checkout/patient_demo` is an isolated FastAPI/SQLite application.
 It has no Sticky or Stripe clients and does not import the live payment app.
@@ -59,3 +59,12 @@ fixtures; the UI must not imply they were captured from a working funnel.
 See the [demo README](../tools/stripe-v2-checkout/patient_demo/README.md) for local
 URLs and verification commands. Existing live checkout/API deployments and
 their databases are unchanged by this demo.
+
+
+## Current implementation
+
+The owner rejected sample orders after reviewing the first UI. Order and
+subscription work now uses the existing Sticky integration, verified site-bound
+ownership and the real member module. Intake and messaging are the only mocked
+provider integrations. Read [the member implementation contract](../tools/stripe-v2-checkout/member_portal/README.md)
+for implemented APIs, configuration, test evidence and remaining dependencies.

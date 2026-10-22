@@ -116,7 +116,8 @@ def resolve(api, campaign_id, sku, allowed_keys=None):
         'options': options, 'shipping': [{'id': int(s['id']), 'name': s['name']} for s in c.get('shipping_profiles', [])],
         'countries': [{'code': x['iso_2'], 'name': x['name']} for x in c.get('countries', [])],
         'gatewayId': gateway_id, 'publishableKey': public if not route_error else None,
-        'currency': currency, 'blockedReason': route_error}
+        'currency': currency, 'blockedReason': route_error,
+        'dollarTestSafe': all(c.get(k) in (None,0,'0',[]) for k in ('fulfillment_id','tax_provider_id','email_provider_id','membership_provider_id','postback_profiles')) and all(not enabled(p.get('is_shippable')) and not enabled(p.get('taxable',p.get('is_taxable'))) for p in matched.values())}
     # Detect changes to offers, billing terms, tax/fulfillment/routing without exposing provider secrets.
     stable_campaign = {k:c.get(k) for k in ('id','c_id','is_active','is_archived','tax_provider_id','fulfillment_id',
         'countries','shipping_profiles','offers','volume_discounts','fraud_providers','postback_profiles',
@@ -143,12 +144,15 @@ def quote(api, catalog, selection, shipping_id, contact):
             raise CatalogError('Select an enabled campaign shipping method')
     line = {'id': option['offerId'], 'product_id': option['productId'], 'billing_model_id': option['billingModelId'], 'quantity': 1}
     if option.get('prepaidCycles'):line['prepaid_cycles']=option['prepaidCycles']
+    if option.get('dollarTest'):line['price']=option['testUnitPrice']
     body = {'campaign_id': catalog['campaignId'], 'offers': [line], 'use_tax_provider': 1,
         'location': {'country': contact['country'], 'postal_code': contact['postal_code'], 'state': contact['region']}}
     if shipping_id is not None:
         body['shipping_id'] = shipping_id
     data = api.call('POST', '/api/v2/order_total/calculate', body).get('data', {})
     total = money(data.get('total'))
+    if option.get('dollarTest') and total != Decimal('1.00'):
+        raise CatalogError('Sticky did not confirm the $1 test total; no payment submitted')
     lines = data.get('line_items', [])
     if total <= 0 or len(lines) != 1 or str(lines[0].get('id')) != str(option['productId']) or int(lines[0].get('qty', 0)) != 1:
         raise CatalogError('Sticky did not return a supported positive single-product total')

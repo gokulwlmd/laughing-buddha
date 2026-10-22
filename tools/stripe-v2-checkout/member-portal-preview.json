@@ -1,0 +1,45 @@
+{
+  "date": "2026-10-23",
+  "status": "private_preview",
+  "preview_origin": "http://127.0.0.1:8873",
+  "preview_site": "master-therapy-test-422",
+  "source_version": "b78f6d5734ebe1db",
+  "bundle_sha256": "e0cd0d20762858440c1c4a95cd027acd522593e67b4c7cfb9000762459b1a96d",
+  "runtime": "Additional private process on existing Fly machine, accessed only through local fly proxy",
+  "real_sticky_orders": true,
+  "synthetic_orders_seeded": false,
+  "checkout_worker_restarted": false,
+  "existing_payment_rows_unchanged": true,
+  "public_checkout_release_pending": true,
+  "tests": {
+    "backend_suite_passed": 327,
+    "additional_refill_concurrency_regression_passed": true,
+    "member_backend_total_passed": 20,
+    "member_browser_cases_passed": 7,
+    "affected_checkout_browser_cases_passed": 18,
+    "javascript_syntax_files_passed": 19
+  },
+  "provider_verification": {
+    "method": "read-only real order and subscription responses; isolated Dry Run price verification",
+    "dry_run_campaign": 428,
+    "dry_run_orders": [
+      507822,
+      507823,
+      507824,
+      507825,
+      507826,
+      507827,
+      507828,
+      507829
+    ],
+    "real_card_charges_submitted": false
+  },
+  "remaining": [
+    "Stripe Connect v2 saved-card replacement contract",
+    "Medical intake and messaging provider APIs",
+    "Public payment-worker/API release after resolving or explicitly holding open payment forms"
+  ],
+  "customer_entry": "/portal/site-8bb7023e-3ca",
+  "staff_controls_separate": true,
+  "preview_checkout_testing_disabled_until_public_release": true
+}
