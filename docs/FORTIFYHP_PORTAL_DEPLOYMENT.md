@@ -1,7 +1,11 @@
 # FortifyHP patient portal delivery
 
-Prepared 23 October 2026. This file describes implemented code and the remaining
-deployment work; it is not evidence that the public portal is running.
+Updated 23 October 2026. The shared release is deployed and the branded portal
+responds at https://wlmd-stripe-test-0f89b1bb.fly.dev/portal/fortifyhp.
+The user approved the restart; unfinished attempts were preserved. See
+FORTIFYHP_ONBOARDING.md for the immutable release and validation evidence.
+Provider-dependent clinical and payment capabilities still require their
+actual integrations; publication alone does not prove those workflows.
 
 ## Site and appearance
 

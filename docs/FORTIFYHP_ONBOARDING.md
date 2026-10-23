@@ -1,65 +1,72 @@
 # FortifyHP client setup
 
-Updated: 23 October 2026. Status: catalog applied to shared app; runtime publication awaiting restart permission.
+Updated: 23 October 2026. Status: shared backend and Lovable storefront published.
 
-## Release progress (supersedes the earlier handoff below)
+## Current release handoff
 
-The authorized setup completed in the existing shared application. FortifyHP
-site/brand `fortifyhp` now exists for campaign 195 / gateway 269, with 40 new
-products, 40 new offers, 16 duration options and four therapy checkouts.
-All 40 authoritative Sticky full-term quotes matched the approved prices.
-Original campaign offers 423 and 481 were retained. No payments, customer
-orders or patient-record copies were submitted.
+- Shared backend commit `268b30befb6ba04edd8f41374895669456e37a8f`, branch
+  `codex/fortifyhp-onboarding`; PR https://github.com/gokulwlmd/laughing-buddha/pull/3.
+- Published immutable image:
+  `registry.fly.io/wlmd-stripe-test-0f89b1bb@sha256:f39916d414757e5d64980066326bdbb3b972e5e5586998066c9beda3801b2524`.
+- User approved the live restart: “Publish now; preserve unfinished attempts.”
+  The existing machine and database volume were retained. Sixteen awaiting-card
+  attempts, two pending authorizations and one captured record were preserved.
+  No payments were retried, charged, canceled or deleted.
+- FortifyHP is registered in the shared Sites database, campaign 195 / gateway
+  269. Forty products, forty offers, sixteen duration options and four therapy
+  checkouts were prepared. All forty authoritative full-term quotes matched.
+  Original campaign offers 423 and 481 and all 528 preexisting configuration
+  rows were preserved. No patient records were copied or customer orders placed.
+- Backend checks: 434 tests passed. Portal browser checks: 19 passed.
+  Lovable integration checks before the product-page revision: 23 tests and
+  type checks passed.
+- Published storefront: https://fortifyhp-care.lovable.app/available-products.
+- Patient portal: https://wlmd-stripe-test-0f89b1bb.fly.dev/portal/fortifyhp.
+- API base: https://wlmd-stripe-test-0f89b1bb.fly.dev/api/v1/sites/fortifyhp.
+- API docs: https://wlmd-stripe-test-0f89b1bb.fly.dev/sites/fortifyhp/docs.
+- Public health, catalog (40 plans), portal, portal configuration and OpenAPI
+  endpoints returned HTTP 200 after deployment. Warm catalog reads took
+  0.60–0.92 seconds; this is not a measurement of payment processing latency.
+- On-volume backup: `/data/fortify-before-20261023.sqlite3`; do not export it.
+  Setup journal: `/data/fortifyhp-production-catalog-195-v1.json`.
+  Shared publication manifest: `/data/site-api-publications.json`.
+  Do not repeat catalog creation.
+- Intake/doctor service adapters and secure card replacement provider contract
+  remain separate pending integrations. A published UI does not establish
+  completed clinical review, message delivery or a successful real charge.
+- Unrelated untracked `prototypes/` must be preserved.
 
-Final local checks passed: 434 backend tests and 19 patient-portal browser
-checks, including the actual client logo/font, all patient workflows and
-editable site-specific refill settings. Lovable's 23 targeted checkout tests
-and type checks passed in its project.
+## Product-page follow-up
 
-Built immutable release:
-`registry.fly.io/wlmd-stripe-test-0f89b1bb@sha256:f39916d414757e5d64980066326bdbb3b972e5e5586998066c9beda3801b2524`.
-It has not been deployed. The live worker was not restarted. Its 16 unfinished
-card forms and 2 unresolved attempts remain saved; the user has been asked
-whether to publish now knowing the unfinished forms may become unresumable.
-Do not treat a pending permission question as approval.
+The user requested a product catalog linking to the existing product pages,
+with plan selection and checkout on those pages. Five medications belong to
+four therapies: Semaglutide and Tirzepatide share Weight Loss; Sermorelin,
+Metformin and PT-141 are separate therapies. Reuse existing product content
+and imagery. Preserve backend pricing and session/payment recovery.
 
-On-volume backup: `/data/fortify-before-20261023.sqlite3`; keep it on that volume.
-Operator source: `/data/fortify-operator-20261023`; setup journal:
-`/data/fortifyhp-production-catalog-195-v1.json`.
-Publication uses `python -m fortifyhp_publish_api` and
-`/data/site-api-publications.json`. No repeat catalog creation is necessary.
-After permission: deploy the immutable image with the checked-in fly.toml,
-verify API/portal readiness, publish Lovable, and verify its real read-only
-customer flow. Never test with a live authorization or order by default.
+The user explicitly confirmed this work is for the new
+`fortifyhp-care.lovable.app` site. Do not modify `fortifyhp.com`, its DNS,
+legacy checkout or existing member portal as part of this request.
 
-## Current handoff
+The product-page implementation is committed in Lovable at
+`caad58eae3115c064ce7658aa0314cd034abc4c4`. It lists five product cards with
+live full-term upfront prices, reuses existing men/women treatment routes,
+and mounts the shared checkout inline after Continue. Formula query values
+are matched against available backend medications. `/plan-checkout` remains
+supported. Forty focused tests and automated type/build checks passed;
+mocked browser checks covered desktop/mobile and pending-payment recovery.
 
-- Branch: `codex/fortifyhp-onboarding`, based on
-  `d1b32daa5d1d1f0c4c5d56969223c82864817b29`. Changes remain local and uncommitted;
-  no FortifyHP GitHub PR has been created yet. Preserve unrelated `prototypes/`.
-- FortifyHP does **not** yet exist in the live Sites database. No FortifyHP
-  products/offers or customer orders were created during this implementation.
-- Shared API runtime, site-scoped catalog mappings, portal theme, intake/refill
-  configuration, and journaled setup/export scripts are implemented locally.
-  Full backend discovery passed 432 tests before the final logo/font and
-  site-policy finishing edits. Run final checks on the complete working tree.
-- Lovable checkout integration commit `bf7b098d08489fcad40bcba657f3e75996a82d7d`
-  passed 23 targeted tests and type checks. Asset export commit
-  `f70244cfa7a0f53d10152e8fde4691902ca3b2df` contains the original client logo/font.
-  The project remains unpublished and its FortifyHP API endpoint is not live.
-- Final portal-agent work stopped with a workspace out-of-credits error.
-  Its latest asset wiring is present but the final browser QA result was not
-  returned. Do not describe that final pass as complete.
-- Read-only live preflight found 2 authorization_pending, 16 awaiting_card,
-  1 captured and 109 new checkout rows. Preserve them. No worker restart,
-  charge, order retry or cancellation has been performed for FortifyHP.
-- Remaining release sequence: finish checks; build the allowlisted image;
-  back up live state on its existing volume; run `fortifyhp_setup prepare`,
-  inspect its exact read-only review, then the already-authorized catalog setup
-  `apply`; run `fortifyhp_publish_api`; publish the shared runtime while handling
-  the existing unfinished forms explicitly; verify all 40 plans and portal/API
-  isolation; publish Lovable and verify the real customer path without placing
-  a live payment; commit/push sanitized source and release evidence.
+Saved checkouts no longer replace product browsing automatically. Explicit
+Resume previous checkout is available independently of the catalog feed;
+automatic restoration is limited to Stripe return parameters. Back to plan
+choices does not delete the stored session. Existing authoritative session
+checks continue to guard pending/uncertain payments.
+
+## Earlier decisions and investigation (historical)
+
+The sections below record the original investigation and planning. Statements
+about unpublished/local-only work are historical and superseded by the current
+release handoff above.
 
 ## Confirmed direction
 
