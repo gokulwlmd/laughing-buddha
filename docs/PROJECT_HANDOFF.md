@@ -359,3 +359,64 @@ Verification: 352 backend tests, followed by all 17 final care/security cases;
 cases and the repaired master-editor browser regression passed. Check
 member-portal-preview.json for the exact running source bundle. Customer data,
 test answers, passwords and private account links are excluded from this handoff.
+
+
+## Verified private preview: native included claims (23 October 2026)
+
+The latest request supersedes the earlier review-only refill interaction. The
+customer sequence is now purchase → initial intake if missing → claim the next
+included shipment → fresh check-in for the resulting native Sticky child order.
+A 360-day / 12-month four-shipment term opens included claims at days 80/170/260;
+a 180-day / six-month term opens one at day 80. These are ten-day windows before
+the original 90-day shipment anchors. One- and three-month purchases have only
+the initial shipment. The portal store links to the site's existing paid checkout
+choices for new purchases, independently of whether an included claim is open.
+
+Implementation lives in `member_portal/claims.py`, the provider adapter, and the
+care/member API modules. `member_refill_claims` journals one native claim per paid
+term/cycle; retries reconcile uncertain outcomes through reads. Claims verify
+original paid terms, exact native cycle and ownership, zero additional
+order/shipping/tax amounts, current configuration and scheduler conflicts. The following native
+cycle remains anchored to the original paid term. The final paid renewal is not
+an included claim and must never be forced by this endpoint.
+
+Initial forms remain in `member_care_intakes`. New post-claim forms live in the
+separate `member_claim_intakes` table, scoped to a claim and verified child order.
+Existing review-only requests and old submissions are preserved and exposed as
+history; they cannot silently satisfy the fresh post-claim form. Staff progress
+summaries include checkpoint and claim/order references. Patient views use one
+care journey per paid term while retaining the actual child orders in history.
+The care clock now follows `term_order_id`, so native children share the parent's
+simulated day and a later paid renewal remains separate.
+
+The current native-order path is restricted to verified non-shippable,
+non-taxable configurations without external fulfillment integrations and with
+zero recurring shipping. Actual $0 Dry Run orders can exercise the order flow.
+Physical medication release still needs a clinical/fulfillment hold contract;
+medical intake and messaging APIs and secure saved-card replacement also remain
+external work. The original public checkout worker and existing payment attempts
+must stay untouched unless a separately authorized release changes that status.
+
+The private Fly portal preview now runs this claim-first implementation. On the
+existing authorized Markrx Dry Run term, all three actual included native Sticky
+orders were created and read back at $0, using simulated claim days 80/170/260.
+Each claim received its own submitted mock check-in; the original initial intake
+and earlier review-only history were preserved. Duplicate claims returned the
+same order. Following cycle anchors remained 180/270/360 days from purchase, and
+the paid renewal boundary was rejected without a charge. No medication shipped.
+The public checkout worker and every existing checkout row remained unchanged.
+
+Real Sticky responses omit shipping IDs on some native children and include all
+descendants in ancestor child lists. The provider verifies the original free
+shipping profile and exact descendant lineage; unrelated references, changed
+profiles, fees and ambiguous writes remain blocked.
+
+Validation includes the full backend suite, targeted provider/claim regressions,
+and nine browser scenarios, including a full three-claim journey and delayed
+page loading. Exact counts and bundle identity are in `member-portal-preview.json`.
+Markrx's four existing checkout plans remain private, so they are excluded from
+the paid portal store. Publishing those plans or adding a scoped patient checkout
+handoff is still needed for Markrx repurchases. Card replacement, clinical APIs,
+and physical fulfillment hold/release remain the provider dependencies above.
+No customer details, passwords, private invitation links, tokens or questionnaire
+answers are recorded here.

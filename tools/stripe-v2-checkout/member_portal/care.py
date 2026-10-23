@@ -44,7 +44,21 @@ class TaskRefill(BaseModel):
     status: str | None = None
 
 
+class TaskClaim(BaseModel):
+    available: bool = False
+    opens_at: str | None = None
+    status: str = 'unavailable'
+    claim_id: str | None = None
+    order_id: str | None = None
+    created_at: str | None = None
+    reason: str = ''
+    amount: str = '0.00'
+    simulated: bool = False
+
+
 class CareTask(BaseModel):
+    claim: TaskClaim | None = None
+    legacy_intake_status: str | None = None
     id: str
     label: str
     kind: str
@@ -70,6 +84,11 @@ class Simulation(BaseModel):
 
 
 class CarePlan(BaseModel):
+    id: str | None = None
+    term_order_id: str | None = None
+    included_claims_enabled: bool = False
+    initial_intake_required: bool = True
+    initial_intake_complete: bool = False
     order_id: str
     sku: str
     schedule_verified: bool
@@ -83,9 +102,15 @@ class CarePlan(BaseModel):
 
 
 class CareIntake(IntakeResponse):
+    claim_id: str | None = None
+    claim_order_id: str | None = None
     task_id: str
     provider_connected: bool = False
     simulated: bool = False
+
+
+class IntakeHistory(BaseModel):
+    intakes: list[CareIntake]
 
 
 class CareManager:
@@ -103,6 +128,13 @@ class CareManager:
                     status TEXT NOT NULL,revision INTEGER NOT NULL,answers TEXT NOT NULL,
                     current_step INTEGER NOT NULL,template TEXT NOT NULL,updated REAL NOT NULL,
                     submitted REAL,submitted_answers TEXT,UNIQUE(plan_id,task_id));
+                CREATE TABLE IF NOT EXISTS member_claim_intakes(
+                    id TEXT PRIMARY KEY,plan_id TEXT NOT NULL,task_id TEXT NOT NULL,
+                    claim_id TEXT NOT NULL,claim_order_id TEXT NOT NULL,
+                    status TEXT NOT NULL,revision INTEGER NOT NULL,answers TEXT NOT NULL,
+                    current_step INTEGER NOT NULL,template TEXT NOT NULL,updated REAL NOT NULL,
+                    submitted REAL,submitted_answers TEXT,simulated INTEGER NOT NULL DEFAULT 0,
+                    UNIQUE(plan_id,task_id,claim_id),UNIQUE(plan_id,task_id,claim_order_id));
                 CREATE TABLE IF NOT EXISTS member_care_clocks(
                     site_id TEXT NOT NULL,order_id TEXT NOT NULL,day_offset INTEGER NOT NULL,
                     updated REAL NOT NULL,expires REAL NOT NULL,PRIMARY KEY(site_id,order_id));
@@ -196,7 +228,7 @@ class CareManager:
             and str(raw.get('gateway_id')) == '1' and raw['products'][0].get('is_shippable') is False)
         today = datetime.fromtimestamp(self.s.clock(), timezone.utc).date()
         with self.s.db() as db:
-            record = db.execute('SELECT * FROM member_care_clocks WHERE site_id=? AND order_id=? AND expires>?', (row['site_id'], row['order_id'], self.s.clock())).fetchone()
+            record = db.execute('SELECT * FROM member_care_clocks WHERE site_id=? AND order_id=? AND expires>?', (row['site_id'], str(snap.get('term_order_id', row['order_id'])), self.s.clock())).fetchone()
         day = None
         if available and record:
             start = self.s.date(snap.get('term_started_at'))
@@ -222,10 +254,10 @@ class CareManager:
         for day in [0] + rule.get('check_in_days', []):
             task_id = 'initial' if day == 0 else 'checkin-' + str(day)
             saved = intakes.get(task_id)
-            required = rule.get('initial_intake_required', True) if day == 0 else rule.get('check_in_required', True)
+            required = (True if self.native_claims_enabled(row) else rule.get('initial_intake_required', True)) if day == 0 else rule.get('check_in_required', True)
             due = start + timedelta(days=day)
             opens = start if day == 0 else max(start + timedelta(days=int(rule.get('minimum_days', 0))), due - timedelta(days=int(rule.get('request_window_days', 14))))
-            unlocked = today >= opens and not expired
+            unlocked = today >= opens and (day == 0 or not expired)
             status = 'submitted' if saved and saved['status'] == 'submitted' else 'draft' if saved else 'available' if unlocked else 'locked'
             tasks.append({'id': task_id, 'label': 'Initial health intake' if day == 0 else f'Day {day} check-in',
                 'kind': 'initial' if day == 0 else 'check_in', 'day_offset': day, 'due_date': due.isoformat(), 'opens_at': opens.isoformat(),
@@ -249,6 +281,73 @@ class CareManager:
                     early_task['status'] = 'available'
         return tasks
 
+    def native_claims_enabled(self, row):
+        return bool(self.s.rule(row['sku']).get('included_refills_enabled'))
+
+    def claim_context(self, row, task_id):
+        """Local scope and original-term evidence only; no provider side effect.
+
+        ClaimsManager may call this without recursion: raw_tasks never calls
+        ClaimsManager, and prior check-in states come from immutable care rows.
+        """
+        plan = self.ensure(row)
+        if not plan:
+            raise HTTPException(409, 'The original paid care schedule needs verification')
+        snapshot = json.loads(row['snapshot'])
+        data = json.loads(plan['snapshot'])
+        tasks = self.raw_tasks(row, plan)
+        task = next((task for task in tasks if task['id'] == task_id), None)
+        if not task or task['kind'] != 'check_in':
+            raise HTTPException(404, 'Included shipment checkpoint not found')
+        setup = data.get('product_setup') or snapshot.get('product_setup') or {}
+        interval, count = setup.get('shipment_interval_days'), setup.get('shipment_count')
+        if (type(interval) is not int or type(count) is not int or interval <= 0 or count <= 1
+                or task['day_offset'] % interval != 0 or not 0 < task['day_offset'] < interval * count):
+            raise HTTPException(409, 'This checkpoint does not match an included shipment in the purchased term')
+        start = self.s.date(data['start_date'])
+        due = start + timedelta(days=task['day_offset'])
+        window = int(self.s.rule(row['sku']).get('claim_window_days', 10))
+        with self.s.db() as db:
+            initial = db.execute("SELECT status,simulated FROM member_care_intakes WHERE plan_id=? AND task_id='initial'", (plan['id'],)).fetchone()
+            checks = db.execute('SELECT task_id,status,simulated,claim_id,claim_order_id FROM member_claim_intakes WHERE plan_id=?', (plan['id'],)).fetchall()
+        earlier = []
+        for preceding in tasks:
+            if preceding['kind'] != 'check_in' or not preceding['required'] or preceding['day_offset'] >= task['day_offset']:
+                continue
+            complete = next((record for record in checks if record['task_id'] == preceding['id'] and record['status'] == 'submitted'), None)
+            earlier.append({'task_id': preceding['id'], 'complete': bool(complete), 'simulated': bool(complete and complete['simulated'])})
+        return {'plan': plan, 'task': task, 'snapshot': snapshot, 'target_cycle': task['day_offset'] // interval + 1,
+            'start_date': start.isoformat(), 'due_date': due.isoformat(), 'opens_at': max(start + timedelta(days=int(self.s.rule(row['sku']).get('minimum_days', 0))), due - timedelta(days=window)).isoformat(),
+            'initial_complete': bool(initial and initial['status'] == 'submitted'), 'initial_simulated': bool(initial and initial['simulated']),
+            'earlier_claim_checkins': earlier, 'included_claims_enabled': self.native_claims_enabled(row),
+            'effective_date': self.simulation(row)['effective_date']}
+
+    def tasks(self, row, plan):
+        tasks = self.raw_tasks(row, plan)
+        if not self.native_claims_enabled(row):
+            return tasks
+        manager = getattr(self.s, 'claims', None)
+        for task in tasks:
+            if task['kind'] != 'check_in':
+                task['claim'] = {'available': False, 'status': 'not_applicable', 'reason': 'The initial shipment belongs to your original purchase.', 'amount': '0.00'}
+                continue
+            task['legacy_intake_status'] = task['intake_status']
+            state = manager.task_state(row, plan, task) if manager else {'available': False, 'status': 'unavailable', 'reason': 'Included shipment claims are not connected yet.'}
+            task['claim'] = state
+            task['opens_at'] = state.get('opens_at') or task['opens_at']
+            task['request_opens_at'] = task['opens_at']
+            record = None
+            if state.get('status') == 'claimed' and state.get('claim_id') and state.get('order_id'):
+                with self.s.db() as db:
+                    record = db.execute('SELECT * FROM member_claim_intakes WHERE plan_id=? AND task_id=? AND claim_id=? AND claim_order_id=?',
+                        (plan['id'], task['id'], state['claim_id'], str(state['order_id']))).fetchone()
+            claimed = state.get('status') == 'claimed' and bool(state.get('claim_id') and state.get('order_id'))
+            task.update(intake_status=record['status'] if record else 'not_started',
+                status='submitted' if record and record['status'] == 'submitted' else 'draft' if record else 'available' if claimed else 'locked',
+                can_open=bool(claimed), can_submit=bool(claimed and (not record or record['status'] != 'submitted')),
+                completed_at=stamp(record['submitted']) if record else None)
+        return tasks
+
     def current_task(self, row, plan, tasks=None):
         tasks = tasks or self.raw_tasks(row, plan)
         today = self.s.date(self.simulation(row, plan)['effective_date'])
@@ -265,8 +364,8 @@ class CareManager:
             AND COALESCE(t.simulated,0)=? AND r.test_only=?'''
         params = [row['site_id'], patient_id, row['sku'], int(simulated), int(bool(raw.get('test_order') or snap.get('payment_test_only')))]
         if simulated:
-            query += ' AND r.order_id=?'
-            params.append(row['order_id'])
+            query += ' AND t.plan_id IN (SELECT id FROM member_care_plans WHERE site_id=? AND root_order_id=? AND term_order_id=?)'
+            params.extend([row['site_id'], snap.get('root_order_id', row['order_id']), snap.get('term_order_id', row['order_id'])])
         return db.execute(query, params).fetchone()[0]
 
     def availability(self, row, task_id=None):
@@ -286,6 +385,8 @@ class CareManager:
         result.update(task_id=task['id'], next_date=task['due_date'], _plan_id=plan['id'],
             _cycle_key=f'care:{plan["id"]}:{task["id"]}', _simulated=self.simulation(row)['enabled'])
         current_rule = self.s.rule(row['sku'])
+        if self.native_claims_enabled(row):
+            return result | {'reason': 'Use the included shipment claim when it becomes available, or choose a new paid plan from the store.'}
         if not rule.get('enabled') or not current_rule.get('enabled'):
             return result | {'reason': 'Refill requests are not enabled for this SKU.'}
         if raw.get('payment_status') not in ('approved', 'paid', 'captured'):
@@ -345,8 +446,14 @@ class CareManager:
         if not plan:
             response['reason'] = 'Verify the original paid schedule and connect this order to a patient account to prepare its care plan.'
             return response
+        response['id'] = plan['id']
+        response['term_order_id'] = plan['term_order_id']
         response['coverage_days'] = json.loads(plan['snapshot'])['coverage_days']
-        for task in self.raw_tasks(row, plan):
+        response['included_claims_enabled'] = self.native_claims_enabled(row)
+        current_tasks = self.tasks(row, plan)
+        response['initial_intake_required'] = current_tasks[0]['required']
+        response['initial_intake_complete'] = current_tasks[0]['intake_status'] == 'submitted'
+        for task in current_tasks:
             availability = self.availability(row, task['id'])
             with self.s.db() as db:
                 request = db.execute('SELECT r.id,r.status FROM member_refills r JOIN member_refill_tasks t ON r.id=t.refill_id WHERE t.plan_id=? AND t.task_id=? ORDER BY r.created DESC LIMIT 1', (plan['id'], task['id'])).fetchone()
@@ -359,9 +466,24 @@ class CareManager:
         plan = self.ensure(row)
         if not plan or plan['patient_id'] != patient['id']:
             raise HTTPException(409, 'The original paid care schedule needs verification before this intake can open')
-        task = next((t for t in self.raw_tasks(row, plan) if t['id'] == task_id), None)
+        task = next((t for t in self.tasks(row, plan) if t['id'] == task_id), None)
         if not task:
             raise HTTPException(404, 'Care checkpoint not found in this order')
+        if self.native_claims_enabled(row) and task['kind'] == 'check_in':
+            claim = task.get('claim') or {}
+            if claim.get('status') != 'claimed' or not claim.get('claim_id') or not claim.get('order_id'):
+                raise HTTPException(409, 'Claim this included shipment before completing its check-in')
+            with self.s.db() as db:
+                intake = db.execute('SELECT * FROM member_claim_intakes WHERE plan_id=? AND task_id=? AND claim_id=? AND claim_order_id=?',
+                    (plan['id'], task_id, claim['claim_id'], str(claim['order_id']))).fetchone()
+                if not intake and create:
+                    template = json.loads(plan['snapshot'])['templates'][task_id]
+                    db.execute('INSERT OR IGNORE INTO member_claim_intakes VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                        ('intake_' + secrets.token_urlsafe(18), plan['id'], task_id, claim['claim_id'], str(claim['order_id']), 'draft', 0, '{}', 0,
+                         encoded(template), self.s.clock(), None, None, int(self.simulation(row)['enabled'] or bool(claim.get('simulated')))))
+                    intake = db.execute('SELECT * FROM member_claim_intakes WHERE plan_id=? AND task_id=? AND claim_id=? AND claim_order_id=?',
+                        (plan['id'], task_id, claim['claim_id'], str(claim['order_id']))).fetchone()
+            return plan, task, dict(intake, _table='member_claim_intakes') if intake else None
         with self.s.db() as db:
             intake = db.execute('SELECT * FROM member_care_intakes WHERE plan_id=? AND task_id=?', (plan['id'], task_id)).fetchone()
         if not intake and not task['can_submit']:
@@ -374,7 +496,7 @@ class CareManager:
         return plan, task, dict(intake) if intake else None
 
     def intake_public(self, row, record):
-        return {'id': record['id'], 'task_id': record['task_id'], 'order_id': row['order_id'], 'therapy_id': row['therapy_id'],
+        return {'claim_id': record.get('claim_id'), 'claim_order_id': record.get('claim_order_id'), 'id': record['id'], 'task_id': record['task_id'], 'order_id': row['order_id'], 'therapy_id': row['therapy_id'],
             'status': record['status'], 'revision': record['revision'], 'answers': json.loads(record['answers']),
             'current_step': record['current_step'], 'updated_at': stamp(record['updated']), 'submitted_at': stamp(record['submitted']),
             'template': json.loads(record['template']), 'reused_fields': [], 'provider_connected': False, 'simulated': bool(record['simulated'])}
@@ -383,9 +505,11 @@ class CareManager:
         plan, task, record = self.intake(row, patient, task_id)
         if not task['can_submit']:
             raise HTTPException(409, 'This check-in is submitted or outside its available care window')
+        table = record.get('_table', 'member_care_intakes')
+        assert table in ('member_care_intakes', 'member_claim_intakes')
         with self.s.db() as db:
             db.execute('BEGIN IMMEDIATE')
-            record = dict(db.execute('SELECT * FROM member_care_intakes WHERE id=?', (record['id'],)).fetchone())
+            record = dict(db.execute('SELECT * FROM ' + table + ' WHERE id=?', (record['id'],)).fetchone())
             if record['status'] == 'submitted' or record['revision'] != body.revision:
                 raise HTTPException(409, 'This check-in is submitted or changed. Reload before saving.')
             answers, template, now = json.loads(record['answers']), json.loads(record['template']), self.s.clock()
@@ -395,7 +519,7 @@ class CareManager:
                 if missing:
                     raise HTTPException(422, {'code': 'required_answers_missing', 'question_ids': missing})
                 answers = {q['id']: answers[q['id']] for q in questions if q['id'] in answers}
-                db.execute("UPDATE member_care_intakes SET status='submitted',revision=revision+1,answers=?,submitted_answers=?,updated=?,submitted=?,simulated=? WHERE id=?", (encoded(answers), encoded(answers), now, now, int(record['simulated'] or self.simulation(row)['enabled']), record['id']))
+                db.execute("UPDATE " + table + " SET status='submitted',revision=revision+1,answers=?,submitted_answers=?,updated=?,submitted=?,simulated=? WHERE id=?", (encoded(answers), encoded(answers), now, now, int(record['simulated'] or self.simulation(row)['enabled']), record['id']))
             else:
                 for key, value in clean_answers(template, body.answers).items():
                     if value is None:
@@ -405,8 +529,8 @@ class CareManager:
                 step = record['current_step'] if body.current_step is None else body.current_step
                 if not 0 <= step < len(template['sections']):
                     raise HTTPException(422, 'Unknown intake step')
-                db.execute('UPDATE member_care_intakes SET answers=?,current_step=?,revision=revision+1,updated=? WHERE id=?', (encoded(answers), step, now, record['id']))
-            record = dict(db.execute('SELECT * FROM member_care_intakes WHERE id=?', (record['id'],)).fetchone())
+                db.execute('UPDATE ' + table + ' SET answers=?,current_step=?,revision=revision+1,updated=? WHERE id=?', (encoded(answers), step, now, record['id']))
+            record = dict(db.execute('SELECT * FROM ' + table + ' WHERE id=?', (record['id'],)).fetchone())
         return self.intake_public(row, record)
 
     def verify_schedule(self, site_id, order_id, body):
@@ -437,9 +561,10 @@ class CareManager:
 
     def set_clock(self, site_id, order_id, body):
         row = self.s.sync(site_id, order_id)
+        term_order_id = str(json.loads(row['snapshot']).get('term_order_id', order_id))
         if body.day_offset is None:
             with self.s.db() as db:
-                db.execute('DELETE FROM member_care_clocks WHERE site_id=? AND order_id=?', (site_id, order_id))
+                db.execute('DELETE FROM member_care_clocks WHERE site_id=? AND order_id=?', (site_id, term_order_id))
             return {'care_plan': self.public(row)}
         plan = self.ensure(row)
         if not self.simulation(row)['available'] or not plan:
@@ -448,7 +573,7 @@ class CareManager:
             raise HTTPException(422, 'Choose a day within the verified term, including its end date')
         with self.s.db() as db:
             db.execute('INSERT INTO member_care_clocks VALUES(?,?,?,?,?) ON CONFLICT(site_id,order_id) DO UPDATE SET day_offset=excluded.day_offset,updated=excluded.updated,expires=excluded.expires',
-                (site_id, order_id, body.day_offset, self.s.clock(), self.s.clock() + 86400))
+                (site_id, term_order_id, body.day_offset, self.s.clock(), self.s.clock() + 86400))
         return {'care_plan': self.public(row)}
 
 
@@ -460,6 +585,20 @@ class CareManager:
             if result is None:
                 raise HTTPException(409, 'This product does not have an assigned intake template yet')
             return result
+
+        @router.get('/orders/{order_id}/care-tasks/{task_id}/intake-history', response_model=IntakeHistory)
+        def intake_history(site_id: str, order_id: str, task_id: str, patient=Depends(auth)):
+            row = self.s.order_record(site_id, order_id, patient)
+            plan = self.ensure(row)
+            if not plan or plan['patient_id'] != patient['id']:
+                raise HTTPException(404, 'Care plan not found in this account')
+            if not any(t['id'] == task_id for t in self.raw_tasks(row, plan)):
+                raise HTTPException(404, 'Care checkpoint not found in this order')
+            with self.s.db() as db:
+                old = db.execute('SELECT * FROM member_care_intakes WHERE plan_id=? AND task_id=?', (plan['id'], task_id)).fetchall()
+                claimed = db.execute('SELECT * FROM member_claim_intakes WHERE plan_id=? AND task_id=?', (plan['id'], task_id)).fetchall()
+            records = sorted([dict(record) for record in old] + [dict(record) for record in claimed], key=lambda record: record['updated'])
+            return {'intakes': [self.intake_public(row, record) for record in records]}
 
         @router.get('/orders/{order_id}/care-tasks/{task_id}/intake', response_model=CareIntake)
         def get_intake(site_id: str, order_id: str, task_id: str, patient=Depends(auth)):

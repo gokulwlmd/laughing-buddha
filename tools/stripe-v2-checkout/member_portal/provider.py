@@ -5,12 +5,13 @@ https://developer-prod.sticky.io/#fa3f4efb-0b1f-4467-9454-3bb1aff96aae
 https://developer-prod.sticky.io/#9c2253fb-d8e2-437b-a184-4f21d0ba994c
 
 The injected client owns authentication and transport. This adapter never logs or
-returns raw order responses, searches by email, retries writes, charges cards,
-changes prescriptions, or releases fulfillment. Explicit hold/reset and verified
-shipping-address updates are supported. Sticky's `start` operation can
-immediately bill and is excluded.
+returns raw order responses, searches by email, or retries writes. Explicit
+hold/reset, verified shipping-address updates, and narrowly verified included
+zero-dollar prepaid cycles are supported. Sticky's `start` operation can bill
+immediately and is excluded. No medical approval or fulfillment release occurs.
 """
-from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 import re
 import time
@@ -155,12 +156,15 @@ def billing_model_terms(product):
 class StickyOrderProvider:
     supported_actions = ('pause', 'hold', 'resume')
 
-    def __init__(self, api, *, currency=None, clock=time.monotonic):
+    def __init__(self, api, *, currency=None, clock=time.monotonic, wall_clock=time.time):
         self.api = api
         self.currency = currency_code(currency)
         if currency is not None and self.currency is None:
             raise ValueError('Expected a trusted three-letter currency code')
         self.clock = clock
+        # Actual UTC wall time only; the portal's Dry Run care clock must never
+        # bypass a native scheduler conflict check.
+        self.wall_clock = wall_clock
         self._currencies = {}
 
     def _call_read(self, method, path, body=None):
@@ -297,12 +301,242 @@ class StickyOrderProvider:
             'shipping_date': None if raw.get('shipping_date') == 'Not Shipped' else schedule_date(raw.get('shipping_date')),
             'tracking_number': text(raw.get('tracking_number'), 150) or None,
             'fulfillment_posted': posted,
+            'shipping_id': identifier(raw.get('shipping_id'), 'shipping ID', optional=True),
+            'shipping_amount': amount(raw['shipping_amount']) if raw.get('shipping_amount') is not None else None,
+            'tax_amount': amount(raw['order_sales_tax_amount']) if raw.get('order_sales_tax_amount') is not None else None,
             'shipping_address': {'first_name': text(raw.get('shipping_first_name'), 64),
                 'last_name': text(raw.get('shipping_last_name'), 64),
                 'address': text(raw.get('shipping_street_address'), 64),
                 'address2': text(raw.get('shipping_street_address2'), 64),
                 'city': text(raw.get('shipping_city'), 32), 'region': text(raw.get('shipping_state'), 32),
                 'postal_code': text(raw.get('shipping_postcode'), 10), 'country': text(raw.get('shipping_country'), 2)}}
+
+    def _included_context(self, order_id, *, expected_campaign, expected_customer_id,
+            expected_subscription_id, expected_product_id, expected_offer_id,
+            expected_billing_model_id, term_order_id, term_started_at,
+            shipment_interval_days, shipment_count, target_cycle, _allow_child=False):
+        """Read and prove the actual paid term and its contiguous native chain."""
+        if (any(type(n) is not int for n in (shipment_interval_days, shipment_count, target_cycle))
+                or not 2 <= target_cycle <= shipment_count <= 36
+                or not 1 <= shipment_interval_days <= 730
+                or shipment_interval_days * shipment_count > 730):
+            raise ProviderRejected('Only an included cycle within a verified prepaid term can be claimed')
+        scope = {'expected_campaign': identifier(expected_campaign), 'expected_customer_id': identifier(expected_customer_id)}
+        term_id, requested = identifier(term_order_id), identifier(order_id)
+        expected = {'product_id': identifier(expected_product_id), 'offer_id': identifier(expected_offer_id),
+                    'billing_model_id': identifier(expected_billing_model_id), 'subscription_id': subscription_id(expected_subscription_id)}
+        if not expected['subscription_id']:
+            raise ProviderRejected('A verified subscription is required')
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            original_future = pool.submit(self.read_order, term_id, **scope)
+            source_future = pool.submit(self.read_order, requested, **scope) if requested != term_id else original_future
+            original, source = original_future.result(), source_future.result()
+        def purchase_date(value):
+            for fmt in ('%Y-%m-%d %H:%M:%S', '%m/%d/%Y %H:%M:%S', '%Y-%m-%d', '%m/%d/%Y', '%Y-%m-%dT%H:%M:%SZ'):
+                try: return datetime.strptime(value or '', fmt).date()
+                except (ValueError, TypeError): pass
+            raise ProviderRejected('The original paid term date could not be verified')
+        start = purchase_date(original['created_at'])
+        if start != purchase_date(term_started_at) or Decimal(original['total']) <= 0:
+            raise ProviderRejected('The original paid term could not be verified')
+        if len(original['products']) != 1 or not original['products'][0]['prepaid']:
+            raise ProviderRejected('A single prepaid product is required')
+        root_id = original['ancestor_id'] or original['id']
+        original_line = original['products'][0]
+        renews = original_line['prepaid']['renews']
+        def check_order(order, cycle):
+            if (order['payment_status'] != 'paid' or len(order['products']) != 1
+                    or not original['currency'] or order['currency'] != original['currency']
+                    or (order['ancestor_id'] or order['id']) != root_id
+                    or order['gateway_id'] != original['gateway_id']
+                    or order['test_order'] is not original['test_order']):
+                raise ProviderRejected('The order does not establish this paid subscription term')
+            line = order['products'][0]
+            if (any(line[k] != v for k, v in expected.items()) or line['sku'] != original_line['sku']
+                    or line['quantity'] != 1 or line['is_shippable'] is not False
+                    or line['prepaid'] != {'current_cycle': cycle, 'total_cycles': shipment_count, 'renews': renews}
+                    or order['shipping_amount'] != '0.00' or order['tax_amount'] != '0.00'
+                    or order['fulfillment_status'] != 'not_shippable'
+                    or order['shipping_date'] or order['tracking_number']
+                    or order['fulfillment_posted'] != 0
+                    or (cycle > 1 and order['shipping_id'] not in (None, original['shipping_id']))
+                    or (cycle > 1 and order['total'] != '0.00')):
+                raise ProviderRejected('Only an isolated, included zero-dollar prepaid cycle is supported')
+        check_order(original, 1)
+        current, cycle, seen = source, target_cycle - 1, set()
+        if _allow_child and source['child_ids']:
+            if len(source['child_ids']) != 1:
+                raise ProviderRejected('The native child order needs reconciliation')
+            child = self.read_order(source['child_ids'][0], **scope)
+            check_order(child, target_cycle)
+            if child['parent_id'] != source['id'] or child['child_ids']:
+                raise ProviderRejected('The native child order lineage is ambiguous')
+            seen.add(child['id'])
+        while True:
+            check_order(current, cycle)
+            if current['id'] == term_id:
+                if cycle != 1: raise ProviderRejected('The cycle is outside the original paid term')
+                break
+            if cycle <= 1 or current['id'] in seen or not current['parent_id'] or current['parent_id'] == current['id']:
+                raise ProviderRejected('The native subscription lineage needs reconciliation')
+            seen.add(current['id'])
+            previous = self.read_order(current['parent_id'], **scope)
+            descendants = previous['child_ids']
+            # Sticky may list either the immediate child or every descendant.
+            # Only the exact chain already verified below this parent counts;
+            # duplicate IDs, missing links and unrelated branches stay blocked.
+            if (len(descendants) != len(set(descendants))
+                    or (descendants != [current['id']] and set(descendants) != seen)):
+                raise ProviderRejected('The native subscription lineage is ambiguous')
+            current, cycle = previous, cycle - 1
+        next_date = (start + timedelta(days=(target_cycle - 1) * shipment_interval_days)).isoformat()
+        following = (start + timedelta(days=target_cycle * shipment_interval_days)).isoformat() if target_cycle < shipment_count or renews else None
+        return {'source': source, 'original': original, 'scope': scope, 'expected': expected,
+                'start': start, 'next_date': next_date, 'following': following, 'renews': renews,
+                'check_order': check_order, 'target_cycle': target_cycle, 'shipment_count': shipment_count,
+                'interval': shipment_interval_days}
+
+    def _included_capability(self, context):
+        source, original = context['source'], context['original']
+        line = source['products'][0]
+        today = datetime.fromtimestamp(self.wall_clock(), timezone.utc).date().isoformat()
+        if (source['child_ids'] or line['billing_status'] != 'active' or line['stop_after_next_cycle'] is not False
+                or line['next_cycle_date'] != context['next_date'] or context['next_date'] <= today):
+            raise ProviderRejected('The scheduled cycle needs reconciliation before an early claim')
+        # Sticky can omit shipping_id on its own later $0 prepaid children.
+        # The verified contiguous chain supplies the original profile, which
+        # must still be fetched fresh and prove free recurring shipping. A
+        # different explicit child profile never inherits this exception.
+        shipping_id = original['shipping_id']
+        if (not shipping_id or source['shipping_id'] not in (None, shipping_id) or not source['gateway_id']
+                or (source['shipping_id'] is None and (context['target_cycle'] <= 2 or source['total'] != '0.00'))):
+            raise ProviderRejected('The shipping and gateway configuration must be verified')
+        paths = {'campaign': '/api/v2/campaigns/' + source['campaign_id'],
+                 'product': '/api/v2/products/' + line['product_id'],
+                 'offer': '/api/v2/offers/' + line['offer_id'],
+                 'model': '/api/v2/billing_models/' + line['billing_model_id'],
+                 'gateway': '/api/v2/providers/payment/profiles/' + source['gateway_id'],
+                 'shipping': '/api/v2/shipping/' + shipping_id}
+        # Sticky.call creates independent urllib openers. All these fresh reads
+        # are independent; writes below remain strictly sequential.
+        with ThreadPoolExecutor(max_workers=len(paths)) as pool:
+            pending = {name: pool.submit(self._call_read, 'GET', path) for name, path in paths.items()}
+            values = {name: task.result() for name, task in pending.items()}
+        data = {}
+        for name, response in values.items():
+            value = response.get('data')
+            if response.get('status') != 'SUCCESS' or not isinstance(value, dict):
+                raise ProviderError('Sticky could not verify included-cycle configuration')
+            data[name] = value
+        campaign, product, offer, model, gateway, shipping = (data[k] for k in paths)
+        ids = [(campaign.get('id', campaign.get('c_id')), source['campaign_id']),
+               (product.get('id'), line['product_id']), (offer.get('id'), line['offer_id']),
+               (model.get('id'), line['billing_model_id']), (gateway.get('id'), source['gateway_id']),
+               (shipping.get('id'), shipping_id)]
+        if any(identifier(actual) != expected for actual, expected in ids):
+            raise ProviderRejected('The included-cycle configuration changed')
+        integrations = ('fulfillment_id', 'tax_provider_id', 'email_provider_id', 'membership_provider_id', 'postback_profiles')
+        if (flag(product.get('is_shippable')) is not False or flag(product.get('taxable', product.get('is_taxable'))) is not False
+                or product.get('sku') != line['sku'] or flag(campaign.get('is_active')) is not True
+                or flag(campaign.get('is_archived')) is not False
+                or any(campaign.get(k) not in (None, 0, '0', []) for k in integrations)
+                or amount(shipping.get('amount_recurring')) != '0.00'
+                or any(shipping.get(key) is not None and amount(shipping[key]) != '0.00'
+                       for key in ('threshold_amount', 'threshold_charge_amount'))):
+            raise ProviderRejected('Claims require a non-shippable, non-taxable campaign without external integrations or recurring shipping fees')
+        from prepaid import cycles_for, renewal_for
+        try:
+            configured_cycles, configured_renewal = cycles_for(offer), renewal_for(offer)
+        except (ValueError, TypeError, KeyError, InvalidOperation):
+            raise ProviderRejected('The purchased prepaid configuration is incomplete') from None
+        if (billing_model_terms({'billing_model': model}) != (line['billing_model_id'], context['interval'])
+                or model.get('expire_cycles') not in (None, 0, '0') or model.get('buffer_days') not in (None, 0, '0')
+                or flag(model.get('is_archived')) is True
+                or configured_cycles != context['shipment_count'] or configured_renewal != context['renews']
+                or flag(offer.get('is_archived')) is True
+                or not any(str(p.get('id')) == line['product_id'] for p in offer.get('products', []) if isinstance(p, dict))
+                or not any(str(m.get('id')) == line['billing_model_id'] for m in (offer.get('offer_billing_models') or offer.get('billing_models') or []) if isinstance(m, dict))
+                or not any(str(o.get('id')) == line['offer_id'] for o in campaign.get('offers', []) if isinstance(o, dict))):
+            raise ProviderRejected('The purchased prepaid schedule no longer matches its configuration')
+        if source['test_order'] is True:
+            if source['gateway_id'] != '1' or str(gateway.get('account_id')) != '10' or gateway.get('account_name') != 'Dry Run Testing':
+                raise ProviderRejected('The Dry Run gateway identity could not be verified')
+        elif source['test_order'] is False:
+            routes = [str(campaign.get('gateway_id'))] + [str(p.get('provider', {}).get('id')) for p in campaign.get('alternative_payments', []) if isinstance(p, dict)]
+            if str(gateway.get('account_id')) != '250' or source['gateway_id'] not in routes:
+                raise ProviderRejected('The existing Stripe Connect v2 route could not be verified')
+        else:
+            raise ProviderRejected('The payment routing mode is unknown')
+        return {'available': True, 'source_order_id': source['id'], 'term_order_id': original['id'],
+                'subscription_id': line['subscription_id'], 'target_cycle': context['target_cycle'],
+                'amount': '0.00', 'currency': source['currency'], 'next_cycle_date': context['next_date'],
+                'following_cycle_date': context['following'], 'mode': 'isolated_nonshippable'}
+
+    def included_cycle_capability(self, order_id, **scope):
+        """Fresh read-only capability proof; never call from a task-list render."""
+        return self._included_capability(self._included_context(order_id, **scope))
+
+    def _included_child(self, context, child_order_id=None, *, anchored=True):
+        parent = self.read_order(context['source']['id'], **context['scope'])
+        context['check_order'](parent, context['target_cycle'] - 1)
+        if not parent['child_ids']:
+            if child_order_id: raise ProviderRejected('The returned order is not a verified native child')
+            return None
+        if len(parent['child_ids']) != 1 or (child_order_id and parent['child_ids'][0] != identifier(child_order_id)):
+            raise ProviderRejected('The native child order needs reconciliation')
+        child = self.read_order(parent['child_ids'][0], **context['scope'])
+        context['check_order'](child, context['target_cycle'])
+        line = child['products'][0]
+        if child['parent_id'] != parent['id'] or child['child_ids']:
+            raise ProviderRejected('The native child order lineage is ambiguous')
+        if context['following'] is None:
+            valid = line['billing_status'] == 'completed' and line['is_recurring'] is False and line['next_cycle_date'] is None
+        else:
+            valid = line['billing_status'] == 'active' and line['is_recurring'] is True
+            if anchored: valid = valid and line['next_cycle_date'] == context['following']
+        if not valid:
+            raise ProviderRejected('The next native cycle date needs reconciliation')
+        return child
+
+    def reconcile_included_cycle(self, order_id, *, child_order_id=None, **scope):
+        """Read only. An absent child is not permission to repeat an uncertain write."""
+        return self._included_child(self._included_context(order_id, _allow_child=True, **scope), child_order_id)
+
+    def advance_included_cycle(self, order_id, **scope):
+        """One native included-cycle attempt, then verify and restore its anchor.
+
+        Callers own a durable per-term/cycle claim journal. Neither a timeout nor
+        an unconfirmed date update authorizes another force-bill attempt.
+        https://developer-prod.sticky.io/#efdf6132-ff70-4f17-8ce4-40d6ab81af43
+        """
+        context = self._included_context(order_id, **scope)
+        self._included_capability(context)
+        source = context['source']
+        # Recheck the latest source after the parallel catalog reads, before the
+        # one write. Refuse on/after actual UTC due day; no scheduler race claim.
+        fresh = self.read_order(source['id'], **context['scope'])
+        if fresh != source or context['next_date'] <= datetime.fromtimestamp(self.wall_clock(), timezone.utc).date().isoformat():
+            raise ProviderRejected('The scheduled order changed during claim preparation')
+        payload = {'order_id': source['id'], 'product_id': context['expected']['product_id']}
+        if source['test_order']:
+            payload.update(forceGatewayId=1, preserve_force_gateway=1)
+        try:
+            result = self.api.call('POST', '/api/v1/order_force_bill', payload)
+            if not isinstance(result, dict) or str(result.get('response_code')) != '100' or str(result.get('error_found')) != '0':
+                raise ProviderUncertain('Sticky did not confirm the included cycle')
+            child_id = identifier(result.get('new_order_id') or result.get('order_id'))
+            child = self._included_child(context, child_id, anchored=False)
+            if context['following'] and child['products'][0]['next_cycle_date'] != context['following']:
+                result = self.api.call('POST', '/api/v1/subscription_order_update', {
+                    'order_id': child['id'], 'product_id': context['expected']['product_id'],
+                    'new_recurring_date': datetime.strptime(context['following'], '%Y-%m-%d').strftime('%m/%d/%Y')})
+                nested = result.get('new_recurring_date', {}) if isinstance(result, dict) else {}
+                if (not isinstance(result, dict) or str(result.get('response_code')) != '100'
+                        or (nested and (not isinstance(nested, dict) or str(nested.get('response_code')) != '100'))):
+                    raise ProviderUncertain('The included cycle exists but its next date is unconfirmed')
+            return self._included_child(context, child_id, anchored=True)
+        except Exception:
+            raise ProviderUncertain('The included cycle may exist. Reconcile its order and schedule before any further attempt') from None
 
     def subscription_action(self, order_id, subscription_id, action, *, expected_campaign, expected_customer_id):
         """Apply exactly one documented hold/reset and confirm by a fresh read.

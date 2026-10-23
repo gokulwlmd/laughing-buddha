@@ -21,8 +21,8 @@ if __name__ == '__main__':
     # This fixture is the sole source of order data. No network-capable Sticky
     # client is used. A shippable offline product exercises eligible UI actions.
     if args.care_plan:
-        from test_member_care import configure_care_fixture
-        configure_care_fixture(app, fake, months=12)
+        from test_member_care import configure_native_care_fixture
+        fake = configure_native_care_fixture(app, months=12)
     else:
         fake.order['shippable'] = '1'
         fake.order['products'][0]['is_shippable'] = '1'
@@ -44,6 +44,10 @@ if __name__ == '__main__':
         for method, path, _body in fake.calls:
             key = method + ' ' + path
             counts[key] = counts.get(key, 0) + 1
-        return {'calls': counts, 'shipping_state': fake.order.get('shipping_state'), 'subscription_state': fake.subscription.get('shipping', {}).get('state')}
+        native_orders = [{
+            'id': order['order_id'], 'total': order['order_total'],
+            'next_cycle_date': order['products'][0].get('recurring_date'),
+        } for order in getattr(fake, 'orders', {}).values()]
+        return {'calls': counts, 'native_orders': native_orders, 'shipping_state': fake.order.get('shipping_state'), 'subscription_state': fake.subscription.get('shipping', {}).get('state')}
 
     uvicorn.run(app, host='127.0.0.1', port=args.port, log_level='warning', access_log=False, proxy_headers=False)

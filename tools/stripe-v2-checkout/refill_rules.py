@@ -20,6 +20,8 @@ class RefillRules(BaseModel):
     intake_template_id: Literal['', 'weight-loss', 'sermorelin', 'metformin', 'pt-141'] = ''
     initial_intake_required: bool = True
     check_in_days: list[StrictInt] = Field(default_factory=list, max_length=24)
+    included_refills_enabled: bool = False
+    claim_window_days: int = Field(default=10, ge=1, le=30, strict=True)
 
     @field_validator('check_in_days')
     @classmethod
@@ -57,6 +59,9 @@ def install_refill_admin(app, admin):
             raise HTTPException(422, 'Choose the mock intake assigned to this product')
         if body.check_in_days and not body.intake_template_id:
             raise HTTPException(422, 'Choose a product intake before scheduling check-ins')
+        if body.included_refills_enabled and (not body.intake_template_id or not body.initial_intake_required
+                or not body.check_in_required or not body.check_in_days):
+            raise HTTPException(422, 'Included refill claims need an initial intake and scheduled check-ins')
         # A policy edit must not invalidate a verified payment mapping, overwrite
         # brand pricing, or silently edit a previously submitted refill request.
         import json

@@ -66,10 +66,11 @@ Master SKUs have independent refill policies at
 `/api/admin/master-refill-rules/{sku}`: enablement, minimum days, request window,
 check-in requirement, test-request permission and early-request rules/cooldown.
 Policies have their own revisions so edits cannot change prices or invalidate
-payment mappings. Requests snapshot the applied rule, require review and cannot
-charge, ship medication or approve treatment. Early requests require a reason.
-Existing pending requests prevent duplicates. Payment-test requests are marked
-as tests and cannot represent medication fulfillment.
+payment mappings. The earlier review-only requests remain in history with their
+original rule snapshots. They are not native Sticky orders. When included claims
+are enabled, the customer uses the claim flow below instead of creating another
+local review request. Neither an intake nor a claim constitutes medical approval.
+Test orders and simulated care evidence cannot qualify a live medication release.
 
 ## $1 checkout testing
 
@@ -91,7 +92,8 @@ Test cards must not be used on campaign 422's live Stripe Connect v2 gateway.
 ## Remaining provider dependencies
 
 - Approved intake API/questions and the Sticky intake handoff destination.
-- Medical messaging API and medical review/refill handoff.
+- Medical messaging API, medical review/refill handoff, and a fulfillment hold
+  that prevents physical release before the required clinical decision.
 - Verified Stripe Connect v2 saved-card replacement contract.
 - Email delivery/recovery, scheduled order reconciliation and site-specific staff
   roles are not included in this initial owner-managed release.
@@ -129,18 +131,91 @@ Patient API additions, below the site's `/portal` API prefix:
 - `GET /orders/{order_id}/care-plan`
 - `GET/PATCH /orders/{order_id}/care-tasks/{task_id}/intake`
 - `POST /orders/{order_id}/care-tasks/{task_id}/intake/submit`
-- Existing refill requests additionally identify `task_id` for mapped plans.
+- `GET /orders/{order_id}/care-tasks/{task_id}/intake-history`
+- `POST /orders/{order_id}/care-tasks/{task_id}/claim` with a stable
+  `client_request_id` for the selected included checkpoint.
+- `GET /store` for the site's public, enabled paid checkout options.
 
 Task IDs are `initial` or `checkin-{day}`. Drafts autosave independently; stale
 revisions and edits to submitted answers are rejected. Completing one intake
-does not complete another. Refill requests are tied to the applicable checkpoint
-and preserve its rule and intake evidence. Existing master disable switches
-remain authoritative even when older care plans have snapshots.
+does not complete another. Initial intake remains available after purchase when
+it has not been completed. Included-claim check-ins are tied to the resulting
+native child order; an earlier review-only submission cannot satisfy that new
+check-in. Existing master disable switches remain authoritative even when older
+care plans have snapshots. Both initial and later submissions retain their
+actual save/submission timestamps and simulation provenance.
 
 Owner APIs include `POST /orders/{id}/verify-care-schedule` for imported original
 prepaid orders and `POST /orders/{id}/care-clock` for isolated Dry Run testing.
 Verification uses original paid-order evidence plus the exact purchased offer
 and fixed-day model, never today's SKU label alone. The care clock expires after
-24 hours, is restricted to verified non-shippable gateway-1 test orders, and
-never changes provider billing or shipment state. Simulated submissions cannot
-qualify a later non-test entitlement. Every refill stays a review request.
+24 hours and is restricted to verified non-shippable gateway-1 test orders. The
+clock is scoped to the original paid term, so its native included children share
+the same displayed day while a paid renewal has an independent term. Changing
+this clock alone never calls Sticky or changes billing. An explicit claim made
+afterwards is a separate operation that can create an actual $0 Dry Run order.
+Simulated submissions cannot qualify a later non-test entitlement.
+
+
+## Included shipment claims and paid alternatives
+
+The current requested sequence is **initial intake → claim an included shipment
+→ complete that shipment's fresh check-in**. A 12-month / 360-day term with four
+shipments opens its three included claims on days **80, 170 and 260**, ten days
+before the original day-90/180/270 shipment anchors. A six-month / 180-day term
+opens its single included claim on day 80. One- and three-month terms have the
+purchase intake and no additional included shipment. Master policy fields
+`included_refills_enabled` and `claim_window_days` control the claim feature;
+the default claim window is ten days. These care settings never rewrite paid
+billing terms or turn a one-time SKU into a subscription.
+
+The server requires the initial intake and any required earlier claimed-shipment
+check-ins. It then verifies the original paid term, exact product, offer, fixed-day
+model, customer, subscription, native cycle, and current configuration. Each claim
+consumes the next included cycle of that existing prepaid subscription. It does
+not create a separate sale or force the next paid renewal. The current adapter
+is limited to verified non-shippable, non-taxable configurations without external
+fulfillment or other automatic integrations and without recurring shipping fees.
+That supports actual $0 test orders; physical medication fulfillment remains an
+integration dependency.
+
+`member_refill_claims` journals one intent per paid term/cycle and a unique
+patient request ID before a provider write. The adapter uses the native Sticky
+included-cycle operation, verifies the returned $0 child and exact lineage, and
+preserves the following cycle's original paid-term anchor. Current UTC due-date
+checks and existing child detection protect against a scheduler duplicate. A
+network timeout or ambiguous read-back becomes `uncertain`; a retry may reconcile
+by reads but cannot submit another write automatically. The prepaid final-cycle
+boundary is enforced before any operation that could reach a paid renewal.
+
+Only a verified `claimed` result unlocks its new check-in. These answers live in
+`member_claim_intakes`, scoped by care plan, logical checkpoint, claim ID and
+native child order. Earlier `member_care_intakes` and `member_refills` records are
+preserved. The read-only intake-history endpoint exposes the account's own old
+and claim-scoped forms. Staff summaries distinguish checkpoint and claim/order
+references without returning questionnaire answers. Patient care timelines can
+use `care_plan.id` / `term_order_id` to show one journey while retaining every
+actual Sticky order in order history.
+
+`GET /store` returns only this site's enabled public published plans and their
+currently available paid choices. It includes the full upfront amount, currency,
+product/therapy labels and a URL into the existing checkout selection flow.
+Private invitation tokens and processor credentials are excluded. Display
+catalog data may be cached for 60 seconds with configuration invalidation; the
+existing checkout still verifies availability and price. The private preview
+uses the original public checkout origin for these links. Browsing or selecting
+a plan never automatically makes a purchase or assigns medical eligibility.
+
+Release evidence for this change must be recorded separately from code readiness.
+The native-claim offline tests and read-model checks do not by themselves prove
+that the latest bundle has been published or that a real Sticky claim succeeded.
+See `../member-portal-preview.json` and the project handoff for the latest verified
+process, remote test result and remaining deployment work.
+
+Actual private-preview verification on 23 October 2026 created all three included
+$0 native Sticky orders on the authorized existing Dry Run term. Each has a fresh
+submitted mock check-in, and its following cycle keeps the original term anchor.
+The initial intake was preserved, repeated claims were idempotent, and no paid
+renewal or physical shipment was triggered. The current public payment worker
+was not restarted. Markrx repurchases remain unavailable because its four
+checkout plans are private; the store exposes public published choices only.

@@ -15,6 +15,7 @@ parsed = urlsplit(origin)
 if parsed.scheme != 'http' or parsed.hostname not in ('127.0.0.1', 'localhost') or parsed.path or parsed.query or parsed.fragment or parsed.username:
     raise RuntimeError('The private preview requires a loopback origin')
 checkout_origin = app.state.settings.public_url
+app.state.settings.checkout_public_url = checkout_origin
 app.state.settings.public_url = origin
 app.state.settings.authorization_verified = False
 

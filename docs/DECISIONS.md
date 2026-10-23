@@ -270,3 +270,40 @@ for a non-shippable Dry Run order. It never advances Sticky billing, creates a
 charge, changes subscription dates or releases fulfillment. Mock submissions
 and simulated requests retain test provenance. Approved clinical questions,
 medical review and the eventual Sticky handoff remain external API work.
+
+
+## Included prepaid claims precede their check-ins (23 October 2026)
+
+This decision supersedes the earlier review-only refill behavior for included
+shipments. After a purchase, the member must complete the initial intake if it
+is missing. The member then claims the next included shipment when its window
+opens, and completes a fresh check-in after that native Sticky order exists.
+For four shipments in a 360-day / 12-month term, claims open on days 80, 170 and
+260 against the original day-90/180/270 anchors. Two shipments in a 180-day /
+six-month term open one claim on day 80. One- and three-month terms have no
+additional included shipment; the portal offers the site's paid checkout
+choices instead. Buying another plan remains an explicit checkout action.
+
+An included claim must consume the exact next $0 native cycle in the existing
+paid prepaid term. It must never create a disconnected order, reset the paid
+term's renewal anchor, or force the next paid renewal. Scope checks cover site,
+patient, original paid term, customer, product, offer, billing model, subscription
+and native lineage. The server journals one intent per term/cycle with stable
+idempotency. A scheduler conflict or uncertain write requires reconciliation;
+it cannot be handled by blindly submitting another order.
+
+Earlier review-only requests and submitted forms remain historical records.
+A claimed shipment gets a fresh immutable submission keyed to its claim and
+verified child order. Old answers do not silently complete that check-in.
+The initial intake and any required earlier claimed-shipment check-ins still
+gate the next claim. All simulated evidence stays distinguishable from live
+clinical evidence, and actual submission timestamps are retained.
+
+The care clock is an owner-only, expiring aid for a verified non-shippable Dry Run
+paid term, shared with that term's included children. Setting it does not mutate
+Sticky; an explicit claim is the separate action that creates a native test
+cycle. Physical fulfillment requires a confirmed clinical/fulfillment hold
+integration before release. Intake and doctor-messaging APIs remain mocked, and
+Stripe Connect v2 saved-card replacement remains unavailable until its secure
+provider contract is established. No medical approval follows from a paid order,
+a completed mock form, or a successful $0 claim.

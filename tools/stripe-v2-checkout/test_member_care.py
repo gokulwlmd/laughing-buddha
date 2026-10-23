@@ -39,6 +39,23 @@ def configure_care_fixture(app, fake, months=12):
     return sku
 
 
+def configure_native_care_fixture(app, months=12):
+    """Enable actual ClaimsManager with an offline native-cycle adapter fixture."""
+    from test_member_provider import IncludedCycleSticky
+    native = IncludedCycleSticky(cycles=months // 3, renews=True)
+    app.state.admin.api = native
+    app.state.member_portal.provider.api = native
+    # Native fixtures use a fixed original order date and original model IDs.
+    sku = configure_care_fixture(app, native, months)
+    native.order['products'][0]['prepaid'] = [native.order['products'][0]['prepaid']]
+    native.product['sku'] = sku
+    app.state.member_portal.provider.wall_clock = lambda: NOW
+    rule = app.state.admin.get('refill_policy', sku)
+    rule.update(included_refills_enabled=True, claim_window_days=10)
+    app.state.admin.put('refill_policy', sku, rule)
+    return native
+
+
 class MemberCareTests(fixtures.MemberPortalTests):
     # Reuse setup helpers, not the parent suite (which has unmapped-SKU expectations).
     def setUp(self):

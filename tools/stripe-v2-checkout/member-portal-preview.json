@@ -3,8 +3,8 @@
   "status": "private_preview",
   "preview_origin": "http://127.0.0.1:8873",
   "preview_site": "site-8bb7023e-3ca",
-  "source_version": "d5e4c30a573a9518",
-  "bundle_sha256": "4d41cc71f92614b8c7b2d0c8241fd2f5b963e55eb56749d7ca9f1ae48e4e08ef",
+  "source_version": "e5e07a520a497c56",
+  "bundle_sha256": "e11f6adad3f84d45576201287bc996b4a36ac9560d2fb3776be0daef03480093",
   "runtime": "Additional private process on existing Fly machine, accessed only through local fly proxy",
   "real_sticky_orders": true,
   "synthetic_orders_seeded": false,
@@ -12,16 +12,17 @@
   "existing_payment_rows_unchanged": true,
   "public_checkout_release_pending": true,
   "tests": {
-    "backend_suite_passed": 352,
+    "backend_suite_passed": 379,
     "additional_refill_concurrency_regression_passed": true,
-    "member_backend_total_passed": 20,
-    "member_browser_cases_passed": 8,
+    "member_backend_total_passed": 85,
+    "member_browser_cases_passed": 9,
     "affected_checkout_browser_cases_passed": 18,
     "javascript_syntax_files_passed": 19,
     "care_and_security_final_regressions_passed": 17,
-    "provider_cases_passed": 23,
+    "provider_cases_passed": 35,
     "product_intake_template_cases_passed": 2,
-    "master_policy_cases_passed": 6
+    "master_policy_cases_passed": 7,
+    "native_claim_manager_cases_passed": 8
   },
   "provider_verification": {
     "method": "read-only real order and subscription responses; isolated Dry Run price verification",
@@ -41,7 +42,9 @@
   "remaining": [
     "Stripe Connect v2 saved-card replacement contract",
     "Medical intake and messaging provider APIs",
-    "Public payment-worker/API release after resolving or explicitly holding open payment forms"
+    "Public payment-worker/API release after resolving or explicitly holding open payment forms",
+    "Sticky fulfillment hold/release integration before physical medication claims",
+    "Markrx paid portal store: four checkout plans are private; publish reviewed plans or implement a scoped patient checkout handoff"
   ],
   "customer_entry": "/portal/site-8bb7023e-3ca",
   "staff_controls_separate": true,
@@ -61,11 +64,26 @@
     ],
     "actual_sticky_dry_run_order_used": true,
     "mock_intakes_submitted": 4,
-    "simulated_refill_review_requests": 3,
     "partial_draft_resume_verified": true,
     "immutable_submissions_verified": true,
     "request_idempotency_verified": true,
-    "sticky_order_and_billing_unchanged": true,
-    "medical_provider_connected": false
+    "medical_provider_connected": false,
+    "native_claim_skus": 20,
+    "claim_window_days": 10,
+    "claim_days_12_months": [
+      80,
+      170,
+      260
+    ],
+    "claim_days_6_months": [
+      80
+    ],
+    "legacy_refill_review_requests_preserved": 3,
+    "native_zero_dollar_orders_verified": 3,
+    "claim_scoped_checkins_submitted": 3,
+    "initial_intake_preserved": true,
+    "paid_renewal_not_triggered": true,
+    "original_term_anchors_preserved": true,
+    "checkout_rows_unchanged": true
   }
 }

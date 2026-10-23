@@ -59,3 +59,11 @@ class RefillPolicyTests(unittest.TestCase):
         self.assertEqual(result['intake_template_id'],'')
         self.assertEqual(result['check_in_days'],[])
         self.assertEqual(self.admin.get('refill_policy','SEMA-12M'),old)
+
+    def test_included_claims_require_initial_and_post_claim_checkins(self):
+        self.assertEqual(self.save(included_refills_enabled=True).status_code,422)
+        for changes in ({'initial_intake_required':False},{'check_in_required':False},{'claim_window_days':0}):
+            self.assertEqual(self.save(included_refills_enabled=True,intake_template_id='weight-loss',check_in_days=[90,180,270],**changes).status_code,422)
+        result=self.save(included_refills_enabled=True,intake_template_id='weight-loss',check_in_days=[90,180,270],claim_window_days=10)
+        self.assertEqual(result.status_code,200)
+        self.assertEqual(self.admin.get('master','SEMA-12M'),self.master)

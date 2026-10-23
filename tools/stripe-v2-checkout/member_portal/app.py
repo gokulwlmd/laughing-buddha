@@ -4,6 +4,7 @@ This module never creates a charge, shipment, prescription, or simulated order.
 Question and messaging adapters remain explicitly disconnected placeholders.
 """
 from datetime import datetime, timedelta, timezone
+from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 import hashlib
 import hmac
@@ -13,6 +14,7 @@ import re
 import secrets
 import sqlite3
 import time
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.openapi.docs import get_swagger_ui_html
@@ -25,6 +27,7 @@ from patient_demo.app import clean_answers, visible, IntakePatch, IntakeSubmit, 
 from patient_demo.provider import get_template, THERAPIES as QUESTION_THERAPIES
 from .provider import StickyOrderProvider, ProviderError, ProviderUncertain, ProviderRejected
 from .care import CareManager, CarePlan
+from .claims import ClaimsManager
 
 HERE = Path(__file__).parent
 SESSION_SECONDS = 86400
@@ -183,6 +186,7 @@ class RefillAvailability(BaseModel):
 
 
 class OrderModel(BaseModel):
+    dry_run: bool = False
     care_plan: CarePlan | None = None
     id: str
     number: str
@@ -209,6 +213,25 @@ class OrderModel(BaseModel):
 
 class OrdersResult(BaseModel):
     orders: list[OrderModel]
+
+
+class StorePlan(BaseModel):
+    plan_id: str
+    checkout_id: str
+    therapy_id: str
+    therapy_name: str
+    product_name: str
+    plan_name: str
+    total: str
+    currency: str
+    checkout_url: str
+    payment_test_only: bool = False
+
+
+class StoreResult(BaseModel):
+    site: SiteModel
+    plans: list[StorePlan]
+    unavailable_therapies: list[str] = Field(default_factory=list)
 
 
 class MemberIntakeResponse(IntakeResponse):
@@ -314,6 +337,8 @@ class MemberService:
                 db.execute("ALTER TABLE member_refills ADD COLUMN reason TEXT NOT NULL DEFAULT ''")
 
         self.care = CareManager(self)
+        self.claims = ClaimsManager(self)
+        self._store_cache = {}
 
     def db(self):
         db = self.store.db()
@@ -644,7 +669,8 @@ class MemberService:
         care_plan = self.care.public(row)
         if care_plan and care_plan['tasks']:
             intake = {'status': care_plan['tasks'][0]['intake_status']}
-        return {'care_plan': care_plan, 'id': row['order_id'], 'number': row['order_id'], 'site_id': row['site_id'], 'therapy_id': row['therapy_id'],
+        dry_run = raw.get('test_order') is True and str(raw.get('gateway_id')) == '1'
+        return {'dry_run': dry_run, 'care_plan': care_plan, 'id': row['order_id'], 'number': row['order_id'], 'site_id': row['site_id'], 'therapy_id': row['therapy_id'],
                 'therapy_name': snapshot.get('therapy_name', row['therapy_id']), 'product_name': snapshot.get('product_name', row['sku']),
                 'sku': row['sku'], 'plan_name': snapshot.get('quote_option', {}).get('label') or row['sku'], 'total': str(raw['total']),
                 'currency': raw.get('currency'), 'payment_status': raw.get('payment_status', 'unknown'), 'intake_status': intake['status'] if intake else 'not_started',
@@ -716,6 +742,70 @@ class MemberService:
         with self.db() as db:
             rows = db.execute('SELECT * FROM member_messages WHERE site_id=? AND patient_id=? ORDER BY created,rowid', (site_id, patient_id)).fetchall()
         return [{'id': r['id'], 'sender': r['sender'], 'body': r['body'], 'created_at': stamp(r['created']), 'client_message_id': r['client_message_id'], 'automated': r['sender'] == 'system'} for r in rows]
+
+    def store_catalog(self, site_id, therapy_id=None):
+        site, public_site = self.site(site_id)
+        published = [plan for plan in self.admin.records('plan_checkout') if plan.get('site_id') == site_id
+            and plan.get('brand_id') == site['brand_id'] and str(plan.get('campaign_id')) == str(site['campaign_id'])
+            and plan.get('enabled') and plan.get('visibility') == 'public'
+            and (not therapy_id or plan.get('therapy_id') == therapy_id)]
+        # Local configuration changes invalidate the short read cache. Every
+        # purchase still goes through the existing checkout's fresh quote.
+        config = {kind: self.admin.records(kind) for kind in ('link', 'master', 'purchase_option', 'therapy', 'brand', 'offering')}
+        key = digest(encoded({'site': site, 'plans': published, 'config': config, 'therapy_id': therapy_id}))
+        cached = self._store_cache.get(site_id + ':' + (therapy_id or ''))
+        if cached and cached['key'] == key and cached['expires'] > time.monotonic():
+            return cached['value']
+        def read(plan):
+            try:
+                current, brand, therapy = self.admin.plan_record(plan['id'])
+                if current.get('site_id') != site_id or current.get('visibility') != 'public':
+                    return None
+                return plan, self.admin.plan_options(current, brand, therapy)
+            except Exception:
+                # A failed upstream catalog must not fabricate purchasable
+                # plans or reveal provider errors to a member.
+                return None
+        results = []
+        if published:
+            with ThreadPoolExecutor(max_workers=min(4, len(published))) as pool:
+                results = list(pool.map(read, published))
+        rows, unavailable = [], []
+        checkout_origin = getattr(self.cfg, 'checkout_public_url', self.cfg.public_url).rstrip('/')
+        for source, result in zip(published, results):
+            if result is None:
+                unavailable.append(source.get('therapy_id', ''))
+                continue
+            plan, catalog = result
+            for entry in catalog.get('entries', []):
+                if not entry.get('available'):
+                    continue
+                for option in entry.get('options', []):
+                    if option.get('blockedReason'):
+                        continue
+                    try:
+                        total = Decimal(str(option.get('upfrontPrice') if option.get('prepaidCycles') else option['basePrice']))
+                    except Exception:
+                        continue
+                    currency = entry.get('currency')
+                    if not total.is_finite() or total <= 0 or not isinstance(currency, str) or not re.fullmatch('[A-Z]{3}', currency):
+                        continue
+                    selection = {'sku': entry['sku'], 'option': option['key'], 'purchase_option_id': entry.get('purchaseOptionId', '')}
+                    unique = digest(encoded({'checkout': plan['id'], **selection}))[:24]
+                    recurring = option.get('renewal') if option.get('prepaidCycles') else option.get('recurring')
+                    label = f"{entry.get('durationMonths', '')}-month " + ('subscription' if recurring else 'one-time plan')
+                    rows.append({'plan_id': 'portal-choice-' + unique, 'checkout_id': plan['id'],
+                        'therapy_id': plan['therapy_id'], 'therapy_name': catalog.get('therapy') or plan['therapy_id'],
+                        'product_name': entry.get('name') or entry['sku'], 'plan_name': label,
+                        'total': format(total, '.2f'), 'currency': currency,
+                        'checkout_url': checkout_origin + '/plans/' + plan['id'] + '/choose?' + urlencode(selection),
+                        'payment_test_only': bool(catalog.get('paymentTestOnly'))})
+        value = {'site': public_site, 'plans': rows, 'unavailable_therapies': sorted(set(unavailable))}
+        self._store_cache[site_id + ':' + (therapy_id or '')] = {'key': key, 'expires': time.monotonic() + 60, 'value': value}
+        # Bound the cache to configured sites/therapy tabs, never patient keys.
+        if len(self._store_cache) > 100:
+            self._store_cache.pop(next(iter(self._store_cache)))
+        return value
 
     def refill_public(self, row):
         with self.db() as db:
@@ -805,6 +895,10 @@ class MemberService:
         @router.get('/me', response_model=MeResult)
         def me(site_id: str, patient=Depends(auth)):
             return {'site': self.site(site_id)[1], 'patient': self.patient_public(patient)}
+
+        @router.get('/store', response_model=StoreResult)
+        def store(site_id: str, therapy_id: str | None = None, patient=Depends(auth)):
+            return self.store_catalog(site_id, therapy_id)
 
         @router.get('/orders', response_model=OrdersResult)
         def orders(site_id: str, therapy_id: str | None = None, patient=Depends(auth)):
@@ -1094,10 +1188,14 @@ class MemberService:
                                   'therapy_name': order['therapy_name'], 'status': row['status'], 'answered': sum(answers.get(q['id']) not in (None, '', []) for q in questions),
                                   'total': len(questions), 'updated_at': stamp(row['updated'])})
             with self.db() as db:
-                care_rows = db.execute('''SELECT i.*,c.site_id,c.root_order_id,c.term_order_id,c.patient_id,
+                care_rows = db.execute('''SELECT i.*,NULL AS claim_id,NULL AS claim_order_id,c.site_id,c.root_order_id,c.term_order_id,c.patient_id,
                     c.snapshot AS care_snapshot,p.name FROM member_care_intakes i
                     JOIN member_care_plans c ON c.id=i.plan_id
                     JOIN member_patients p ON p.id=c.patient_id AND p.site_id=c.site_id WHERE c.site_id=?''', (site_id,)).fetchall()
+                care_rows = list(care_rows) + list(db.execute('''SELECT i.*,c.site_id,c.root_order_id,c.term_order_id,c.patient_id,
+                    c.snapshot AS care_snapshot,p.name FROM member_claim_intakes i
+                    JOIN member_care_plans c ON c.id=i.plan_id
+                    JOIN member_patients p ON p.id=c.patient_id AND p.site_id=c.site_id WHERE c.site_id=?''', (site_id,)).fetchall())
                 scoped_orders = db.execute('SELECT order_id,snapshot FROM member_orders WHERE site_id=?', (site_id,)).fetchall()
             care_ids = {row['id'] for row in care_rows}
             summaries = [summary for summary in summaries if summary['id'] not in care_ids]
@@ -1107,7 +1205,7 @@ class MemberService:
                     and json.loads(o['snapshot']).get('term_order_id') == row['term_order_id']]
                 if not matches:
                     continue
-                order_id = max(matches, key=int)
+                order_id = row['claim_order_id'] if row['claim_order_id'] in matches else max(matches, key=int)
                 order = next(o for o in orders if o['id'] == order_id)
                 answers = json.loads(row['answers'])
                 questions = [q for q in json.loads(row['template'])['questions'] if visible(q, answers)]
@@ -1115,7 +1213,8 @@ class MemberService:
                 summaries.append({'id': row['id'], 'order_id': order_id, 'patient_name': row['name'],
                     'therapy_id': order['therapy_id'], 'therapy_name': order['therapy_name'], 'task_id': row['task_id'], 'task_label': task_label,
                     'status': row['status'], 'answered': sum(answers.get(q['id']) not in (None, '', []) for q in questions),
-                    'total': len(questions), 'updated_at': stamp(row['updated']), 'simulated': bool(row['simulated'])})
+                    'total': len(questions), 'updated_at': stamp(row['updated']), 'simulated': bool(row['simulated']),
+                    'claim_id': row['claim_id'], 'claim_order_id': row['claim_order_id']})
             requests = [self.refill_public(r) for r in refills if r['order_id'] in order_ids]
             return {'site': site, 'orders': orders, 'intakes': summaries, 'refills': requests, 'leads': [],
                     'summaries': {'orders': len(orders), 'intake_drafts': sum(i['status'] == 'draft' for i in summaries), 'intakes_submitted': sum(i['status'] == 'submitted' for i in summaries), 'refill_requests': len(requests)}}
@@ -1158,6 +1257,7 @@ class MemberService:
             return {'sites': [{k: site.get(k) for k in ('id', 'name', 'brand_id', 'campaign_id')} for site in self.admin.records('site')]}
 
         self.care.attach(router, owner, auth)
+        self.claims.attach(router, auth)
         app.include_router(router)
         app.include_router(owner)
 

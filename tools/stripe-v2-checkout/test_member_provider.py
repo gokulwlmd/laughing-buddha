@@ -1,5 +1,6 @@
 """Offline Sticky member adapter contracts; no real accounts or writes."""
 from copy import deepcopy
+from datetime import datetime, timezone
 import json
 import unittest
 
@@ -359,6 +360,239 @@ class MemberProviderTests(unittest.TestCase):
             self.provider.update_subscription_address('9001', 'synthetic-subscription-1', self.address(),
                                                        expected_campaign='422', expected_customer_id='8001')
         self.assertEqual(sum('override/address' in route for _, route, _ in self.api.calls), 1)
+
+
+class IncludedCycleSticky(FakeSticky):
+    """Offline native-cycle contract. Every write is recorded, never networked."""
+    def __init__(self, *, renews=True, cycles=4, live=False):
+        super().__init__()
+        self.order.update(order_total='100.00', gateway_id='254' if live else '1', is_test_cc='0' if live else '1',
+            time_stamp='2026-10-22 19:04:34', ancestor_id='9001', parent_id='9001', child_id='',
+            shipping_id='2', shipping_amount='0.00', order_sales_tax_amount='0.00')
+        self.order['products'][0].update(sku='SEMA-12M-SUB', offer={'id': '7002'}, billing_model={'id': '4'},
+            recurring_date='2027-01-20', prepaid=[{'current_cycle': '1', 'total_cycles': str(cycles), 'is_renew': str(int(renews))}])
+        self.orders = {'9001': self.order}
+        self.offer.update(configuration(cycles, renews))
+        self.campaign = {'id': 422, 'is_active': 1, 'is_archived': 0, 'gateway_id': 254,
+            'offers': [{'id': 7002}], 'fulfillment_id': 0, 'tax_provider_id': 0,
+            'email_provider_id': 0, 'membership_provider_id': 0, 'postback_profiles': []}
+        self.product = {'id': 7001, 'sku': 'SEMA-12M-SUB', 'is_shippable': 0, 'taxable': 0}
+        self.gateway = {'id': 254 if live else 1, 'account_id': 250 if live else 10,
+            'account_name': 'Stripe Connect v2' if live else 'Dry Run Testing', 'currency': {'code': 'USD'}}
+        self.shipping = {'id': 2, 'amount_recurring': '0.00'}
+        self.failure = None
+        self.child_change = None
+
+    def call(self, method, path, body=None):
+        self.calls.append((method, path, deepcopy(body)))
+        wrote = any(p == '/api/v1/order_force_bill' for _, p, _ in self.calls)
+        if path == '/api/v1/order_view':
+            if wrote and self.failure == 'readback': raise TimeoutError('secret readback detail')
+            return deepcopy(self.orders[body['order_id'][0]])
+        details = {'/api/v2/campaigns/422': self.campaign, '/api/v2/products/7001': self.product,
+            '/api/v2/offers/7002': self.offer, '/api/v2/billing_models/4': self.billing_model,
+            '/api/v2/providers/payment/profiles/' + str(self.gateway['id']): self.gateway,
+            '/api/v2/shipping/2': self.shipping}
+        if path in details: return {'status': 'SUCCESS', 'data': deepcopy(details[path])}
+        if path == '/api/v1/order_force_bill':
+            parent = self.orders[body['order_id']]
+            child = deepcopy(parent)
+            child_id = str(int(parent['order_id']) + 1)
+            # Actual Sticky native $0 child readback omits the shipping ID even
+            # though the original still identifies the free shipping profile.
+            child.update(order_id=child_id, parent_id=parent['order_id'], child_id='', order_total='0.00', shipping_id=None)
+            line = child['products'][0]
+            line['prepaid'][0]['current_cycle'] = str(int(line['prepaid'][0]['current_cycle']) + 1)
+            final = line['prepaid'][0]['current_cycle'] == line['prepaid'][0]['total_cycles']
+            if final and line['prepaid'][0]['is_renew'] == '0':
+                line.update(is_recurring='0', recurring_date='0000-00-00')
+            else:
+                line.update(is_recurring='1', recurring_date='2027-01-21')
+            # Actual Sticky ancestors list all descendants, not just their
+            # immediate child. Keep parent_id as the direct native lineage.
+            ancestor, visited = parent, set()
+            while ancestor['order_id'] not in visited:
+                visited.add(ancestor['order_id'])
+                descendants = [value for value in ancestor['child_id'].split(',') if value]
+                ancestor['child_id'] = ','.join(descendants + [child_id])
+                ancestor = self.orders.get(ancestor['parent_id'])
+                if ancestor is None:
+                    break
+            parent['products'][0]['is_recurring'] = '0'
+            if self.child_change: self.child_change(child)
+            self.orders[child_id] = child
+            if self.failure == 'force_timeout': raise TimeoutError('secret timeout detail')
+            if self.failure == 'force_decline': return {'response_code': '800', 'error_found': '1', 'order_id': child_id}
+            return {'response_code': '100', 'error_found': '0', 'order_id': child_id}
+        if path == '/api/v1/subscription_order_update':
+            if self.failure == 'date_timeout': raise TimeoutError('secret date detail')
+            if self.failure != 'date_unchanged':
+                self.orders[body['order_id']]['products'][0]['recurring_date'] = datetime.strptime(body['new_recurring_date'], '%m/%d/%Y').date().isoformat()
+            return {'response_code': '100', 'new_recurring_date': {'response_code': '911' if self.failure == 'date_partial' else '100'}}
+        raise AssertionError('Unexpected API call ' + path)
+
+
+class IncludedCycleProviderTests(unittest.TestCase):
+    def setUp(self):
+        self.api = IncludedCycleSticky()
+        self.provider = StickyOrderProvider(self.api, wall_clock=lambda: datetime(2026, 10, 23, tzinfo=timezone.utc).timestamp())
+        self.scope = {'expected_campaign': '422', 'expected_customer_id': '8001',
+            'expected_subscription_id': 'synthetic-subscription-1', 'expected_product_id': '7001',
+            'expected_offer_id': '7002', 'expected_billing_model_id': '4', 'term_order_id': '9001',
+            'term_started_at': '2026-10-22 19:04:34', 'shipment_interval_days': 90,
+            'shipment_count': 4, 'target_cycle': 2}
+
+    def writes(self):
+        return [(p, b) for m, p, b in self.api.calls if m != 'GET' and p != '/api/v1/order_view']
+
+    def test_capability_reads_fresh_configuration_without_writes_or_sensitive_output(self):
+        proof = self.provider.included_cycle_capability('9001', **self.scope)
+        self.assertEqual((proof['amount'], proof['target_cycle'], proof['following_cycle_date']), ('0.00', 2, '2027-04-20'))
+        self.assertEqual(self.writes(), [])
+        self.assertNotIn('sample@example.invalid', json.dumps(proof))
+
+    def test_native_claims_create_only_three_zero_children_and_preserve_anchors(self):
+        current = '9001'
+        for cycle, following in [(2, '2027-04-20'), (3, '2027-07-19'), (4, '2027-10-17')]:
+            scope = self.scope | {'target_cycle': cycle}
+            child = self.provider.advance_included_cycle(current, **scope)
+            self.assertEqual(child['total'], '0.00')
+            self.assertEqual(child['products'][0]['prepaid']['current_cycle'], cycle)
+            self.assertEqual(child['products'][0]['next_cycle_date'], following)
+            count = len(self.writes())
+            self.assertEqual(self.provider.reconcile_included_cycle(current, **scope), child)
+            self.assertEqual(len(self.writes()), count)
+            current = child['id']
+        with self.assertRaises(ProviderRejected):
+            self.provider.advance_included_cycle(current, **(self.scope | {'target_cycle': 5}))
+        force = [body for path, body in self.writes() if path.endswith('order_force_bill')]
+        self.assertEqual(len(force), 3)
+        self.assertTrue(all(body['product_id'] == '7001' and body['forceGatewayId'] == 1 and body['preserve_force_gateway'] == 1 for body in force))
+        self.assertTrue(all(path in ('/api/v1/order_force_bill', '/api/v1/subscription_order_update') for path, _ in self.writes()))
+
+    def test_live_gateway_is_never_overridden(self):
+        self.api = IncludedCycleSticky(live=True)
+        self.provider.api = self.api
+        self.provider.advance_included_cycle('9001', **self.scope)
+        force = [body for path, body in self.writes() if path.endswith('order_force_bill')]
+        self.assertEqual(force, [{'order_id': '9001', 'product_id': '7001'}])
+
+    def test_descendant_lists_accept_only_the_verified_native_chain(self):
+        first = self.provider.advance_included_cycle('9001', **self.scope)
+        second = self.provider.advance_included_cycle(first['id'], **(self.scope | {'target_cycle': 3}))
+        self.assertEqual(self.api.order['child_id'], '9002,9003')
+        scope = self.scope | {'target_cycle': 4}
+        self.assertTrue(self.provider.included_cycle_capability(second['id'], **scope)['available'])
+        before = len(self.writes())
+        saved = deepcopy(self.api.orders)
+        for order_id, child_ids in [('9001', '9002,9003,9999'), ('9001', '9002,9003,9003'),
+                                   ('9001', '9003'), ('9002', '9003,9999')]:
+            self.api.orders = deepcopy(saved); self.api.order = self.api.orders['9001']
+            self.api.orders[order_id]['child_id'] = child_ids
+            with self.subTest(order_id=order_id, child_ids=child_ids), self.assertRaises(ProviderRejected):
+                self.provider.advance_included_cycle(second['id'], **scope)
+            self.assertEqual(len(self.writes()), before)
+        self.api.orders = deepcopy(saved); self.api.order = self.api.orders['9001']
+        # API variants returning only the direct child remain valid.
+        self.api.order['child_id'] = '9002'
+        self.assertTrue(self.provider.included_cycle_capability(second['id'], **scope)['available'])
+
+    def test_missing_later_native_shipping_id_rechecks_original_free_profile(self):
+        child = self.provider.advance_included_cycle('9001', **self.scope)
+        self.assertIsNone(child['shipping_id'])
+        before = len(self.api.calls)
+        proof = self.provider.included_cycle_capability(child['id'], **(self.scope | {'target_cycle': 3}))
+        self.assertTrue(proof['available'])
+        self.assertIn(('GET', '/api/v2/shipping/2', None), self.api.calls[before:])
+        self.assertTrue(all(method == 'GET' or path == '/api/v1/order_view' for method, path, _ in self.api.calls[before:]))
+
+    def test_shipping_fallback_rejects_changed_profile_missing_original_and_charges(self):
+        child = self.provider.advance_included_cycle('9001', **self.scope)
+        original, later, profile = deepcopy(self.api.order), deepcopy(self.api.orders[child['id']]), deepcopy(self.api.shipping)
+        mutations = [lambda: self.api.orders[child['id']].update(shipping_id='3'),
+            lambda: self.api.order.update(shipping_id=None),
+            lambda: self.api.shipping.update(amount_recurring='1.00'),
+            lambda: self.api.shipping.update(threshold_amount='1.00', threshold_charge_amount='1.00'),
+            lambda: self.api.orders[child['id']].update(shipping_amount='1.00'),
+            lambda: self.api.orders[child['id']].update(order_total='1.00'),
+            lambda: self.api.orders[child['id']].update(order_sales_tax_amount='1.00')]
+        for mutate in mutations:
+            self.api.order = deepcopy(original); self.api.orders['9001'] = self.api.order
+            self.api.orders[child['id']] = deepcopy(later); self.api.shipping = deepcopy(profile)
+            before = len(self.writes())
+            mutate()
+            with self.subTest(mutation=mutate), self.assertRaises(ProviderError):
+                self.provider.advance_included_cycle(child['id'], **(self.scope | {'target_cycle': 3}))
+            self.assertEqual(len(self.writes()), before)
+
+    def test_nonrenewing_final_included_cycle_stays_completed_without_reactivation(self):
+        self.api = IncludedCycleSticky(renews=False, cycles=2)
+        self.provider.api = self.api
+        child = self.provider.advance_included_cycle('9001', **(self.scope | {'shipment_count': 2}))
+        self.assertEqual(child['products'][0]['billing_status'], 'completed')
+        self.assertIsNone(child['products'][0]['next_cycle_date'])
+        self.assertEqual([path for path, _ in self.writes()], ['/api/v1/order_force_bill'])
+
+    def test_changed_scope_schedule_and_renewal_boundary_are_rejected_before_writes(self):
+        for change in [{'expected_campaign': '423'}, {'expected_customer_id': '9999'}, {'expected_product_id': '9'},
+                {'expected_subscription_id': 'foreign'}, {'expected_offer_id': '9'}, {'expected_billing_model_id': '9'},
+                {'term_started_at': '2026-10-21'}, {'target_cycle': 3}, {'target_cycle': 5},
+                {'target_cycle': True}, {'shipment_count': 2}, {'shipment_interval_days': 30}]:
+            with self.subTest(change=change), self.assertRaises(ProviderError):
+                self.provider.advance_included_cycle('9001', **(self.scope | change))
+        self.assertEqual(self.writes(), [])
+
+    def test_unsafe_external_capabilities_fail_closed_before_force_bill(self):
+        for mutate in [lambda a: a.product.update(is_shippable=1), lambda a: a.product.update(taxable=1),
+                lambda a: a.campaign.update(fulfillment_id=5), lambda a: a.campaign.update(tax_provider_id=5),
+                lambda a: a.campaign.update(postback_profiles=[{'id': 1}]), lambda a: a.campaign.update(email_provider_id=5),
+                lambda a: a.campaign.update(membership_provider_id=5), lambda a: a.shipping.update(amount_recurring='1.00'),
+                lambda a: a.gateway.update(account_id=250), lambda a: a.order.update(shipping_id=''),
+                lambda a: a.order.update(order_status='6'), lambda a: a.order.update(child_id='9002'),
+                lambda a: a.order['products'][0].update(on_hold='1'),
+                lambda a: a.order['products'][0].update(is_terminal='1'),
+                lambda a: a.billing_model.update(days=30)]:
+            self.api = IncludedCycleSticky(); self.provider.api = self.api
+            mutate(self.api)
+            with self.subTest(mutate=mutate), self.assertRaises(ProviderError):
+                self.provider.advance_included_cycle('9001', **self.scope)
+            self.assertEqual(self.writes(), [])
+
+    def test_due_or_past_actual_utc_date_cannot_be_bypassed_by_virtual_care_clock(self):
+        for day in (20, 21):
+            self.provider.wall_clock = lambda day=day: datetime(2027, 1, day, tzinfo=timezone.utc).timestamp()
+            with self.assertRaises(ProviderRejected): self.provider.advance_included_cycle('9001', **self.scope)
+        self.assertEqual(self.writes(), [])
+
+    def test_uncertain_writes_and_unverified_children_never_retry_or_change_date(self):
+        changes = [lambda c: c.update(order_total='100.00'), lambda c: c.update(customer_id='9999'),
+            lambda c: c.update(campaign_id='423'), lambda c: c.update(ancestor_id='8999'),
+            lambda c: c.update(parent_id='8999'), lambda c: c['products'][0].update(subscription_id='other'),
+            lambda c: c['products'][0].update(offer={'id': '7999'}),
+            lambda c: c['products'][0]['prepaid'][0].update(current_cycle='1')]
+        for mutate in changes:
+            self.api = IncludedCycleSticky(); self.provider.api = self.api; self.api.child_change = mutate
+            with self.subTest(mutate=mutate), self.assertRaises(ProviderUncertain):
+                self.provider.advance_included_cycle('9001', **self.scope)
+            self.assertEqual([path for path, _ in self.writes()], ['/api/v1/order_force_bill'])
+        for failure in ('force_timeout', 'force_decline', 'readback', 'date_timeout', 'date_partial', 'date_unchanged'):
+            self.api = IncludedCycleSticky(); self.provider.api = self.api; self.api.failure = failure
+            with self.subTest(failure=failure), self.assertRaises(ProviderUncertain) as caught:
+                self.provider.advance_included_cycle('9001', **self.scope)
+            self.assertNotIn('secret', str(caught.exception))
+            self.assertEqual(sum(path.endswith('order_force_bill') for path, _ in self.writes()), 1)
+            self.assertLessEqual(sum(path.endswith('subscription_order_update') for path, _ in self.writes()), 1)
+
+    def test_reconciliation_never_repairs_an_unconfirmed_schedule_or_repeats_force(self):
+        self.api.failure = 'date_timeout'
+        with self.assertRaises(ProviderUncertain): self.provider.advance_included_cycle('9001', **self.scope)
+        before = len(self.writes())
+        with self.assertRaises(ProviderRejected): self.provider.reconcile_included_cycle('9001', **self.scope)
+        self.assertEqual(len(self.writes()), before)
+        self.api.orders['9002']['products'][0]['recurring_date'] = '2027-04-20'
+        child = self.provider.reconcile_included_cycle('9001', child_order_id='9002', **self.scope)
+        self.assertEqual(child['id'], '9002')
+        self.assertEqual(len(self.writes()), before)
 
 
 if __name__ == '__main__':
