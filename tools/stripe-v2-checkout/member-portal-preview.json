@@ -3,8 +3,8 @@
   "status": "private_preview",
   "preview_origin": "http://127.0.0.1:8873",
   "preview_site": "site-8bb7023e-3ca",
-  "source_version": "d46ba91bd547f759",
-  "bundle_sha256": "73f5454b5baf929bb48e32d83ca97b29c2d4ec0b3fc39f53ed605b17055b62c4",
+  "source_version": "84cca03d8d4ba54b",
+  "bundle_sha256": "870e82357987c77c6a84412dcd8f48b8121e6d6b463ee27c92801df9b0756efd",
   "runtime": "Additional private process on existing Fly machine, accessed only through local fly proxy",
   "real_sticky_orders": true,
   "synthetic_orders_seeded": false,
@@ -12,10 +12,10 @@
   "existing_payment_rows_unchanged": true,
   "public_checkout_release_pending": true,
   "tests": {
-    "backend_suite_passed": 379,
+    "backend_suite_passed": 386,
     "additional_refill_concurrency_regression_passed": true,
-    "member_backend_total_passed": 85,
-    "member_browser_cases_passed": 12,
+    "member_backend_total_passed": 92,
+    "member_browser_cases_passed": 16,
     "affected_checkout_browser_cases_passed": 18,
     "javascript_syntax_files_passed": 19,
     "care_and_security_final_regressions_passed": 17,
@@ -23,7 +23,8 @@
     "product_intake_template_cases_passed": 2,
     "master_policy_cases_passed": 7,
     "native_claim_manager_cases_passed": 8,
-    "design_pass_backend_rerun": false
+    "design_pass_backend_rerun": true,
+    "member_updates_backend_cases_passed": 7
   },
   "provider_verification": {
     "method": "read-only real order and subscription responses; isolated Dry Run price verification",
@@ -97,6 +98,10 @@
     ],
     "keyboard_dialogs_verified": true,
     "pale_brand_button_contrast_verified": true,
-    "clinical_shipping_completion_requires_recorded_evidence": true
+    "clinical_shipping_completion_requires_recorded_evidence": true,
+    "recorded_shipment_tracking": true,
+    "scoped_notifications_and_read_receipts": true,
+    "per_treatment_refill_management": true,
+    "doctor_chat_drafts": true
   }
 }

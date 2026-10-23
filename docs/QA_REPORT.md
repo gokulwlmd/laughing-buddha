@@ -176,3 +176,20 @@ Screenshots were visually reviewed. These automated interactions use local
 fixtures and do not submit real patient writes or provider transactions. The
 previous 379-test backend result remains historical: this pass changes only
 browser presentation and browser checks, so it did not rerun that suite.
+
+## Delivery updates and multi-treatment portal — 23 October 2026
+
+The full backend suite passed 386 tests, including seven new notification and
+message-draft cases. These verify site/patient isolation, durable idempotent read
+receipts, changed tracking as a new update, revision conflicts without draft
+loss, input limits, and zero provider calls from local update/draft endpoints.
+
+All 16 distinct member browser scenarios passed across the main and affected
+follow-up runs. New checks cover recorded shipment details, notification
+navigation/read persistence, draft save failure/conflict recovery without a
+send, and independent treatment refill cards with native children deduplicated.
+Opening an alert does not create an order; explicit confirmation targets only
+the selected treatment. Existing native refill and patient/staff isolation
+scenarios still pass. Desktop/mobile shipment, refill, notification and chat
+screenshots were reviewed for readable controls and reflow. All interactions
+use local fixtures; no real shipment, patient message or payment was submitted.

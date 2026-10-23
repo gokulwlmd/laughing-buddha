@@ -28,6 +28,7 @@ from patient_demo.provider import get_template, THERAPIES as QUESTION_THERAPIES
 from .provider import StickyOrderProvider, ProviderError, ProviderUncertain, ProviderRejected
 from .care import CareManager, CarePlan
 from .claims import ClaimsManager
+from .notifications import NotificationsResult, order_notifications
 
 HERE = Path(__file__).parent
 SESSION_SECONDS = 86400
@@ -202,6 +203,8 @@ class OrderModel(BaseModel):
     intake_status: str
     medical_status: str
     fulfillment_status: str
+    tracking_number: str | None = None
+    shipping_date: str | None = None
     created_at: str | None
     last_synced_at: str
     subscriptions: list[SubscriptionModel]
@@ -251,6 +254,19 @@ class CareMessage(BaseModel):
 class MessagesResult(BaseModel):
     messages: list[CareMessage]
     provider_connected: bool = False
+
+
+class MessageDraft(BaseModel):
+    body: str = ''
+    revision: int = 0
+    updated_at: str | None = None
+    provider_connected: bool = False
+
+
+class MessageDraftSave(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    body: str = Field(max_length=2000)
+    revision: StrictInt = Field(ge=0)
 
 
 class RefillModel(BaseModel):
@@ -320,6 +336,13 @@ class MemberService:
                     id TEXT PRIMARY KEY,site_id TEXT NOT NULL,patient_id TEXT NOT NULL,sender TEXT NOT NULL,
                     body TEXT NOT NULL,created REAL NOT NULL,client_message_id TEXT NOT NULL,
                     UNIQUE(site_id,patient_id,client_message_id,sender));
+                CREATE TABLE IF NOT EXISTS member_message_drafts(
+                    site_id TEXT NOT NULL,patient_id TEXT NOT NULL,body TEXT NOT NULL,
+                    revision INTEGER NOT NULL,updated REAL NOT NULL,
+                    PRIMARY KEY(site_id,patient_id));
+                CREATE TABLE IF NOT EXISTS member_notification_reads(
+                    site_id TEXT NOT NULL,patient_id TEXT NOT NULL,notification_id TEXT NOT NULL,
+                    created REAL NOT NULL,PRIMARY KEY(site_id,patient_id,notification_id));
                 CREATE TABLE IF NOT EXISTS member_refills(
                     id TEXT PRIMARY KEY,site_id TEXT NOT NULL,patient_id TEXT NOT NULL,order_id TEXT NOT NULL,
                     sku TEXT NOT NULL,cycle_key TEXT NOT NULL,status TEXT NOT NULL,revision INTEGER NOT NULL,
@@ -675,6 +698,7 @@ class MemberService:
                 'sku': row['sku'], 'plan_name': snapshot.get('quote_option', {}).get('label') or row['sku'], 'total': str(raw['total']),
                 'currency': raw.get('currency'), 'payment_status': raw.get('payment_status', 'unknown'), 'intake_status': intake['status'] if intake else 'not_started',
                 'medical_status': 'not_connected', 'fulfillment_status': raw.get('fulfillment_status', 'unknown'), 'created_at': raw.get('created_at'),
+                'tracking_number': raw.get('tracking_number'), 'shipping_date': raw.get('shipping_date'),
                 'last_synced_at': stamp(row['synced']), 'subscriptions': subscriptions, 'refill': availability, 'test_only': availability['test_only'],
                 'address_update_available': raw.get('fulfillment_posted') is not None and raw.get('fulfillment_posted') == 0 and raw.get('fulfillment_status') not in ('shipped', 'not_shippable') and not raw.get('child_ids') and not raw.get('shipping_date') and not raw.get('tracking_number'),
                 'shipping_address': raw.get('shipping_address')}
@@ -742,6 +766,22 @@ class MemberService:
         with self.db() as db:
             rows = db.execute('SELECT * FROM member_messages WHERE site_id=? AND patient_id=? ORDER BY created,rowid', (site_id, patient_id)).fetchall()
         return [{'id': r['id'], 'sender': r['sender'], 'body': r['body'], 'created_at': stamp(r['created']), 'client_message_id': r['client_message_id'], 'automated': r['sender'] == 'system'} for r in rows]
+
+    def message_draft(self, site_id, patient_id):
+        with self.db() as db:
+            row = db.execute('SELECT * FROM member_message_drafts WHERE site_id=? AND patient_id=?', (site_id, patient_id)).fetchone()
+        return {'body': row['body'] if row else '', 'revision': row['revision'] if row else 0,
+                'updated_at': stamp(row['updated']) if row else None, 'provider_connected': False}
+
+    def notifications(self, site_id, patient):
+        items = order_notifications(self.order_list(site_id, patient), site_id, patient['id'])
+        with self.db() as db:
+            reads = {r['notification_id']: stamp(r['created']) for r in db.execute(
+                'SELECT notification_id,created FROM member_notification_reads WHERE site_id=? AND patient_id=?', (site_id, patient['id']))}
+        for item in items:
+            item['read_at'] = reads.get(item['id'])
+        items.sort(key=lambda item: (bool(item['read_at']), item['kind'] in ('shipped', 'delivered')))
+        return {'notifications': items, 'unread_count': sum(item['read_at'] is None for item in items)}
 
     def store_catalog(self, site_id, therapy_id=None):
         site, public_site = self.site(site_id)
@@ -1093,6 +1133,35 @@ class MemberService:
         @router.get('/messages', response_model=MessagesResult)
         def messages(site_id: str, patient=Depends(auth)):
             return {'messages': self.messages(site_id, patient['id']), 'provider_connected': False}
+
+        @router.get('/messages/draft', response_model=MessageDraft)
+        def message_draft(site_id: str, patient=Depends(auth)):
+            return self.message_draft(site_id, patient['id'])
+
+        @router.put('/messages/draft', response_model=MessageDraft)
+        def save_message_draft(site_id: str, body: MessageDraftSave, patient=Depends(auth)):
+            with self.db() as db:
+                db.execute('BEGIN IMMEDIATE')
+                row = db.execute('SELECT * FROM member_message_drafts WHERE site_id=? AND patient_id=?', (site_id, patient['id'])).fetchone()
+                if (row['revision'] if row else 0) != body.revision:
+                    raise HTTPException(409, 'Your saved draft changed in another window. Keep your message and reload the saved draft before replacing it.')
+                db.execute('INSERT INTO member_message_drafts VALUES(?,?,?,?,?) ON CONFLICT(site_id,patient_id) DO UPDATE SET body=excluded.body,revision=excluded.revision,updated=excluded.updated',
+                    (site_id, patient['id'], body.body, body.revision + 1, self.clock()))
+            return self.message_draft(site_id, patient['id'])
+
+        @router.get('/notifications', response_model=NotificationsResult)
+        def notifications(site_id: str, patient=Depends(auth)):
+            return self.notifications(site_id, patient)
+
+        @router.post('/notifications/{notification_id}/read', response_model=NotificationsResult)
+        def read_notification(site_id: str, notification_id: str, patient=Depends(auth)):
+            current = self.notifications(site_id, patient)
+            if notification_id not in {item['id'] for item in current['notifications']}:
+                raise HTTPException(404, 'This update is no longer available')
+            with self.db() as db:
+                db.execute('INSERT OR IGNORE INTO member_notification_reads VALUES(?,?,?,?)',
+                    (site_id, patient['id'], notification_id, self.clock()))
+            return self.notifications(site_id, patient)
 
         @router.post('/messages', response_model=MessagesResult)
         def message(site_id: str, body: MessageBody, patient=Depends(auth)):

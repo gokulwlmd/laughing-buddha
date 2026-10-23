@@ -45,8 +45,35 @@ process it. The immediate-bill `start` operation is not exposed. Pausing cycles
 can also pause prepaid included shipments; it is not a clinical instruction.
 
 A next cycle date is not always a next payment date: prepaid intermediate cycles
-can be $0. Test/non-shippable orders are labeled accordingly. Payment status is
+can be $0. Staff records retain test/non-shippable provenance. Payment status is
 read from Sticky, not assumed paid because a local capture once succeeded.
+
+## Delivery updates, notifications and doctor-chat drafts
+
+Authorized order responses expose the existing normalized `tracking_number` and
+`shipping_date`. Shipped orders show those recorded details. No carrier, tracking
+URL, arrival date or delivery event is inferred from the number alone.
+
+`GET /notifications` returns current shipment and care-action updates from the
+patient's already-authorized order snapshots, plus an unread count.
+`POST /notifications/{id}/read` stores a durable, idempotent read receipt for that
+site and patient. An inaccessible or resolved update returns 404. Included
+refill updates are grouped by the original paid term so native children cannot
+multiply claim prompts. Opening an update never submits a refill itself.
+Updates refresh with the portal's recorded state; email/SMS delivery and provider
+push events remain separate integration work.
+
+The dedicated Refills screen groups each treatment purchase independently and
+shows its remaining included claims and next action. Claiming and completing a
+check-in stay explicit per-order actions. A paid-plan link is a separate purchase.
+
+The doctor-chat section has a private account-backed draft composer while the
+medical messaging adapter is disconnected. `GET /messages/draft` returns
+`body`, `revision`, `updated_at` and `provider_connected`.
+`PUT /messages/draft` accepts `body` (up to 2000 characters) and the current
+`revision`; a stale save returns 409 without overwriting the saved draft.
+Drafts are scoped to site and patient, and saving one sends no provider message
+and creates no automated clinician reply. Existing message history is preserved.
 
 ## Address, card and refill controls
 
@@ -98,8 +125,9 @@ Test cards must not be used on campaign 422's live Stripe Connect v2 gateway.
 - Email delivery/recovery, scheduled order reconciliation and site-specific staff
   roles are not included in this initial owner-managed release.
 
-Intake autosave/submission and message storage work, but their provider adapters
-are clearly marked disconnected. Submitted mock data is not sent to clinicians.
+Intake autosave/submission and message storage work. Staff records and API
+capabilities retain the disconnected provider state; patient presentation uses
+saved-form and draft language. Submitted mock data is not sent to clinicians.
 
 ## Verification
 

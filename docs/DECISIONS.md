@@ -322,3 +322,21 @@ layouts. Derive an accessible darker button/text shade for pale brand colors
 without changing the original stored brand color. Unconnected card and messaging
 actions offer the existing support contact rather than pretending to save a card
 or deliver a message.
+
+## Delivery updates and multiple treatment plans (23 October 2026)
+
+Patients need tracking numbers on shipped orders, a clear notification inbox,
+independent refill controls for each purchased treatment, and a doctor-chat box
+in its own section. Use recorded Sticky shipping fields without inventing a
+carrier, arrival date or tracking link. Derive in-portal alerts from authorized
+snapshots and store read receipts per site and patient. A new tracking number is
+a new update; opening an alert must not place an order.
+
+Group included refills by original paid term, with child orders in history.
+Each treatment has its own eligibility, remaining count and explicit action.
+There is no bulk claim action or reuse of another treatment's check-in. Keep
+paid purchase choices separate from included claims.
+
+Until the medical messaging API arrives, the chat composer saves a private draft
+with optimistic revision checks. Do not display a draft as sent or create a
+fictional doctor response. Patient records remain separate across sites.

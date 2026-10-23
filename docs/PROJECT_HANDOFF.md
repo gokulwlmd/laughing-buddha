@@ -442,3 +442,28 @@ runs. Desktop, tablet and mobile screenshots were reviewed; the release record
 identifies the private preview bundle. This design pass changes no provider,
 billing, clinical, fulfillment or authentication contract. The dependencies
 recorded above still apply.
+
+## Delivery updates, refills hub and doctor-chat drafts (23 October 2026)
+
+The patient portal now has a dedicated refill view, notification inbox with an
+unread indicator, shipment details, and a doctor-chat composer. The refill view
+groups by original paid term so separate treatment purchases remain independent
+and native child orders do not inflate remaining entitlements. Existing claim
+confirmation, per-order check-ins and provider protections remain in place.
+
+Authorized order responses now include normalized Sticky tracking numbers and
+shipping dates. The UI displays shipment details only for recorded shipped or
+delivered orders; it invents no carrier, arrival estimate or tracking URL.
+`member_portal/notifications.py` derives patient updates from authorized local
+snapshots without extra Sticky reads. Read receipts are durable and scoped to
+site and patient. Alerts open the relevant order, form or treatment card; they
+never place orders by themselves.
+
+The doctor-chat box supports private server-backed message drafts with revision
+checks. Drafts are explicitly saved, can be reopened, and remain drafts until a
+real messaging adapter is connected. No clinician reply or delivery is faked.
+The new `member_message_drafts` and `member_notification_reads` tables are
+additive migrations. Medical providers, notification delivery by email/SMS and
+scheduled order reconciliation remain separate integrations. Source and API
+contracts are documented in the member portal README; preview identity and
+verification counts are in `member-portal-preview.json`.

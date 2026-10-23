@@ -564,3 +564,87 @@ svg { display: block; }
   .demo-banner { flex-wrap: wrap; }
   .demo-banner > span:last-child { width: 100%; }
 }
+
+/* Separate care areas stay easy to scan as a patient adds more treatments. */
+.notification-bell { position: relative; display: grid; place-items: center; min-width: 48px; height: 48px; border: 1px solid var(--line); background: white; color: var(--brand); border-radius: 50%; }
+.notification-bell:hover { background: var(--soft); }
+.notification-count, .nav-unread { display: grid; place-items: center; background: var(--brand); color: white; font-size: 12px; font-weight: 750; line-height: 1; border: 2px solid white; min-width: 22px; height: 22px; padding: 3px; border-radius: 20px; }
+.notification-count { position: absolute; top: -4px; right: -4px; }
+.nav-link { position: relative; }
+.nav-unread { position: absolute; top: 4px; right: 4px; }
+.shipment-card { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 18px; padding: 24px; margin-top: 24px; border-radius: 16px; border: 1px solid #ccdccc; background: #f3f7ee; }
+.shipment-icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 14px; background: white; color: var(--brand); }
+.shipment-card h3 { font-size: 23px; }
+.shipment-facts { display: flex; gap: 24px 40px; flex-wrap: wrap; margin: 16px 0 0; }
+.shipment-facts dt { font-size: 16px; color: var(--muted); }
+.shipment-facts dd { font-size: 18px; font-weight: 700; margin: 7px 0 0; }
+.tracking-number { overflow-wrap: anywhere; }
+.refill-plans { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
+.refill-plan { padding: 30px; }
+.refill-plan-heading { display: flex; align-items: flex-start; gap: 18px; }
+.refill-plan-heading > div:last-child { min-width: 0; }
+.refill-plan-heading .eyebrow { margin-bottom: 7px; }
+.refill-plan-heading h2 { overflow-wrap: anywhere; }
+.refill-plan-heading .small-note { margin-top: 10px; }
+.refill-counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; padding: 24px 0; margin-top: 24px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.refill-counts strong { display: block; font-size: 30px; line-height: 1.2; letter-spacing: -.5px; color: var(--brand); }
+.refill-counts span { display: block; font-size: 16px; color: var(--muted); margin-top: 10px; }
+.refill-next-step { padding: 24px; margin-top: 24px; border-radius: 14px; background: #f5f8f0; }
+.refill-next-step h3 { font-size: 22px; }
+.refill-next-step p { font-size: 17px; color: var(--muted); margin-top: 12px; }
+.refill-next-step .btn { width: 100%; }
+.refill-schedule, .refill-plan-options { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
+.refill-schedule summary, .refill-plan-options summary { padding: 14px 0; min-height: 52px; cursor: pointer; color: var(--brand); font-size: 17px; font-weight: 700; line-height: 1.5; }
+.refill-schedule summary:focus-visible, .refill-plan-options summary:focus-visible { outline: 3px solid #8b6518; outline-offset: 4px; }
+.refill-schedule .care-journey { margin: 10px 0 0; border-top: 0; padding-top: 12px; }
+.refill-schedule .care-journey > .card-heading, .refill-schedule .care-task .action-row { display: none; }
+.refill-plan-options label { display: block; font-size: 17px; font-weight: 700; margin: 18px 0 10px; }
+.refill-plan-options select { width: 100%; min-height: 54px; max-width: 100%; padding: 14px; border: 1px solid #b4c5af; border-radius: 11px; background: white; color: var(--ink); font-size: 17px; }
+.refill-option-action { display: flex; justify-content: space-between; gap: 18px; align-items: center; flex-wrap: wrap; margin-top: 18px; }
+.refill-option-action strong { font-size: 25px; }
+.notification-item { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 20px; padding: 30px; border-bottom: 1px solid var(--line); }
+.notification-item:last-child { border-bottom: 0; }
+.notification-item.unread { background: #fafcf6; box-shadow: inset 4px 0 var(--brand); }
+.notification-symbol { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 14px; background: var(--soft); color: var(--brand); }
+.notification-copy { min-width: 0; }
+.notification-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
+.notification-heading h2 { font-size: 23px; }
+.notification-copy p { font-size: 17px; color: var(--muted); margin-top: 10px; }
+.notification-copy time { display: block; font-size: 15px; color: var(--muted); margin-top: 12px; }
+.chat-draft-explanation { padding: 26px 28px; background: #fafbf7; border-bottom: 1px solid var(--line); }
+.chat-draft-explanation h3 { font-size: 22px; }
+.chat-draft-explanation p { font-size: 17px; color: var(--muted); margin-top: 12px; }
+.doctor-chat .message-compose { border-top: 0; }
+.doctor-chat .message-compose textarea { min-height: 190px; }
+.doctor-chat .compose-footer { align-items: flex-start; flex-wrap: wrap; }
+.doctor-chat .compose-footer .action-row { margin-top: 0; }
+.chat-help .small-note { margin-top: 16px; }
+#message-draft-error .notice { margin-top: 18px; margin-bottom: 0; }
+@media (max-width: 1250px) { .refill-plans { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 900px) {
+  .patient-mode .nav-list.member-nav { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding-bottom: 12px; }
+  .patient-mode .nav-link { border-radius: 10px; }
+}
+@media (max-width: 650px) {
+  .patient-mode .nav-list.member-nav { margin: 0 -5px; }
+  .patient-mode .nav-link { min-height: 84px; padding: 12px 5px; font-size: 16px; }
+  .topbar .site-name { min-width: 0; overflow-wrap: anywhere; }
+  .top-actions { flex: none; }
+  .refill-plan { padding: 24px 22px; }
+  .refill-plan-heading { gap: 14px; }
+  .refill-plan-heading h2 { font-size: 25px; }
+  .refill-counts { gap: 16px; }
+  .refill-counts strong { font-size: 29px; }
+  .refill-next-step { padding: 22px 18px; }
+  .refill-option-action { align-items: stretch; flex-direction: column; }
+  .shipment-card { padding: 22px 18px; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .shipment-facts { flex-direction: column; gap: 20px; }
+  .notification-item { padding: 24px 22px; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .notification-heading h2 { font-size: 23px; }
+  .chat-draft-explanation { padding: 24px 22px; }
+  .doctor-chat .compose-footer .action-row { width: 100%; }
+  .tab-nav { gap: 17px; }
+  .tab-nav button { font-size: 16px; }
+}
+.message-save-meta { display: flex; align-items: center; gap: 10px 18px; flex-wrap: wrap; }
+.draft-mode-label { display: inline-flex; align-items: center; min-height: 30px; border-radius: 8px; padding: 4px 9px; background: #f2f5ee; color: #4c6050; font-size: 15px; font-weight: 650; }
