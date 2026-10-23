@@ -328,7 +328,7 @@ function PaymentInner({ site, c }) {
     <>
       {!enabled && (
         <p className="test-notice" role="note">
-          Payments are switched off for this site (<code>checkout.paymentsEnabled</code> in sites.json).
+          Payments aren’t open on this checkout yet. You can review your order, but no card can be charged.
         </p>
       )}
       {enabled && (
