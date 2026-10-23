@@ -43,3 +43,9 @@ Portal navigation and intake steps focus and scroll to visible content. Modals l
 456 backend tests passed, including captured receipt scope, account-free drafts, enrollment adoption, required answers, revision conflicts, cross-site rejection and one-shipment eligibility. Shared-component desktop/mobile browser checks cover conditional questions, autosave, required answers and submission. Portal browser checks cover themed routes, mobile reflow, scroll position and modal focus. Lovable reports 51 focused checkout/cart and wrapper checks plus a production build.
 
 No real payment, medical submission, shipment or refill was created by these tests. Existing production payment records and the Fly database are preserved. A pre-release database backup is stored privately on the existing volume. This is shared UI reuse, not a claim that the single-worker deployment has been load-tested for 200 sites.
+
+## Published release
+
+Shared Fly image: `sha256:fed77ec4806cf2c822d210d1384d2750a51b3b937aae6595cf011816e5955eee`. Health and both deployed JavaScript assets were verified against local source. Fortify frontend commit: `04df458b6a37c322291e08057b0eda923ea2bf4e`, deployment `17fd1fa8-b139-4fb5-ba2b-5381e52fd430`. Public `/checkout-complete` was verified to show the member-portal link without embedded account setup. No authenticated completed purchase was available in the verification browser; full intake save/submit was verified with synthetic automated fixtures.
+
+GitHub implementation commit: `125d9a0667eb25eeb8c610160030961577aeae95`. Local checks passed; the GitHub Actions run was still in progress at handoff.
