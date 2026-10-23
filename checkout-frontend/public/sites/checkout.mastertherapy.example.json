@@ -1,0 +1,32 @@
+{
+  "name": "Master Therapy",
+  "domain": "checkout.mastertherapy.example",
+  "websiteUrl": "https://mastertherapy.example",
+  "siteId": "payment-test",
+  "siteApiUrl": "https://wlmd-site-api-demo-0f89b1bb.fly.dev/api/v1/sites",
+  "plansMethod": "GET",
+  "logo": "/logos/checkout.mastertherapy.example/logo.svg",
+  "favicon": "/logos/checkout.mastertherapy.example/favicon.svg",
+  "supportEmail": "support@mastertherapy.example",
+  "supportPhone": "",
+  "font": "system",
+  "layout": "split",
+  "therapy": "Weight loss",
+  "title": "Choose your weight loss plan",
+  "intro": "A plan that fits you. Choose your medication, plan length and payment option.",
+  "medicationOrder": [
+    "Semaglutide",
+    "Tirzepatide"
+  ],
+  "testNotice": true,
+  "paymentsEnabled": false,
+  "memberPortal": false,
+  "colors": {
+    "primary": "#245844",
+    "primaryHover": "#1b4535",
+    "primaryLight": "#e7efe9",
+    "buttonText": "#ffffff",
+    "background": "#f5f4ef",
+    "text": "#173c36"
+  }
+}

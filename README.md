@@ -4,6 +4,10 @@ Master SKU catalog, branded campaign setup, and Sticky.io Stripe Connect v2 chec
 
 The current application lives in [`tools/stripe-v2-checkout`](tools/stripe-v2-checkout). It uses FastAPI, SQLite, and a browser-based admin panel, with Stripe Elements handling card entry. It is deployed on Fly.io.
 
+## Multi-brand checkout frontend
+
+[`checkout-frontend`](checkout-frontend) is the React checkout for the Site Payment API: one build for every brand, with each domain's look and site id in `public/sites/<domain>.json` and nginx per-domain server blocks in `checkout-frontend/deploy`. See its README and `docs/SITE_PAYMENT_API.md`.
+
 ## Continue development
 
 - [Sanitized project handoff](docs/PROJECT_HANDOFF.md) and [decision record](docs/DECISIONS.md)

@@ -1,0 +1,25 @@
+{
+  "name": "wlmd-checkout-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "test:e2e": "node tests/flow.mjs && node tests/edge.mjs",
+    "test:e2e:pay": "PAY=1 node tests/flow.mjs",
+    "package": "vite build && cd dist && rm -f ../wlmd-checkout-build.zip && zip -qr ../wlmd-checkout-build.zip . && echo 'Created wlmd-checkout-build.zip'"
+  },
+  "dependencies": {
+    "@stripe/react-stripe-js": "3.7.0",
+    "@stripe/stripe-js": "7.3.0",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "4.4.1",
+    "playwright": "1.52.0",
+    "vite": "6.3.5"
+  }
+}

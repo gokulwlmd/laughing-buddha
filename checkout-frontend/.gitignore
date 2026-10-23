@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.DS_Store
+tests/screenshots/
+wlmd-checkout-build.zip
+tests/shots-nginx/
+tests/screenshots-pay/

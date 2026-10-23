@@ -1,0 +1,32 @@
+{
+  "name": "Glow Health",
+  "domain": "checkout.glowhealth.example",
+  "websiteUrl": "https://glowhealth.example",
+  "siteId": "payment-test",
+  "siteApiUrl": "https://wlmd-site-api-demo-0f89b1bb.fly.dev/api/v1/sites",
+  "plansMethod": "GET",
+  "logo": "/logos/checkout.glowhealth.example/logo.svg",
+  "favicon": "/logos/checkout.glowhealth.example/favicon.svg",
+  "supportEmail": "hello@glowhealth.example",
+  "supportPhone": "",
+  "font": "rounded",
+  "layout": "stacked",
+  "therapy": "GLP-1 program",
+  "title": "Find your plan",
+  "intro": "Three quick choices, then a secure checkout.",
+  "medicationOrder": [
+    "Semaglutide",
+    "Tirzepatide"
+  ],
+  "testNotice": true,
+  "paymentsEnabled": false,
+  "memberPortal": false,
+  "colors": {
+    "primary": "#7a2e5c",
+    "primaryHover": "#612349",
+    "primaryLight": "#f6e6ef",
+    "buttonText": "#ffffff",
+    "background": "#fbf6f8",
+    "text": "#3a1730"
+  }
+}

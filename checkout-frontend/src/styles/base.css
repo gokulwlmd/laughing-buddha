@@ -1,0 +1,26 @@
+/* Self-hosted Red Hat Display (SIL OFL, see src/assets/fonts/red-hat-display-OFL.txt), as web/checkout-font-v1.css. */
+@font-face { font-family: 'Red Hat Display'; font-style: normal; font-weight: 400 800; font-display: swap; src: url('../assets/fonts/red-hat-display-latin-v1.woff2') format('woff2'); }
+/* Global basics; each view's look comes from the ported, scoped stylesheets. */
+html, body { margin: 0; }
+body { background: #fff; min-height: 100vh; }
+.lb-plans, .lb-checkout { min-height: 100vh; }
+.app-loading main { padding-top: 80px; }
+.lb-checkout #express-checkout:not(:empty) { margin-top: 18px; }
+.lb-checkout .test-notice code { font-size: 11px; }
+.lb-checkout .payment-hold .secondary { margin-top: 10px; }
+
+/* Wordmark links to the brand website. */
+.lb-plans a.wordmark, .lb-checkout a.wordmark { color: inherit; text-decoration: none; }
+
+/* Optional colours from the site config: colors.primaryHover / colors.primaryLight. */
+.lb-checkout[data-hover] button:not(.secondary):not(#summary-toggle):not(:disabled):hover,
+.lb-plans[data-hover] .continue:hover { background: var(--brand-hover); filter: none; }
+.lb-plans[data-light] button[aria-pressed=true],
+.lb-plans[data-light] .step-heading > span,
+.lb-plans[data-light] .package-art,
+.lb-checkout[data-light] .product-icon,
+.lb-checkout[data-light] .check { background: var(--brand-light); }
+
+/* Plan page uses the checkout footer markup (card icon), styled like checkout-v4. */
+.lb-plans .footer-security { display: inline-flex; align-items: center; gap: 7px; }
+.lb-plans .footer-security svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; }
