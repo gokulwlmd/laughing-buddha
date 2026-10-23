@@ -1,5 +1,8 @@
 """Campaign-scoped catalog and authoritative Sticky quotes; never changes configuration."""
 from concurrent.futures import ThreadPoolExecutor
+from collections import OrderedDict
+import threading
+import time
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import hashlib
 import json
@@ -13,6 +16,31 @@ class CatalogError(Exception):
 
 class CouponError(CatalogError):
     pass
+
+
+class RoutingHints:
+    """Bounded nonsecret IDs only, to schedule fresh independent reads together."""
+    def __init__(self, ttl=120, limit=256, clock=time.monotonic):
+        self.ttl, self.limit, self.clock = ttl, limit, clock
+        self.entries = OrderedDict()
+        self.guard = threading.Lock()
+
+    def get(self, key):
+        with self.guard:
+            entry = self.entries.get(key)
+            if entry and entry[0] > self.clock():
+                self.entries.move_to_end(key)
+                return entry[1]
+            self.entries.pop(key, None)
+
+    def remember(self, key, gateway_id):
+        if not isinstance(gateway_id, int) or gateway_id <= 0:
+            return
+        with self.guard:
+            self.entries[key] = (self.clock() + self.ttl, gateway_id)
+            self.entries.move_to_end(key)
+            while len(self.entries) > self.limit:
+                self.entries.popitem(last=False)
 
 
 def coupon_for(api, catalog, code):
@@ -58,11 +86,7 @@ def enabled(value):
     return value not in (None, False, 0, '0', '')
 
 
-def resolve(api, campaign_id, sku, allowed_keys=None):
-    c = api.detail(f'/api/v2/campaigns/{campaign_id}')
-    if enabled(c.get('is_archived')) or c.get('is_active') in (False, 0, '0'):
-        raise CatalogError('This campaign is inactive')
-    offers = c.get('offers', [])
+def resolve(api, campaign_id, sku, allowed_keys=None, gateway_hint=None):
     allowed = None
     if allowed_keys is not None:
         try:
@@ -70,20 +94,28 @@ def resolve(api, campaign_id, sku, allowed_keys=None):
             if not allowed or any(len(key) != 3 or min(key) <= 0 for key in allowed):raise ValueError()
         except (ValueError, TypeError, AttributeError):
             raise CatalogError('The published payment choices are invalid') from None
-        # Only server-owned published keys reach this path. Campaign membership
-        # remains authoritative; never fetch arbitrary/account-wide SKU matches.
-        offers = [o for o in offers if int(o['id']) in {key[0] for key in allowed}]
-    def offer_detail(o):
-        return o if 'products' in o else api.detail('/api/v2/offers/' + str(o['id']))
+    # Fresh campaign membership is checked before reading any product. The
+    # gateway hint overlaps its read with that campaign lookup.
     with ThreadPoolExecutor(max_workers=8) as pool:
+        campaign_future = pool.submit(api.detail, f'/api/v2/campaigns/{campaign_id}')
+        hinted_gateway = pool.submit(api.detail, f'/api/v2/providers/payment/profiles/{gateway_hint}') if allowed is not None and gateway_hint else None
+        c = campaign_future.result()
+        if enabled(c.get('is_archived')) or c.get('is_active') in (False, 0, '0'):
+            raise CatalogError('This campaign is inactive')
+        offers = c.get('offers', [])
+        if allowed is not None:
+            offers = [o for o in offers if int(o['id']) in {key[0] for key in allowed}]
+        def offer_detail(o):
+            return o if 'products' in o else api.detail('/api/v2/offers/' + str(o['id']))
         offers = list(pool.map(offer_detail, offers))
-    offers = [o for o in offers if not enabled(o.get('is_archived'))]
-    ids = sorted({int(p['id']) for o in offers for p in o.get('products', [])
-        if allowed is None or any(key[:2] == (int(o['id']), int(p['id'])) for key in allowed)})
-    links = [x.get('provider', {}) for x in c.get('alternative_payments', []) if x.get('payment_method') == 'stripe_link']
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        # The gateway and selected product are independent read-only requests.
-        gateway_future = pool.submit(api.detail, f"/api/v2/providers/payment/profiles/{int(links[0]['id'])}") if allowed is not None and len(links)==1 and int(links[0].get('account_id') or 0)==250 else None
+        offers = [o for o in offers if not enabled(o.get('is_archived'))]
+        ids = sorted({int(p['id']) for o in offers for p in o.get('products', [])
+            if allowed is None or any(key[:2] == (int(o['id']), int(p['id'])) for key in allowed)})
+        links = [x.get('provider', {}) for x in c.get('alternative_payments', []) if x.get('payment_method') == 'stripe_link']
+        gateway_future = None
+        if allowed is not None and len(links) == 1 and int(links[0].get('account_id') or 0) == 250:
+            gateway_id = int(links[0]['id'])
+            gateway_future = hinted_gateway if gateway_id == gateway_hint and hinted_gateway else pool.submit(api.detail, f'/api/v2/providers/payment/profiles/{gateway_id}')
         products = list(pool.map(lambda i: api.detail(f'/api/v2/products/{i}'), ids))
         gateway = gateway_future.result() if gateway_future else None
     matched = {i: p for i, p in zip(ids, products) if p.get('sku') == sku and not enabled(p.get('archived_flag'))}

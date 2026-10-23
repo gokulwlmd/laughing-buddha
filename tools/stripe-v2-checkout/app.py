@@ -12,7 +12,7 @@ import sqlite3
 import threading
 import time
 from functools import wraps
-from catalog import CatalogError, CouponError, resolve, quote
+from catalog import CatalogError, CouponError, RoutingHints, resolve, quote
 from prepaid import order_terms_match
 from admin import Admin, branding as brand_presentation
 from dataclasses import dataclass
@@ -240,10 +240,12 @@ def create_app(settings=None, sticky=None):
         invite_path.chmod(0o600)
     invite = invite_path.read_text().strip()
     cached = {}  # Client secrets remain in memory, never in source, DB, or logs.
+    routing_hints = RoutingHints()
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.store = store
     app.state.settings = cfg
     app.state.invite = invite
+    app.state.routing_hints = routing_hints
     admin = Admin(store,cfg,api,invite,ROUTE_LOCK)
     if cfg.synthetic:
         from synthetic import seed_demo
@@ -315,7 +317,11 @@ def create_app(settings=None, sticky=None):
     def catalog(req, legacy=False):
         if req.query_params.get('link_id'):
             link, brand = admin.link_access(req)
-            c = resolve(api, *context(req), allowed_keys=None if legacy else link['options'])
+            allowed = None if legacy else link['options']
+            cache_key = (*context(req), tuple(sorted(allowed or [])))
+            c = resolve(api, *context(req), allowed_keys=allowed, gateway_hint=routing_hints.get(cache_key) if allowed else None)
+            routing_hints.remember(cache_key, c.get("gatewayId"))
+            # The hint only schedules fresh reads; all restrictions remain fresh.
             return admin.filter_catalog(c,link,brand)
         return resolve(api, *context(req))
 

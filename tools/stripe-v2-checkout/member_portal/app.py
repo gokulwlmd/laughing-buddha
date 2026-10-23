@@ -385,8 +385,19 @@ class MemberService:
                       'theme': theme}
 
     def origin(self, req):
-        if req.headers.get('origin') not in (None, self.cfg.public_url):
+        site_id = getattr(req, 'path_params', {}).get('site_id')
+        if req.headers.get('origin') not in (None, *self.portal_origins(site_id)):
             raise HTTPException(403, 'Use this site’s registered portal origin')
+
+    def portal_origins(self, site_id):
+        site = self.admin.get('site', site_id or '') or {}
+        origins = site.get('portal_origins', [])
+        # This deployed storefront is explicitly owned by the FortifyHP client.
+        # Additional clients register exact HTTPS origins in their site record.
+        if site_id == 'fortifyhp' and site:
+            origins = [*origins, 'https://fortifyhp-care.lovable.app']
+        return [self.cfg.public_url, *[o for o in origins if isinstance(o, str)
+            and re.fullmatch(r'https://[A-Za-z0-9.-]+(?::[0-9]+)?', o)]]
 
     def patient(self, site_id, req, credentials):
         self.site(site_id)
@@ -886,6 +897,8 @@ class MemberService:
                 'rule_revision': json.loads(row['rule']).get('revision', 0), 'kind': row['kind'], 'reason': row['reason'], 'clinical_approval': False, 'fulfillment_created': False}
 
     def attach(self, app, receipt_access):
+        from .cors import PortalCORS
+        app.add_middleware(PortalCORS, service=self)
         router = APIRouter(prefix='/api/v1/sites/{site_id}/portal', tags=['Patient portal'])
         owner = APIRouter(prefix='/api/admin/sites/{site_id}/portal', tags=['Site order administration'])
         bearer = HTTPBearer(auto_error=False, scheme_name='PatientSession', description='Site-specific patient access token. Never use payment processor credentials.')
@@ -899,6 +912,19 @@ class MemberService:
             therapy_ids = {p.get('therapy_id') for p in self.admin.records('plan_checkout') if p.get('site_id') == site_id}
             therapies = [{'id': t, 'name': (self.admin.get('therapy', t) or {}).get('name', t)} for t in sorted(therapy_ids) if t]
             return {'site': site, 'therapies': therapies, 'intake_provider_connected': False, 'messaging_provider_connected': False}
+
+        @router.get('/onboarding', summary='Post-checkout account and intake API contract')
+        def onboarding(site_id: str):
+            self.site(site_id)
+            base = '/api/v1/sites/' + site_id + '/portal'
+            return {'version': 1, 'site_id': site_id, 'password_min_length': 12,
+                'enroll_path': base + '/auth/enroll', 'login_path': base + '/auth/login',
+                'claim_path': base + '/auth/claim', 'me_path': base + '/me',
+                'intake_path': base + '/intakes/{order_id}',
+                'intake_submit_path': base + '/intakes/{order_id}/submit',
+                'portal_url': self.cfg.public_url + '/portal/' + site_id,
+                'intake_provider_connected': False,
+                'submission_message': 'Your answers have been saved in your account.'}
 
         @router.post('/auth/login', response_model=AuthResult)
         def login(site_id: str, body: Login, req: Request):
@@ -953,12 +979,23 @@ class MemberService:
         def claim(site_id: str, body: ClaimInvite, patient=Depends(auth)):
             with self.db() as db:
                 db.execute('BEGIN IMMEDIATE')
-                invite = db.execute('SELECT * FROM member_invites WHERE token_hash=? AND site_id=? AND used IS NULL AND expires>?', (digest(body.invite_token), site_id, self.clock())).fetchone()
-                if not invite or invite['customer_id'] != patient['customer_id']:
+                invite = db.execute('SELECT * FROM member_invites WHERE token_hash=? AND site_id=? AND expires>?', (digest(body.invite_token), site_id, self.clock())).fetchone()
+                if not invite:
+                    raise HTTPException(403, 'This invitation cannot be connected to this account')
+                # Separate cart orders may have separate Sticky customer IDs.
+                # Require both the private receipt invitation AND authenticated
+                # account identity; email alone never imports or grants an order.
+                order = db.execute('SELECT payload FROM member_orders WHERE site_id=? AND order_id=?', (site_id, invite['order_id'])).fetchone()
+                contact = json.loads(order['payload']).get('customer', {}) if order else {}
+                if str(contact.get('email', '')).strip().lower() != patient['email'].strip().lower():
                     raise HTTPException(403, 'This invitation cannot be connected to this account')
                 existing = db.execute('SELECT patient_id FROM member_grants WHERE site_id=? AND order_id=?', (site_id, invite['order_id'])).fetchone()
                 if existing and existing['patient_id'] != patient['id']:
                     raise HTTPException(409, 'This order is already assigned to another account')
+                if invite['used'] is not None:
+                    if existing and existing['patient_id'] == patient['id']:
+                        return {'connected': True}
+                    raise HTTPException(403, 'This invitation has already been used')
                 db.execute('INSERT OR IGNORE INTO member_grants VALUES(?,?,?,?,?)', (site_id, invite['order_id'], patient['id'], self.clock(), 'owner_invitation'))
                 db.execute('UPDATE member_invites SET used=? WHERE token_hash=?', (self.clock(), digest(body.invite_token)))
             return {'connected': True}

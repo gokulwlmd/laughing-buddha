@@ -2,7 +2,14 @@
 
 Updated: 23 October 2026. Status: shared backend and Lovable storefront published.
 
-## Latest cart and discount release
+## Two-step checkout and post-payment onboarding
+
+The next checkout release uses Details → Payment, with a large payment panel
+and API-driven account enrollment and saved intake forms after captured orders.
+See [the implementation and API handoff](FORTIFYHP_TWO_STEP_ONBOARDING.md) for
+current verification and publication status.
+
+## Cart and discount release
 
 The current release is documented in [FortifyHP cart and coupons](FORTIFYHP_CART_AND_COUPONS.md).
 Backend commit `128c38e4e6195c1f11d8a79f36a1b3f138a345e9` adds campaign-scoped
