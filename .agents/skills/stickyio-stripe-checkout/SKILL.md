@@ -1,9 +1,68 @@
 ---
 name: stickyio-stripe-checkout
-description: Build, verify and deploy Sticky.io Stripe Connect v2 checkouts with campaign/SKU URLs, server-calculated pricing, Stripe Elements, durable payment state and Fly.io hosting.
+description: Build, verify and deploy Sticky.io Stripe Connect v2 checkouts, shared post-purchase intake, and secure Sticky member password setup for the laughing-buddha platform.
 ---
 
 # Sticky Stripe Connect v2 checkout
+
+
+## Sticky membership and post-purchase account setup
+
+For member login, password setup after purchase, or storefront-to-portal handoff,
+read [Sticky member passwords](../../../docs/STICKY_MEMBER_PASSWORDS.md) and
+[shared post-checkout intake](../../../docs/SHARED_POST_CHECKOUT_INTAKE.md).
+This is the native Sticky Members API, not the BigCommerce Membership Program
+or a third-party membership provider.
+
+The owner chose Sticky as the sole live membership/password provider. Keep
+`MEMBER_IDENTITY_PROVIDER=sticky` in the live configuration; do not fall back to
+local password authentication when Sticky rejects or cannot verify a login.
+Existing local patient IDs, site/order grants and intake drafts remain application
+records; Sticky identity alone never grants another site's patient data.
+
+- Let a new customer choose their Sticky password immediately after a verified
+  captured purchase, without an email activation step. Use the checkout bearer
+  with `GET` / `POST /api/v1/sites/{site}/sessions/{session}/account`; POST accepts
+  only the chosen password. Derive email, customer and order from the verified
+  receipt, never from caller-supplied identifiers. Preserve password whitespace.
+- Use `member_view`, then `member_create` only for a missing member, followed by
+  `member_update` using the initial temporary password returned for that exact
+  receipt. Omit `event_id` to request no membership notification. Keep provider
+  credentials, temporary passwords and member tokens on the backend.
+- Existing members authenticate with their Sticky password. A new purchase is
+  not permission to reset an existing account. Previously auto-created members
+  whose initial credential is unavailable need verified recovery; do not use
+  forgotten-password/reset APIs to bypass proof of ownership.
+- Preserve the durable setup journal. Hold uncertain creation for review; after
+  an uncertain password update, verify by login instead of blindly rewriting.
+  Encrypt bootstrap secrets, remove them after success, and retain the private
+  volume's `member-identity.key` with database backups. Never copy this key or
+  customer credentials into source, reports, browser storage or URLs.
+- Keep portal sessions site-bound, capped by Sticky's expiration and checked
+  against Sticky with the implemented maximum 30-second cache. Logout clears
+  local access and calls Sticky logout. Preserve per-order receipt checks for
+  multi-product purchases rather than importing orders by email alone.
+
+The reusable `member_portal/web/post-checkout.js` component offers password setup
+alongside intake on every storefront already loading it. Update this shared
+component rather than reproducing the flow in each Lovable project. Intake must
+remain usable if account setup fails. Returning members get a portal link.
+Implementation is in `member_portal/identity.py`, `member_portal/app.py`, the
+checkout engine's receipt routes and `demo/session_api.py` under
+`tools/stripe-v2-checkout`.
+
+Verify receipt and site isolation, returning-member password preservation,
+provider uncertainty/restart recovery, session expiry/revocation, no local auth
+fallback, and desktop/mobile intake continuity. Relevant checks are
+`test_sticky_membership.py`, `test_portal_onboarding.py`,
+`test_receipt_intake.py`, `test_site_session_api.py` and
+`qa/post-checkout-intake.spec.cjs`. Consult the release document for current
+image/test evidence. The 24 October 2026 release passed 466 backend tests and
+four shared-component browser checks; hosted provider selection and source
+hashes were verified. A fresh live member/password write was not exercised by
+that verification. Do not claim live end-to-end certification from mock tests
+or repeat a real payment/password change merely to validate a skill update.
+
 
 Use this skill for Sticky-managed Stripe payments, campaign/SKU checkout links, or updates to the existing Fly checkout. Read the [application guide](../../../tools/stripe-v2-checkout/README.md) and [Fly deployment guide](../../../tools/stripe-v2-checkout/FLY.md). For catalog exploration or synthetic billing tests, use [stickyio-catalog-billing](../stickyio-catalog-billing/SKILL.md).
 
