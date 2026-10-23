@@ -205,3 +205,149 @@ with accurate shipment and renewal terms. Preserve the existing Stripe v2
 payment logic in checkout-v9.js. Publish through versioned static assets so the
 payment worker and database can remain in place. See CHECKOUT_REFERENCE_DESIGN.md
 and the final deployment metadata for the implemented scope and verification.
+
+## Patient portal and intake adapters (23 October 2026)
+
+Keep branded patient accounts and records separate per site initially. The owner
+will provide intake and doctor-messaging APIs; use clearly marked backend mock
+questions and messages until then. The medical team will fetch information from
+Sticky, so its intake destination/mapping remains an integration dependency;
+do not pretend a mock submission reached a clinician. The initial isolated
+order demo was rejected by the owner; the real-order decision below supersedes it. Use the same
+site-scoped APIs for the UI and Swagger. Preserve charge-first and individual
+SKU refill rules. No clinical approval or medication release follows from
+payment, billing cadence or completed intake. Real patient authentication,
+medical-data hosting and the paid-but-declined/incomplete intake policy remain
+required before connecting real patients.
+
+
+## Real Sticky member records and configurable requests (23 October 2026)
+
+The owner explicitly rejected demo orders. Member order and subscription views
+must use actual Sticky records, including real Sticky test orders. Use the
+existing campaign and authentication; do not introduce another fake order store.
+Accounts and grants remain separate per site. A public email alone cannot claim
+an order; enrollment comes from an owned completed checkout or an owner-issued,
+order-bound invitation. External Sticky orders require an explicit verified site
+mapping; renewal descendants inherit only the verified parent grant.
+
+The owner approved $1 initial payments AND $1 full subscription renewals when
+checkout testing is enabled. Included intermediate prepaid cycles stay $0.
+Normal prices stay independent; a request may select test mode but cannot choose
+its own amount. Dry Run verification confirmed both two- and four-cycle renewals.
+
+Address updates, card replacement and early-refill requests belong in the portal.
+Current order addresses and future subscription addresses are separate actions.
+Early-refill windows, minimum days, check-ins and cooldowns belong to individual
+SKU policies. Requests go to review and do not themselves bill or ship. Payment
+and included delivery schedules do not establish medical approval.
+
+Card replacement must use a verified Stripe Connect v2 hosted/tokenized flow.
+The available Sticky docs do not establish that replacement contract; leave it
+unavailable until supplied. Intake and doctor messaging remain the explicitly
+requested mock adapters. See the member portal README for exact delivered and
+pending boundaries.
+
+## SKU-bound care checkpoints (23 October 2026)
+
+The owner requested product-relevant mock intake forms and plan-based refill
+options, with one intake at purchase and three check-ins at days 90, 180 and 270
+for a 360-day / 12-month term. Six-month terms use purchase plus day 90;
+one- and three-month terms use the purchase intake. Configure these explicitly
+per master SKU, independently of its billing configuration.
+
+The four template families are weight management (SEMA and TIRZ), Sermorelin,
+Metformin and PT-141. Bind exact known SKUs, including one-time and subscription
+variants; do not guess a questionnaire from an arbitrary SKU or therapy name.
+Each checkpoint owns a separate draft and immutable submitted answers. A paid
+term snapshots its questions and schedule; later master edits apply to new care
+plans. Required previous checkpoints must be completed before requesting the
+current refill. Requests still require review and do not approve medication.
+
+End-to-end testing uses an existing real Sticky Dry Run order. An owner-only,
+time-limited care clock can simulate days within its verified paid term, only
+for a non-shippable Dry Run order. It never advances Sticky billing, creates a
+charge, changes subscription dates or releases fulfillment. Mock submissions
+and simulated requests retain test provenance. Approved clinical questions,
+medical review and the eventual Sticky handoff remain external API work.
+
+
+## Included prepaid claims precede their check-ins (23 October 2026)
+
+This decision supersedes the earlier review-only refill behavior for included
+shipments. After a purchase, the member must complete the initial intake if it
+is missing. The member then claims the next included shipment when its window
+opens, and completes a fresh check-in after that native Sticky order exists.
+For four shipments in a 360-day / 12-month term, claims open on days 80, 170 and
+260 against the original day-90/180/270 anchors. Two shipments in a 180-day /
+six-month term open one claim on day 80. One- and three-month terms have no
+additional included shipment; the portal offers the site's paid checkout
+choices instead. Buying another plan remains an explicit checkout action.
+
+An included claim must consume the exact next $0 native cycle in the existing
+paid prepaid term. It must never create a disconnected order, reset the paid
+term's renewal anchor, or force the next paid renewal. Scope checks cover site,
+patient, original paid term, customer, product, offer, billing model, subscription
+and native lineage. The server journals one intent per term/cycle with stable
+idempotency. A scheduler conflict or uncertain write requires reconciliation;
+it cannot be handled by blindly submitting another order.
+
+Earlier review-only requests and submitted forms remain historical records.
+A claimed shipment gets a fresh immutable submission keyed to its claim and
+verified child order. Old answers do not silently complete that check-in.
+The initial intake and any required earlier claimed-shipment check-ins still
+gate the next claim. All simulated evidence stays distinguishable from live
+clinical evidence, and actual submission timestamps are retained.
+
+The care clock is an owner-only, expiring aid for a verified non-shippable Dry Run
+paid term, shared with that term's included children. Setting it does not mutate
+Sticky; an explicit claim is the separate action that creates a native test
+cycle. Physical fulfillment requires a confirmed clinical/fulfillment hold
+integration before release. Intake and doctor-messaging APIs remain mocked, and
+Stripe Connect v2 saved-card replacement remains unavailable until its secure
+provider contract is established. No medical approval follows from a paid order,
+a completed mock form, or a successful $0 claim.
+
+## Patient presentation and order progress (23 October 2026)
+
+The patient portal should present a simple branded care experience. Keep
+implementation details and Dry Run provenance in staff views and durable
+records, rather than repeating technical notices in patient forms and orders.
+Do not turn a saved answer, paid order or test cycle into a claim of medical
+approval, prescription, shipment or delivered care. Status timelines use actual
+recorded events; disconnected or unknown provider stages remain pending.
+
+Use larger text, clear next actions, generous control sizes and responsive
+layouts. Derive an accessible darker button/text shade for pale brand colors
+without changing the original stored brand color. Unconnected card and messaging
+actions offer the existing support contact rather than pretending to save a card
+or deliver a message.
+
+## Delivery updates and multiple treatment plans (23 October 2026)
+
+Patients need tracking numbers on shipped orders, a clear notification inbox,
+independent refill controls for each purchased treatment, and a doctor-chat box
+in its own section. Use recorded Sticky shipping fields without inventing a
+carrier, arrival date or tracking link. Derive in-portal alerts from authorized
+snapshots and store read receipts per site and patient. A new tracking number is
+a new update; opening an alert must not place an order.
+
+Group included refills by original paid term, with child orders in history.
+Each treatment has its own eligibility, remaining count and explicit action.
+There is no bulk claim action or reuse of another treatment's check-in. Keep
+paid purchase choices separate from included claims.
+
+Until the medical messaging API arrives, the chat composer saves a private draft
+with optimistic revision checks. Do not display a draft as sent or create a
+fictional doctor response. Patient records remain separate across sites.
+
+
+## Preserve portal functionality while redesigning (23 October 2026)
+
+The owner selected action-first option 1, then rejected the reduced standalone
+prototype because it omitted features. Apply that visual direction directly to
+the existing member portal. Preserve all existing screens, actions, site-bound
+records, API integrations and provider limitations. Simplify the default home
+view and keep details accessible; do not replace real state with fixture data.
+Separate purchases of one medication remain separate treatment rows; included
+children group under their paid term. See PORTAL_DESIGN_REFRESH.md for coverage.

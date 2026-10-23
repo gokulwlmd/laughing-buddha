@@ -18,6 +18,7 @@
   </header>
   <nav class="checkout-progress" aria-label="Checkout progress"><ol><li data-step="plan"><span>1</span>Your plan</li><li data-step="details" aria-current="step"><span>2</span>Your details</li><li data-step="payment"><span>3</span>Payment</li></ol></nav>
   <p id="payment-test-notice" class="test-notice" hidden role="note">Live payment test: your card will be charged. No medication will be shipped.</p>
+  <label id="dollar-test-control" class="test-notice" hidden><input id="dollar-test" type="checkbox"> Use $1 test pricing — $1 upfront and each full-term renewal; included prepaid cycles are $0. No medication shipment.</label>
   <div class="page-heading"><h1 id="checkout-heading">Complete your order</h1><p id="checkout-intro">Your plan is selected. Review your details and pay securely.</p></div>
   <section class="layout">
     <article>
@@ -48,7 +49,7 @@
         <div id="express-checkout"></div><div id="payment-element"></div><button id="pay" type="button" disabled>Pay securely</button><p id="payment-terms" class="small payment-terms"></p>
       </section>
       <section id="success" hidden>
-        <div class="check" aria-hidden="true">✓</div><p class="eyebrow">Thank you</p><h2>Your payment is complete</h2><p>Keep your order number for your records.</p><p class="receipt">Order number <strong id="order-id"></strong></p><button id="new-purchase" class="secondary" type="button">Place another order</button><p class="small">Each new order is reviewed and paid for separately.</p>
+        <div class="check" aria-hidden="true">✓</div><p class="eyebrow">Thank you</p><h2>Your payment is complete</h2><p>Keep your order number for your records.</p><p class="receipt">Order number <strong id="order-id"></strong></p><button id="member-portal" type="button" hidden>Open member portal</button><button id="new-purchase" class="secondary" type="button">Place another order</button><p class="small">Each new order is reviewed and paid for separately.</p>
       </section>
     </article>
     <aside aria-label="Your order summary">

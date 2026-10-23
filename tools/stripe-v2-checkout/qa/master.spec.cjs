@@ -24,7 +24,11 @@ test('MST-04 every preset interval can complete a distinct simulated checkout',a
  await prepared(page);await nav(page,'links');const invitation=await page.locator('#link-list a').getAttribute('href');await page.goto(invitation);
  for(const [i,[mid,days]]of [[3,30],[4,90],[5,180],[7,270],[6,360]].entries()){
   if(i){await page.locator('#new-purchase').click();}
-  await expect(page.locator('#contact')).toBeVisible();const values=await page.locator('#selection option').evaluateAll(es=>es.map(e=>e.value));await page.locator('#selection').selectOption(values.find(v=>v.endsWith(':'+mid)));
+  await expect(page.locator('#contact')).toBeVisible();
+  // Details appear while the catalog loads; wait for this actual billing choice.
+  const option=page.locator('#selection option[value$=":'+mid+'"]');
+  await expect(option).toBeAttached();await expect(option).toBeEnabled();
+  await page.locator('#selection').selectOption(await option.getAttribute('value'));
   for(const [k,v]of Object.entries({name:'QA Customer',email:'master-qa@example.invalid',phone:'+12025550100',address:'1 Test Way',city:'San Francisco',region:'CA',postal_code:'94105'})){const field=page.locator('#contact [name='+k+']:enabled');if(k==='region')await field.selectOption(v);else await field.fill(v);}
   await page.locator('#contact button').click();await expect(page.locator('#terms')).toContainText('every '+days+' days');await expect(page.locator('#review-total')).toContainText('449.00');await authorize(page);await page.locator('#pay').click();await expect(page.locator('#success')).toBeVisible();
  }

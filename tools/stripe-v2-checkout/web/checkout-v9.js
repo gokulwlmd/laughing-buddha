@@ -69,6 +69,8 @@ function updateSummary(option,reviewed=false){
 }
 function receipt(result) {
   $('contact').hidden = $('review').hidden = $('payment').hidden = true;
+  $('member-portal').hidden=!managedMatch;
+  $('dollar-test-control').hidden=true;
   $('success').hidden = false; $('order-id').textContent = result.orderId; message('');setStep('success');
   if(result.amount!==undefined){$('total').textContent=money(result.amount,result.currency||'usd');$('total-label').textContent='Total paid';}
 }
@@ -192,6 +194,7 @@ async function initialize() {
     $('sku').textContent = config.sku;
     $('product').textContent = config.checkoutTitle || config.options[0]?.name || config.sku;
     $('payment-test-notice').hidden=!config.paymentTestOnly;
+    $('dollar-test-control').hidden=!config.dollarTestAvailable;
     if (!config.ready) throw new Error(managedMatch ? 'This checkout is not available yet. Please contact the brand for help.' : config.blockedReason);
     if (returnedSecret) {
       message('Checking payment authorization…');
@@ -211,6 +214,7 @@ async function initialize() {
     }
     if (status.status !== 'new'){showPaymentHold(status);return;}
     $('payment-test-notice').hidden=!config.paymentTestOnly;
+    $('dollar-test-control').hidden=!config.dollarTestAvailable;
     const select = $('selection');
     for (const option of config.options) {
       const el = document.createElement('option'); el.value = option.key;
@@ -253,7 +257,8 @@ async function initialize() {
         const selection = form.selection, shipping_id = form.shipping ? Number(form.shipping) : null;
         delete form.selection; delete form.shipping; contact = form;
         message('Calculating your total…');
-        quote = await api('/api/quote', {contact, selection, shipping_id});
+        quote = await api('/api/quote', {contact, selection, shipping_id, dollar_test:$('dollar-test').checked});
+        $('dollar-test').disabled=true;
         const total = money(quote.amount, quote.currency);
         $('total').textContent = total; $('review-total').textContent = total;
         $('terms').textContent = termsFor(quote);
@@ -263,7 +268,7 @@ async function initialize() {
       } catch (error) { message(error.message, true); }
       finally { button.disabled = false; }
     });
-    $('edit').addEventListener('click', () => { $('review').hidden = true; $('contact').hidden = false;setStep('details'); });
+    $('edit').addEventListener('click', () => { $('dollar-test').disabled=false; $('review').hidden = true; $('contact').hidden = false;setStep('details'); });
     $('authorize').addEventListener('click', async () => {
       if (busy) return;
       busy = true; $('authorize').disabled = true;
@@ -294,3 +299,13 @@ $('new-purchase').addEventListener('click', async () => {
 });
 $('summary-toggle').addEventListener('click',()=>{const button=$('summary-toggle'),expanded=button.getAttribute('aria-expanded')!=='true';button.setAttribute('aria-expanded',String(expanded));button.textContent=expanded?'Hide plan details':'View plan details';document.querySelector('aside').toggleAttribute('data-expanded',expanded);});
 initialize();
+
+$('member-portal').addEventListener('click',async()=>{
+ const button=$('member-portal');button.disabled=true;
+ try{const result=await api('/api/portal-enrollment',{});const url=new URL(result.enrollment_url,location.origin);if(url.origin!==location.origin||!url.pathname.startsWith('/portal/'))throw Error('The member portal link could not be verified.');location.assign(url.href);}
+ catch(error){message(error.message,true);button.disabled=false;}
+});
+$('dollar-test').addEventListener('change',()=>{
+ const option=config?.options?.find(o=>o.key===$('selection').value)||config?.options?.[0];
+ if(option)updateSummary($('dollar-test').checked?{...option,basePrice:String(1/(option.prepaidCycles||1)),...(option.prepaidCycles?{upfrontPrice:'1.00'}:{})}:option);
+});

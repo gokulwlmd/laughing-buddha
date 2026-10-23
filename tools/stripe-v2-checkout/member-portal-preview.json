@@ -1,0 +1,127 @@
+{
+  "date": "2026-10-23",
+  "status": "private_preview",
+  "preview_origin": "http://127.0.0.1:8873",
+  "preview_site": "site-8bb7023e-3ca",
+  "source_version": "84cca03d8d4ba54b",
+  "bundle_sha256": "870e82357987c77c6a84412dcd8f48b8121e6d6b463ee27c92801df9b0756efd",
+  "runtime": "Additional private process on existing Fly machine, accessed only through local fly proxy",
+  "real_sticky_orders": true,
+  "synthetic_orders_seeded": false,
+  "checkout_worker_restarted": false,
+  "existing_payment_rows_unchanged": true,
+  "public_checkout_release_pending": true,
+  "tests": {
+    "backend_suite_passed": 386,
+    "additional_refill_concurrency_regression_passed": true,
+    "member_backend_total_passed": 92,
+    "member_browser_cases_passed": 17,
+    "affected_checkout_browser_cases_passed": 18,
+    "javascript_syntax_files_passed": 19,
+    "care_and_security_final_regressions_passed": 17,
+    "provider_cases_passed": 35,
+    "product_intake_template_cases_passed": 2,
+    "master_policy_cases_passed": 7,
+    "native_claim_manager_cases_passed": 8,
+    "design_pass_backend_rerun": true,
+    "member_updates_backend_cases_passed": 7,
+    "home_purchase_grouping_and_retained_filter_passed": true
+  },
+  "provider_verification": {
+    "method": "read-only real order and subscription responses; isolated Dry Run price verification",
+    "dry_run_campaign": 428,
+    "dry_run_orders": [
+      507822,
+      507823,
+      507824,
+      507825,
+      507826,
+      507827,
+      507828,
+      507829
+    ],
+    "real_card_charges_submitted": false
+  },
+  "remaining": [
+    "Stripe Connect v2 saved-card replacement contract",
+    "Medical intake and messaging provider APIs",
+    "Public payment-worker/API release after resolving or explicitly holding open payment forms",
+    "Sticky fulfillment hold/release integration before physical medication claims",
+    "Markrx paid portal store: four checkout plans are private; publish reviewed plans or implement a scoped patient checkout handoff"
+  ],
+  "customer_entry": "/portal/site-8bb7023e-3ca",
+  "staff_controls_separate": true,
+  "preview_checkout_testing_disabled_until_public_release": true,
+  "care_journey": {
+    "configured_master_skus": 40,
+    "template_families": 4,
+    "care_days_12_months": [
+      0,
+      90,
+      180,
+      270
+    ],
+    "care_days_6_months": [
+      0,
+      90
+    ],
+    "actual_sticky_dry_run_order_used": true,
+    "mock_intakes_submitted": 4,
+    "partial_draft_resume_verified": true,
+    "immutable_submissions_verified": true,
+    "request_idempotency_verified": true,
+    "medical_provider_connected": false,
+    "native_claim_skus": 20,
+    "claim_window_days": 10,
+    "claim_days_12_months": [
+      80,
+      170,
+      260
+    ],
+    "claim_days_6_months": [
+      80
+    ],
+    "legacy_refill_review_requests_preserved": 3,
+    "native_zero_dollar_orders_verified": 3,
+    "claim_scoped_checkins_submitted": 3,
+    "initial_intake_preserved": true,
+    "paid_renewal_not_triggered": true,
+    "original_term_anchors_preserved": true,
+    "checkout_rows_unchanged": true
+  },
+  "patient_design": {
+    "status_timeline": true,
+    "technical_notices_staff_only": true,
+    "viewports_verified": [
+      1440,
+      720,
+      390
+    ],
+    "keyboard_dialogs_verified": true,
+    "pale_brand_button_contrast_verified": true,
+    "clinical_shipping_completion_requires_recorded_evidence": true,
+    "recorded_shipment_tracking": true,
+    "scoped_notifications_and_read_receipts": true,
+    "per_treatment_refill_management": true,
+    "doctor_chat_drafts": true,
+    "action_first_existing_portal": true,
+    "existing_features_preserved": true
+  },
+  "presentation_update": {
+    "date": "2026-10-23",
+    "method": "atomic static JS/CSS replacement in existing private release",
+    "worker_restarted": false,
+    "processes_unchanged": true,
+    "health": {
+      "public": 200,
+      "private": 200
+    },
+    "backup_id": "20261023T142736Z-a3404692261e",
+    "sha256": {
+      "portal.js": "397f5cb3d0aa9227b7a39f155b3687267525da36fe00d94fa6ea147400669710",
+      "portal.css": "2277bf0bcb2c9976608e975d7b051c2e4b3bdda4bded2846cfe40646bed7b742"
+    },
+    "authenticated_live_visual_review": false,
+    "review_method": "in-app browser with offline contract fixture and 17 automated member scenarios"
+  }
+}

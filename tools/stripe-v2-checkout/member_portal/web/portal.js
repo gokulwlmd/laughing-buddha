@@ -1,0 +1,541 @@
+(() => {
+  'use strict';
+  const icons = {
+    leaf: '<path d="M19 4c-7-1-13 2-13 8a6 6 0 0 0 6 6c6 0 8-7 7-14Z"/><path d="M5 21 15 10M10 15v-5m0 5h5"/>',
+    home: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z"/>',
+    box: '<path d="m3 7 9-4 9 4v10l-9 4-9-4Z"/><path d="m3 7 9 4 9-4M12 11v10M7 5l10 5"/>',
+    clipboard: '<path d="M9 4H6a2 2 0 0 0-2 2v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V6a2 2 0 0 0-2-2h-3"/><rect x="9" y="2" width="6" height="5" rx="1"/><path d="m8 13 2 2 5-5M8 18h8"/>',
+    chat: '<path d="M21 11a8 8 0 0 1-8 8H7l-4 3V5a2 2 0 0 1 2-2h8a8 8 0 0 1 8 8Z"/><path d="M7 8h9M7 12h6"/>',
+    arrow: '<path d="M4 12h16m-6-6 6 6-6 6"/>',
+    check: '<path d="m5 12 4 4L19 6"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/>',
+    file: '<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8Z"/><path d="M14 3v5h5M9 12h6M9 16h6"/>',
+    people: '<circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 4a3 3 0 0 1 0 6M18 14a5 5 0 0 1 3 4v3"/>',
+    link: '<path d="M14 3h7v7M21 3 11 13M10 5H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/>',
+    shield: '<path d="m12 2 8 4v6c0 5-8 10-8 10S4 17 4 12V6Z"/><path d="m8 12 3 3 5-6"/>',
+    bottle: '<path d="M9 3h6v4l3 4v9a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-9l3-4Z"/><path d="M9 7h6M6 13h12M6 18h12M8 3h8"/>',
+    bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',
+    send: '<path d="m22 2-7 20-4-9L2 9Z"/><path d="m22 2-11 11"/>',
+  };
+  const icon = (name, size = 19) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.file}</svg>`;
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  const money = order => order.currency ? new Intl.NumberFormat('en-US', {style:'currency', currency:order.currency, maximumFractionDigits:2}).format(Number(order.total || 0)) : Number(order.total || 0).toFixed(2)+' (currency unconfirmed)';
+  const date = value => {if(!value)return 'Just now';const parsed=new Date(value);return parsed.toLocaleDateString('en-US',{month:'short',day:'numeric',...(parsed.getFullYear()!==new Date().getFullYear()?{year:'numeric'}:{})});};
+  const textStatus = value => ({paid:'Paid',approved:'Approved',captured:'Paid',active:'Active',held:'Paused',unknown:'Not confirmed',not_connected:'Not sent for review',void_or_refunded:'Voided or refunded',awaiting_check_in:'Check-in needed',needs_information:'More information needed',reviewed:'Reviewed',declined:'Declined',draft:'In progress',not_started:'Not started',not_submitted:'Not submitted',awaiting_review:'Awaiting review',submitted:'Submitted',complete:'Complete'}[value] || String(value || 'Not confirmed').replace(/_/g, ' '));
+  const adminMode=location.pathname.startsWith('/portal-admin/');
+  const state={siteId:decodeURIComponent(location.pathname.split('/')[2]||''),site:null,therapies:[],sites:[],patient:null,token:null,authenticated:false,csrf:null,view:'dashboard',tab:'orders',orders:[],refills:[],overview:null,intake:null,orderId:null,taskId:null,messages:[],notifications:[],unreadCount:0,notificationsError:'',readingNotification:null,messageDraftRevision:0,messageDraftSaved:'',messageDraftLoaded:false,draftSaving:false,draftError:'',draftConflict:false,therapy:'',loading:false,busy:false,error:'',feedback:'',inviteResult:null,inviteToken:null,authMode:'login',dirtyVersion:0,savedVersion:0,saveError:'',saving:false,fieldsError:{},messageDraft:'',messageId:null,sending:false,modal:null,checkoutTesting:null,testingError:'',storePlans:[],storeChoices:{},storeError:'',intakeProviderConnected:false,messagingProviderConnected:false};
+  let generation=0,autosaveTimer=null,savePromise=null,modalOpener=null,modalWasOpen=false;
+  const root=document.getElementById('app');
+  const announce=text=>{document.getElementById('announcer').textContent=text;};
+  const storageKey=siteId=>`member-portal-session:${siteId}`;
+  const inviteKey=siteId=>`member-portal-invite:${siteId}`;
+  const endpoint=(suffix,siteId=state.siteId)=>`/api/v1/sites/${encodeURIComponent(siteId)}/portal${suffix}`;
+  const adminEndpoint=(suffix,siteId=state.siteId)=>`/api/admin/sites/${encodeURIComponent(siteId)}/portal${suffix}`;
+  const query=()=>state.therapy?`?therapy_id=${encodeURIComponent(state.therapy)}`:'';
+  const uid=()=>globalThis.crypto?.randomUUID?.()||`request-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  function errorText(payload){return typeof payload.detail==='string'?payload.detail:payload.detail?.message||payload.message||(typeof payload.error==='string'?payload.error:payload.error?.message)||'The request could not be completed. Please try again.';}
+  async function request(path,options={},context={token:state.token,csrf:state.csrf}){
+    const owner=path.startsWith('/api/admin/');
+    const headers={'Content-Type':'application/json',...(context.token&&!owner?{Authorization:`Bearer ${context.token}`}:{})};
+    if(owner&&context.csrf&&options.method&&options.method!=='GET')headers['X-CSRF-Token']=context.csrf;
+    const response=await fetch(path,{credentials:'same-origin',...options,headers:{...headers,...options.headers}});
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok){const error=new Error(errorText(payload));error.status=response.status;throw error;}
+    return payload;
+  }
+  const notice=(message,type='')=>message?`<div class="notice ${type}" role="${type==='error'?'alert':'status'}">${esc(message)}</div>`:'';
+  const button=(label,action,cls='btn-primary',data='',symbol='')=>`<button type="button" class="btn ${cls}" data-action="${action}" ${data}>${esc(label)}${symbol?icon(symbol,15):''}</button>`;
+  const status=(value,type='neutral')=>`<span class="status ${type}">${esc(value)}</span>`;
+  const pendingOrders=()=>state.orders.filter(order=>order.intake_status!=='submitted');
+  const filteredOrders=()=>state.orders.filter(order=>!state.therapy||order.therapy_id===state.therapy);
+  function careOrders(orders=state.orders){const terms=new Map();for(const order of orders){const key=String(order.care_plan?.term_order_id||order.id),current=terms.get(key);if(!current||String(order.id)===key)terms.set(key,order);}return [...terms.values()];}
+  function careOwner(order){const key=String(order.care_plan?.term_order_id||order.id);return careOrders().find(item=>String(item.care_plan?.term_order_id||item.id)===key)||order;}
+  function subscriptionRows(orders=filteredOrders()){
+    const rows=new Map();
+    const sequence=order=>(order.care_plan?.tasks||[]).findIndex(task=>String(task.claim?.order_id)===String(order.id))+1;
+    for(const order of orders)for(const subscription of order.subscriptions||[]){
+      const key=`${order.care_plan?.term_order_id||order.id}:${subscription.id}`,current=rows.get(key);
+      const newer=!current||sequence(order)>sequence(current.order)||(sequence(order)===sequence(current.order)&&(String(order.created_at||'')>String(current.order.created_at||'')||(order.created_at===current.order.created_at&&String(order.id).localeCompare(String(current.order.id),undefined,{numeric:true})>0)));
+      if(newer)rows.set(key,{order,subscription});
+    }
+    return [...rows.values()];
+  }
+
+  const safeDate=value=>value?date(value):'Not available';
+  function brandStyle(){
+    const color=state.site?.color||'#245844',safe=/^#[0-9a-f]{6}$/i.test(color)?color:'#245844';
+    let rgb=[1,3,5].map(index=>parseInt(safe.slice(index,index+2),16));
+    const luminance=values=>values.map(value=>value/255).map(value=>value<=.04045?value/12.92:((value+.055)/1.055)**2.4).reduce((sum,value,index)=>sum+value*[.2126,.7152,.0722][index],0);
+    // Keep the site's hue, but make white button text legible on pale accents.
+    while(1.05/(luminance(rgb)+.05)<5.5)rgb=rgb.map(value=>Math.floor(value*.94));
+    const accessible='#'+rgb.map(value=>value.toString(16).padStart(2,'0')).join('');
+    document.documentElement.style.setProperty('--brand',accessible);
+    document.documentElement.style.setProperty('--brand-accent',safe);
+    document.documentElement.style.setProperty('--soft',`${safe}0c`);
+  }
+  function brand(){return `<div class="brand"><span class="brand-mark">${icon('leaf',25)}</span><div><div class="brand-name">${esc(state.site?.name||'Your portal')}</div><div class="brand-caption">${adminMode?'Site administration':'Your patient portal'}</div></div></div>`;}
+  function pageHead(eyebrow,title,description,filter=false){return `<header class="page-head"><div><div class="eyebrow">${esc(eyebrow)}</div><h1>${esc(title)}</h1><p>${esc(description)}</p></div>${filter?therapyFilter():''}</header>`;}
+  function therapyFilter(){return `<div class="head-filter"><label for="therapy-filter">Therapy</label><select id="therapy-filter"><option value="">All therapies</option>${state.therapies.map(therapy=>`<option value="${esc(therapy.id)}" ${state.therapy===therapy.id?'selected':''}>${esc(therapy.name)}</option>`).join('')}</select></div>`;}
+  function empty(title,description,symbol='box'){return `<div class="empty">${icon(symbol,30)}<h3>${esc(title)}</h3><p>${esc(description)}</p></div>`;}
+  function stat(value,label,symbol){return `<div class="card stat"><span class="stat-icon">${icon(symbol,19)}</span><div><div class="stat-value">${esc(value)}</div><div class="stat-label">${esc(label)}</div></div></div>`;}
+  function staffBanner(){return adminMode?`<div class="staff-banner" data-testid="staff-banner"><div><strong>Administration · staff only</strong><p>Manage orders and member access for this site.</p></div><a class="btn btn-secondary btn-small" href="/portal/${encodeURIComponent(state.siteId)}">Open patient portal ${icon('arrow',15)}</a></div>`:'';}
+  function renderLogin(){
+    const enroll=!adminMode&&Boolean(state.inviteToken)&&state.authMode!=='login';
+    return `<div class="auth-layout"><aside class="auth-aside">${brand()}<div><h1>${adminMode?'Your site.<br>Your members.<br>All in one place.':'Your care.<br>Your next step.<br>All together.'}</h1><p>${adminMode?'A workspace for your team to manage orders and patient access.':'Follow your orders, manage your subscriptions and stay on top of your next steps.'}</p></div><p class="auth-aside-footer">${icon('shield',22)}<br>${adminMode?'One branded portal. Records kept separate for each site.':'Your care and order details, kept private.'}</p></aside><main class="auth-main"><section class="auth-card"><div class="eyebrow">${adminMode?'Administration · staff only':'Welcome to your portal'}</div><h1>${adminMode?'Sign in to manage orders':enroll?'Create your patient account':'Welcome back.'}</h1><p>${adminMode?'Use your existing checkout admin email and password.':enroll?'Choose a password to keep track of your care and orders.':`Sign in to your ${esc(state.site?.name||'patient')} account.`}</p>${notice(state.error,'error')}<form id="auth-form">${!enroll?'<div class="field"><label for="auth-email">Email address</label><input id="auth-email" name="email" type="email" autocomplete="username" required></div>':''}<div class="field"><label for="auth-password">${enroll?'Choose a password':'Password'}</label><input id="auth-password" name="password" type="password" autocomplete="${enroll?'new-password':'current-password'}" ${enroll?'minlength="12"':''} required>${enroll?'<p class="field-hint">Use at least 12 characters.</p>':''}</div>${enroll?'<div class="field"><label for="auth-confirm">Confirm password</label><input id="auth-confirm" type="password" autocomplete="new-password" minlength="12" required></div>':''}<button type="submit" class="btn btn-primary btn-wide" ${state.busy?'disabled':''}>${state.busy?'Please wait…':enroll?'Create account':'Sign in'} ${icon('arrow',16)}</button></form><p class="auth-footnote">${adminMode?'This view uses your existing owner permissions.':enroll?'Your care and order details, kept private.':'First visit? Open your account setup link to get started.'}</p>${enroll?'<button class="text-button" data-action="use-login">Already have an account? Sign in</button>':''}${adminMode?`<a class="subtle-link" href="/portal/${encodeURIComponent(state.siteId)}">Open patient portal ${icon('arrow',15)}</a>`:''}</section></main></div>`;
+  }
+  function render(){
+    const activeModalId=state.modal?document.activeElement?.id:null;
+    document.body.classList.toggle('patient-mode',!adminMode);
+    document.body.classList.toggle('admin-mode',adminMode);
+    brandStyle();document.title=`${state.site?.name||'Patient portal'} · ${adminMode?'Orders administration':'Patient portal'}`;
+    if(!state.authenticated){root.innerHTML=renderLogin();return;}
+    const nav=adminMode?[['dashboard','home','Overview'],['orders','box','Orders'],['intakes','clipboard','Intake queue'],['refills','clock','Refill requests']]:[['dashboard','home','Overview'],['orders','box','Orders & plans'],['refills','clock','Refills'],['intake','clipboard','Medical intake'],['messages','chat','Messages'],['notifications','bell','Notifications']];
+    const initials=(state.patient?.name||'Account').split(' ').map(item=>item[0]).slice(0,2).join('');
+    root.innerHTML=`<div class="shell"><aside class="sidebar">${brand()}<nav aria-label="${adminMode?'Admin':'Patient'} navigation"><div class="nav-heading">${adminMode?'Manage this site':'Your care, together'}</div><div class="nav-list member-nav">${nav.map(([view,symbol,label])=>`<button class="nav-link ${state.view===view?'active':''}" data-action="navigate" data-view="${view}" ${state.loading?'disabled':''} ${state.view===view?'aria-current="page"':''}>${icon(symbol)}<span>${label}</span>${view==='notifications'&&state.unreadCount?`<span class="nav-unread" aria-hidden="true">${state.unreadCount}</span>`:''}</button>`).join('')}</div></nav><div class="sidebar-bottom">${icon('shield',20)}<p>Orders and records for ${esc(state.site?.name||'this site')}.</p>${adminMode?'<a class="subtle-link" href="/admin">Checkout administration '+icon('link',12)+'</a>':state.site?.support_email?`<a class="subtle-link" href="mailto:${esc(state.site.support_email)}">Contact support ${icon('arrow',12)}</a>`:''}</div></aside><div class="app-body">${staffBanner()}<header class="topbar">${adminMode&&state.sites.length?`<div class="site-control"><label for="site-select">Site</label><select id="site-select">${state.sites.map(site=>`<option value="${esc(site.id)}" ${site.id===state.siteId?'selected':''}>${esc(site.name)}</option>`).join('')}</select></div>`:`<div class="site-name">${esc(state.site?.name||'Patient portal')}</div>`}<div class="top-actions">${!adminMode?`<button class="notification-bell" data-action="navigate" data-view="notifications" aria-label="View notifications${state.unreadCount?`, ${state.unreadCount} unread`:''}" ${state.loading?'disabled':''}>${icon('bell',22)}${state.unreadCount?`<span class="notification-count" aria-hidden="true">${state.unreadCount}</span>`:''}</button>`:''}<button class="signout" data-action="logout">Sign out</button><span class="avatar" aria-label="Your account">${adminMode?'AD':esc(initials)}</span></div></header><main class="main" id="main-content">${notice(state.error,'error')}${notice(state.feedback,'success')}${state.loading?'<section class="card loading-card" role="status"><span class="loader" aria-label="Loading"></span></section>':adminMode?renderAdmin():renderPatient()}<div class="bottom-note">${icon('shield',12)}<span>Your personal health account</span></div></main></div></div>${state.modal?renderModal():''}`;
+    if(state.modal&&modalWasOpen&&activeModalId)document.getElementById(activeModalId)?.focus();
+    if(state.modal&&!modalWasOpen)document.querySelector('.modal input:not(:disabled),.modal textarea:not(:disabled),.modal select:not(:disabled),.modal [data-action="close-modal"]')?.focus();
+    if(!state.modal&&modalWasOpen&&modalOpener){
+      const opener=[...root.querySelectorAll('[data-action]')].find(node=>Object.entries(modalOpener).every(([key,value])=>node.dataset[key]===value));
+      opener?.focus();
+    }
+    modalWasOpen=Boolean(state.modal);
+  }
+  function compactOrder(order){return `<div class="order-row"><div class="product-icon">${icon('bottle',25)}</div><div class="order-detail"><h3>${esc(productTitle(order))}</h3><div class="order-meta">${esc(adminMode?order.plan_name:planSummary(order))}<br>${esc(order.number||order.id)} · ${safeDate(order.created_at)}</div>${status(textStatus(order.payment_status),['paid','captured','approved'].includes(order.payment_status)?'good':'neutral')}</div><div class="order-side"><span class="order-price">${money(order)}</span><button class="text-button" data-action="order-detail" data-order="${esc(order.id)}">View order</button></div></div>`;}
+  function productTitle(order){return String(order.product_name||'Your treatment').split(' · ')[0];}
+  function planSummary(order){
+    const days=order.care_plan?.coverage_days,months={30:1,90:3,180:6,360:12}[days];
+    if(months)return `${months}-month plan`;
+    return order.plan_name&&order.plan_name!==order.sku?order.plan_name:'Your treatment plan';
+  }
+  function nextStep(){
+    for(const order of careOrders()){const initial=order.care_plan?.tasks?.find(task=>task.kind==='initial');if(initial&&initial.status!=='submitted')return{order,task:initial,title:'Complete your health intake',description:`Your ${order.product_name} order is ready for the next step. Tell us about your health to get started.`,label:initial.status==='draft'?'Continue intake':'Start intake',action:'open-care-task'};if(!order.care_plan&&order.intake_status!=='submitted')return{order,title:'Complete your health intake',description:`Tell us about your health for your ${order.product_name} order.`,label:'Start intake',action:'open-intake'};}
+    for(const order of careOrders())for(const task of order.care_plan?.tasks||[]){if(task.claim?.status==='claimed'&&task.status!=='submitted')return{order,task,title:'Your refill is claimed',description:'Complete a quick health check-in for this refill.',label:task.status==='draft'?'Continue check-in':'Complete check-in',action:'open-care-task'};if(task.claim?.available)return{order,task,title:'Your included refill is available',description:`Claim your next ${order.product_name} refill, then complete a short check-in. No extra payment is due.`,label:'Claim included refill',action:'claim-refill'};}
+    return{title:state.orders.length?'You’re up to date.':'Your care starts here.',description:state.orders.length?'Your orders and next refill dates are below. We’ll show your next step when it’s available.':'Your orders, care forms and refill dates will appear here after your purchase.',label:'View orders & plans',action:'navigate'};
+  }
+  function nativeRefills(){const found=new Map();for(const order of filteredOrders())for(const task of order.care_plan?.tasks||[]){if(task.claim?.order_id)found.set(String(task.claim.order_id),{order,task});}return [...found.values()];}
+  function storeSection(){
+    if(state.orders.some(order=>order.care_plan?.tasks?.some(task=>task.claim?.available)))return '';
+    const plans=state.storePlans.filter(plan=>(!state.therapy||plan.therapy_id===state.therapy)&&safeCheckoutUrl(plan.checkout_url)),groups=new Map();
+    plans.forEach(plan=>{const key=plan.therapy_id+':'+plan.product_name;groups.set(key,[...(groups.get(key)||[]),plan]);});
+    if(!plans.length)return '';
+    return `<section class="store-section" aria-labelledby="store-title"><div class="card-heading"><div><h2 id="store-title">Explore treatment plans</h2><p class="small-note">Choose a new plan from ${esc(state.site?.name||'your care provider')}. Prices are shown before you pay.</p></div></div><div class="store-grid">${[...groups].map(([key,choices],index)=>{const plan=choices.find(item=>item.plan_id===state.storeChoices[key])||choices[0];return `<article class="card store-plan"><div class="product-icon">${icon('bottle',24)}</div><p class="eyebrow">${esc(plan.therapy_name)}</p><h3>${esc(plan.product_name)}</h3><label class="small-note" for="store-choice-${index}">Choose your plan</label><select id="store-choice-${index}" data-store-group="${esc(key)}">${choices.map(choice=>`<option value="${esc(choice.plan_id)}" ${choice.plan_id===plan.plan_id?'selected':''}>${esc(choice.plan_name)} · ${money(choice)}</option>`).join('')}</select><strong class="store-price">${money(plan)}</strong><a class="btn btn-secondary btn-small" href="${esc(safeCheckoutUrl(plan.checkout_url))}">View plan ${icon('arrow',15)}</a></article>`;}).join('')}</div></section>`;
+  }
+  function safeCheckoutUrl(value){try{const url=new URL(value,location.origin);return url.protocol==='https:'||(url.origin===location.origin&&url.protocol==='http:')?url.href:'';}catch{return '';}}
+  // Home summarizes verified purchases; all existing order/care actions stay in their original views.
+  function treatmentState(order){
+    const tasks=order.care_plan?.tasks||[],initial=tasks.find(task=>task.kind==='initial');
+    const term=String(order.care_plan?.term_order_id||order.id),related=state.orders.filter(item=>String(item.care_plan?.term_order_id||item.id)===term);
+    const latest=[...related].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))||String(b.id).localeCompare(String(a.id),undefined,{numeric:true}))[0]||order;
+    if(['declined','void_or_refunded','voided','refunded','partially_refunded','chargeback'].includes(latest.payment_status))return {label:'Payment needs attention',type:'pending'};
+    if(!['paid','captured','approved'].includes(latest.payment_status))return {label:'Confirming payment',type:'neutral'};
+    if(['declined','rejected','needs_information'].includes(latest.medical_status)||latest.fulfillment_status==='on_hold')return {label:'Follow-up needed',type:'pending'};
+    if(initial&&initial.status!=='submitted'||!order.care_plan&&order.intake_status!=='submitted')return {label:'Intake needed',type:'pending'};
+    if(tasks.some(task=>task.claim?.status==='claimed'&&task.status!=='submitted'))return {label:'Check-in needed',type:'pending'};
+    if(tasks.some(task=>task.claim?.available))return {label:'Refill available',type:'good'};
+    if(tasks.some(task=>['processing','pending','submitting','uncertain','reconciliation_required'].includes(task.claim?.status)))return {label:'Checking refill',type:'pending'};
+    if(latest.fulfillment_status==='shipped')return {label:'Shipped',type:'good'};
+    if(latest.fulfillment_status==='delivered')return {label:'Delivered',type:'good'};
+    if(['approved','prescribed'].includes(latest.medical_status))return {label:latest.medical_status==='prescribed'?'Prescription recorded':'Review complete',type:'good'};
+    return {label:initial?.status==='submitted'||order.intake_status==='submitted'?'Awaiting review':'View care plan',type:'neutral'};
+  }
+  function homePlanSummary(order){
+    if(!order)return `<aside class="home-plan-summary"><h2>Your care, together</h2><p>Your orders, care forms and delivery updates will appear here after your purchase.</p>${button('Browse your orders','navigate','text-button','data-view="orders"','arrow')}</aside>`;
+    const plan=order.care_plan,refills=plan?.included_claims_enabled?(plan.tasks||[]).filter(task=>task.kind==='check_in'):[];
+    const term=String(plan?.term_order_id||order.id),subscription=subscriptionRows(state.orders).find(row=>String(row.order.care_plan?.term_order_id||row.order.id)===term)?.subscription;
+    const remaining=refills.filter(task=>task.claim?.status!=='claimed').length;
+    const schedule=subscription?.next_billing_date||subscription?.next_cycle_date;
+    return `<aside class="home-plan-summary"><h2>Your plan</h2><p class="home-plan-name">${esc(productTitle(order))} · ${esc(planSummary(order))}</p><dl class="home-plan-facts">${refills.length?`<div><dt>Included in your purchase</dt><dd>${refills.length+1} deliveries</dd><dd class="small-note">${remaining} included refill${remaining===1?'':'s'} remaining</dd></div>`:`<div><dt>Order total</dt><dd>${money(order)}</dd></div>`}${subscription?.status==='held'?'<div><dt>Subscription</dt><dd>Paused</dd></div>':schedule?`<div><dt>${subscription.next_billing_date?'Next payment':'Next scheduled date'}</dt><dd>${safeDate(schedule)}</dd></div>`:`<div><dt>Order placed</dt><dd>${safeDate(order.created_at)}</dd></div>`}</dl>${button('Manage plan','order-detail','text-button',`data-order="${esc(order.id)}"`,'arrow')}</aside>`;
+  }
+  function homeTreatments(){
+    const terms=careOrders();
+    return `<section class="home-treatments" aria-labelledby="home-treatments-title"><div class="card-heading"><h2 id="home-treatments-title">Your treatments</h2>${button('View all orders','navigate','text-button','data-view="orders"','arrow')}</div>${terms.length?`<div class="treatment-table" role="table" aria-label="Your treatments"><div class="treatment-table-head" role="row"><span role="columnheader">Medication</span><span role="columnheader">Plan</span><span role="columnheader">Status</span><span role="columnheader"><span class="sr-only">Details</span></span></div>${terms.map(order=>{const current=treatmentState(order);return `<div class="treatment-summary-row" role="row" data-term-order="${esc(order.id)}"><div class="treatment-medication" role="cell"><strong>${esc(productTitle(order))}</strong><span>Order ${esc(order.number||order.id)} · ${safeDate(order.created_at)}</span></div><div class="treatment-plan" role="cell">${esc(planSummary(order))}</div><div class="treatment-state" role="cell">${status(current.label,current.type)}</div><div class="treatment-action" role="cell">${button('View treatment','order-detail','text-button',`data-order="${esc(order.id)}"`,'arrow')}</div></div>`;}).join('')}</div>`:empty('No treatments yet','Your purchased plans will appear here. Every order stays available in Orders & plans.','bottle')}</section>`;
+  }
+  function renderPatient(){if(state.view==='refills')return renderRefills();if(state.view==='notifications')return renderNotifications();
+    if(state.view==='orders')return renderOrders();
+    if(state.view==='intake')return renderIntake();
+    if(state.view==='messages')return renderMessages();
+    const latest=[...state.orders].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))||String(b.id).localeCompare(String(a.id),undefined,{numeric:true}))[0];
+    const next=nextStep(),featured=next.order||(latest?careOwner(latest):null),data=next.order?`data-order="${esc(next.order.id)}"${next.task?` data-task="${esc(next.task.id)}"`:''}`:'data-view="orders"';
+    return `<section class="care-home"><header class="home-title"><p class="home-greeting">Welcome${state.patient?.name?', '+esc(state.patient.name.split(' ')[0]):''}.</p><h1>Your next step</h1></header><section class="home-next-step" aria-label="Your next care action"><div class="welcome-card home-next-main"><p class="eyebrow">${featured?`${esc(productTitle(featured))} · ${esc(planSummary(featured))}`:'Your patient portal'}</p><h2>${esc(next.title)}</h2><p>${esc(next.description)}</p>${next.action==='claim-refill'?'<p class="home-included-note">Included in your plan · <strong>$0 additional charge</strong></p>':''}${button(next.label,next.action,'btn-light',data,'arrow')}</div>${homePlanSummary(featured)}</section>${homeTreatments()}${latest?`<section class="home-latest overview-progress" aria-label="Latest order progress"><div class="card-heading"><div><h2>Your latest order</h2><p class="small-note">${esc(productTitle(latest))} · Order ${esc(latest.number||latest.id)}</p></div>${button('View order','order-detail','text-button',`data-order="${esc(latest.id)}"`,'arrow')}</div>${orderProgress(latest)}${shipmentCard(latest)}</section>`:''}<div class="home-links">${button('Message care team','navigate','text-button','data-view="messages"','chat')}${button('Manage refills','navigate','text-button','data-view="refills"','clock')}${button(state.unreadCount?`Updates (${state.unreadCount} unread)`:'View updates','navigate','text-button','data-view="notifications"','bell')}</div></section>`+storeSection();
+  }
+  function renderOrders(){
+    return pageHead('Your purchases','Orders & plans','Manage the orders and subscriptions linked to this site.',true)+`<nav class="tab-nav" aria-label="Order views">${[['orders','Orders'],['subscriptions','Subscriptions'],['refills','Refill history']].map(([tab,label])=>`<button data-action="order-tab" data-tab="${tab}" class="${state.tab===tab?'active':''}" ${state.tab===tab?'aria-current="page"':''}>${label}</button>`).join('')}</nav><div class="sync-note"><span>Statuses reflect the latest recorded update.</span><button class="text-button" data-action="refresh">Refresh view</button></div>${state.tab==='orders'?`<div class="list-orders">${filteredOrders().map(fullOrder).join('')||'<section class="card">'+empty('No orders to show','There are no linked orders for this therapy.')+'</section>'}</div>`:state.tab==='subscriptions'?`<div class="list-orders">${subscriptionRows().map(({order,subscription})=>subscriptionCard(order,subscription)).join('')||'<section class="card">'+empty('No subscriptions','Your recurring plans will appear here. One-time purchases do not automatically renew.','clock')+'</section>'}</div>`:refillHistory()}${storeSection()}`;
+  }
+  function careTask(orderId,taskId){return state.orders.find(order=>order.id===orderId)?.care_plan?.tasks?.find(task=>task.id===taskId);}
+  function claimRequestId(orderId,taskId){const key=`member-claim:${state.siteId}:${orderId}:${taskId}`;let id=sessionStorage.getItem(key);if(!id){id=uid();sessionStorage.setItem(key,id);}return id;}
+  function intakePath(orderId=state.orderId,taskId=state.taskId){return taskId?`/orders/${encodeURIComponent(orderId)}/care-tasks/${encodeURIComponent(taskId)}/intake`:`/intakes/${encodeURIComponent(orderId)}`;}
+  function careTimeline(order){
+    const plan=order.care_plan;
+    if(plan&&!plan.tasks?.length)return `<section class="care-journey"><h3>Your next steps</h3><p class="small-note">We’re confirming your refill schedule. Contact support if you need help.</p></section>`;
+    if(!plan?.tasks?.length)return `<section class="care-journey"><div class="card-heading"><h3>Your health intake</h3></div><p class="small-note">${order.intake_status==='submitted'?'Your answers are saved.':'Complete your intake for this order. Your progress saves as you go.'}</p><div class="action-row">${button(order.intake_status==='submitted'?'View intake':'Start intake','open-intake','btn-secondary btn-small',`data-order="${esc(order.id)}"`)}</div></section>`;
+    let refillNumber=0;
+    return `<section class="care-journey" data-care-order="${esc(order.id)}"><div class="card-heading"><div><h3>Your care & refills</h3><p class="small-note">Complete your intake first. Claim each included refill when it opens, then complete its check-in.</p></div></div><ol class="care-timeline">${plan.tasks.map(task=>{
+      const initial=task.kind==='initial',submitted=task.status==='submitted',claim=task.claim||null,claimed=claim?.status==='claimed',held=claim&&['processing','pending','submitting','uncertain','reconciliation_required'].includes(claim.status),claimAvailable=claim?.available&&!held&&!claimed,locked=initial?!task.can_open:claim?!claimed:!task.can_open,label=initial?'Health intake':`Included refill ${++refillNumber}`,stateLabel=submitted?'Complete':held?'Checking claim':claimed?'Check-in needed':claimAvailable?'Available':claim?.status==='unavailable'?'Needs attention':task.status==='draft'?'In progress':initial?'To do':'Upcoming';
+      const canForm=task.can_open&&(initial||!claim||claimed||submitted),openDate=claim?.opens_at||task.opens_at||task.due_date;
+      return `<li class="care-task ${submitted?'complete':locked&&!claimAvailable?'locked':'available'}" data-care-task="${esc(task.id)}" data-care-day="${Number(task.day_offset)||0}"><span class="care-task-dot">${submitted?icon('check',14):locked&&!claimAvailable?icon('lock',13):icon('clipboard',14)}</span><div class="care-task-content"><div class="care-task-heading"><h4>${esc(label)}</h4>${status(stateLabel,submitted?'good':claimAvailable||claimed?'pending':'neutral')}</div><p class="care-task-date">${initial?'After your first order':`Available ${safeDate(openDate)}`}</p><p class="small-note">${submitted?'Your answers are saved for this order.':held?'We’re checking your refill claim. Please wait for its status before trying again.':claimed?'Your refill is claimed. Complete the health check-in for this order.':claimAvailable?'Included in your plan · $0 due today. Complete a short check-in after claiming.':initial?'Tell us about your health. You can save and return anytime.':esc(claim?.reason||'We’ll make this refill available here when it’s time.')}</p>${claimed&&claim.order_id?`<p class="care-refill-state">Refill order ${esc(claim.order_id)}</p>`:''}<div class="action-row">${canForm?button(submitted?'View answers':task.can_submit===false?'View saved answers':task.status==='draft'?'Continue form':initial?'Start intake':'Complete check-in','open-care-task','btn-secondary btn-small',`data-order="${esc(order.id)}" data-task="${esc(task.id)}"`):''}${claimAvailable?button('Claim included refill','claim-refill','btn-primary btn-small',`data-order="${esc(order.id)}" data-task="${esc(task.id)}"`):held?button(state.busy?'Checking…':'Check status','check-claim','btn-secondary btn-small',`data-order="${esc(order.id)}" data-task="${esc(task.id)}" ${state.busy?'disabled':''}`):''}</div></div></li>`;
+    }).join('')}</ol></section>`;
+  }
+  function careOverview(){return pageHead('Your care, step by step','Intake & check-ins','Your health forms and included refills, in one place.')+`<div class="list-orders">${careOrders().map(order=>`<article class="card card-pad"><div class="card-heading"><div><h2>${esc(adminMode?order.product_name:productTitle(order))}</h2><p class="small-note">${esc(adminMode?order.plan_name:planSummary(order))} · Order ${esc(order.number||order.id)}</p></div></div>${careTimeline(order)}</article>`).join('')||'<section class="card">'+empty('No care plans yet','Your care steps will appear after your first order.','clipboard')+'</section>'}</div>`;}
+  function relatedCare(order){const owner=careOwner(order),task=owner.care_plan?.tasks?.find(item=>String(item.claim?.order_id)===String(order.id));return `<section class="care-journey"><p class="small-note">Included refill from order ${esc(owner.number||owner.id)}.</p>${task?.can_open?`<div class="action-row">${button(task.status==='submitted'?'View check-in':'Complete check-in','open-care-task','btn-secondary btn-small',`data-order="${esc(owner.id)}" data-task="${esc(task.id)}"`)}</div>`:''}</section>`;}
+  function orderProgress(order){
+    const tasks=careOwner(order).care_plan?.tasks||[];
+    const refillTask=tasks.find(task=>String(task.claim?.order_id)===String(order.id));
+    const intakeTask=refillTask||tasks.find(task=>task.kind==='initial');
+    const paid=['paid','captured','approved'].includes(order.payment_status);
+    const intakeDone=(intakeTask?.intake_status||intakeTask?.status||order.intake_status)==='submitted';
+    const reviewed=['approved','prescribed'].includes(order.medical_status);
+    const prescribed=order.medical_status==='prescribed';
+    const shipped=['shipped','delivered'].includes(order.fulfillment_status);
+    const delivered=order.fulfillment_status==='delivered';
+    const paymentIssue=['declined','void_or_refunded','voided','refunded','partially_refunded','chargeback'].includes(order.payment_status);
+    const reviewIssue=['declined','rejected','needs_information'].includes(order.medical_status);
+    const stages=[
+      {key:'payment',label:'Order received',done:paid,copy:paid?'Payment confirmed':paymentIssue?'Payment needs attention':'Confirming payment',date:paid?order.created_at:null},
+      {key:'intake',label:refillTask?'Refill check-in':'Health intake',done:intakeDone,copy:intakeDone?'Your answers are saved':paid?'Complete your health form':'After your order is confirmed',date:intakeDone?intakeTask?.submitted_at:null},
+      {key:'review',label:'Medical review',done:reviewed,copy:reviewed?'Review complete':reviewIssue?'Follow-up needed':intakeDone?'Awaiting review':'After your health form'},
+      {key:'prescription',label:'Prescription',done:prescribed,copy:prescribed?'Prescription confirmed':'After medical approval'},
+      {key:'shipping',label:'Shipping',done:shipped,copy:delivered?'Delivered':shipped?'On its way':'Tracking will appear here'}
+    ];
+    const firstPending=stages.findIndex(stage=>!stage.done);
+    const current=(paymentIssue||reviewIssue||order.fulfillment_status==='on_hold')?-1:firstPending;
+    const heading=paymentIssue?'Payment needs attention':reviewIssue?'A follow-up is needed':order.fulfillment_status==='on_hold'?'Your order is on hold':delivered?'Your order has arrived':shipped?'Your order is on its way':!paid?'Confirming your order':!intakeDone?(refillTask?'Your refill check-in is next':'Your health intake is next'):!reviewed?'Awaiting medical review':!prescribed?'Prescription is the next step':'Preparing for shipping';
+    const detail=paymentIssue||reviewIssue||order.fulfillment_status==='on_hold'?'Contact support for help with the next step.':shipped?'Check this page for your order updates.':!intakeDone?'Your progress saves as you go. Take your time and return whenever you need.':'Your completed steps and what comes next are shown below.';
+    return `<section class="order-progress" aria-labelledby="progress-title-${esc(order.id)}"><div class="order-progress-header"><div><p class="eyebrow">Order status</p><h3 id="progress-title-${esc(order.id)}">${esc(heading)}</h3></div></div><p class="order-progress-note">${esc(detail)}</p><ol class="order-progress-list" aria-label="Order status timeline">${stages.map((stage,index)=>{
+      const value=stage.done?'complete':index===current?'current':'upcoming';
+      return `<li class="order-progress-step ${value}" data-stage="${stage.key}" data-state="${value}" ${value==='current'?'aria-current="step"':''}><span class="order-progress-marker" aria-hidden="true">${stage.done?icon('check',18):index+1}</span><div class="order-progress-copy"><span class="sr-only">${stage.done?'Complete.':value==='current'?'Next step.':'Upcoming.'}</span><h4>${esc(stage.label)}</h4><p>${esc(stage.copy)}</p>${stage.date?`<time datetime="${esc(stage.date)}">${safeDate(stage.date)}</time>`:''}</div></li>`;
+    }).join('')}</ol></section>`;
+  }
+  function fullOrder(order){
+    const refill=order.refill||{},primary=careOwner(order).id===order.id,subscriptions=subscriptionRows().filter(row=>String(row.order.id)===String(order.id));
+    return `<article class="card full-order" id="order-${esc(order.id)}"><div class="order-head"><div class="product-icon">${icon('bottle',25)}</div><div class="order-detail"><div class="order-id">${esc(order.number||order.id)} · ${safeDate(order.created_at)}</div><h3>${esc(productTitle(order))}</h3><div class="order-meta">${esc(order.therapy_name)} · ${esc(adminMode?order.plan_name:planSummary(order))}</div></div><div class="order-side"><span class="order-price">${money(order)}</span>${status(textStatus(order.payment_status),['paid','captured','approved'].includes(order.payment_status)?'good':'neutral')}</div></div>${orderProgress(order)}${shipmentCard(order)}<div class="order-actions"><div><p class="small-note">${order.care_plan?'View your intake and refill schedule.':esc(refill.reason||'Your next refill date will appear here.')}</p>${!order.care_plan&&refill.next_date?`<p class="small-note">Next eligible date: ${safeDate(refill.next_date)}</p>`:''}<p class="refresh-state">Last updated ${safeDate(order.last_synced_at)}</p></div><div class="action-row">${button('Intake & check-ins','care-overview','btn-secondary btn-small',`data-order="${esc(order.id)}"`)}${!order.care_plan&&refill.eligible?button('Request refill','request-refill','btn-primary btn-small',`data-order="${esc(order.id)}" data-sku="${esc(order.sku)}"`):''}${refill.early_allowed&&(!order.care_plan||refill.task_id)?button('Request early refill','early-refill','btn-secondary btn-small',`data-order="${esc(order.id)}"`):''}${order.address_update_available?button('Update delivery address','update-address','btn-secondary btn-small',`data-order="${esc(order.id)}"`):''}${button('Update payment card','payment-method','btn-secondary btn-small',`data-order="${esc(order.id)}"`)}</div></div>${primary?careTimeline(order):relatedCare(order)}${subscriptions.length?`<div class="line-subscriptions">${subscriptions.map(({subscription})=>subscriptionDetails(order,subscription)).join('')}</div>`:''}</article>`;
+  }
+  function subscriptionDetails(order,subscription){const included=order.care_plan?.included_claims_enabled&&order.care_plan.tasks?.some(task=>task.kind==='check_in');return `<div class="order-item"><div class="card-heading" style="margin-bottom:10px"><h3>Subscription</h3>${status(textStatus(subscription.status),subscription.status==='active'?'good':'neutral')}</div><dl class="subscription-facts"><div><dt>Product</dt><dd>${esc(productTitle(order))}</dd></div><div><dt>Plan</dt><dd>${esc(adminMode?order.plan_name:planSummary(order))}</dd></div><div><dt>${subscription.next_billing_date?'Next payment':included?'Next included refill':'Next scheduled date'}</dt><dd>${safeDate(subscription.next_billing_date||subscription.next_cycle_date)}</dd></div></dl><p class="small-note">${included?'Your included refills are already paid for. A new payment is due when your full plan renews.':'Your next payment follows the subscription schedule shown above.'}</p><div class="action-row">${(subscription.actions||[]).filter(action=>['pause','resume'].includes(action)).map(action=>button(action==='pause'?'Pause subscription':'Resume subscription','subscription-action','btn-secondary btn-small',`data-order="${esc(order.id)}" data-subscription="${esc(subscription.id)}" data-subaction="${action}"`)).join('')}${subscription.address_update_available?button('Future delivery address','subscription-address','btn-secondary btn-small',`data-order="${esc(order.id)}" data-subscription="${esc(subscription.id)}"`):''}</div></div>`;}
+  function subscriptionCard(order,subscription){return `<article class="card full-order subscription-card"><div class="order-id">Order ${esc(order.number||order.id)}</div>${subscriptionDetails(order,subscription)}</article>`;}
+  function refillHistory(){const refills=nativeRefills(),old=state.refills.filter(item=>!state.therapy||state.orders.some(order=>order.id===item.order_id&&order.therapy_id===state.therapy));return `<section class="card card-pad"><div class="card-heading"><h2>Your included refills</h2></div>${refills.length?refills.map(({order,task})=>`<article class="refill-row"><div><h3>${esc(adminMode?order.product_name:productTitle(order))}</h3><p>Order ${esc(task.claim.order_id)} · Included in your plan</p><p>${task.status==='submitted'?'Your health check-in is complete.':'Complete your health check-in for this refill.'}</p>${task.can_open?button(task.status==='submitted'?'View check-in':'Complete check-in','open-care-task','btn-secondary btn-small',`data-order="${esc(order.id)}" data-task="${esc(task.id)}"`):''}</div>${status(task.status==='submitted'?'Check-in complete':'Check-in needed',task.status==='submitted'?'good':'pending')}</article>`).join(''):empty('No refills claimed yet','Your included refills will appear here after you claim them.','box')}</section>${old.length?refillList(old):''}`;}
+  function refillList(requests){return `<section class="card card-pad"><div class="card-heading"><h2>Refill requests</h2></div>${requests.length?requests.map(item=>{const order=state.orders.find(order=>order.id===item.order_id);return `<article class="refill-row"><div><h3>${esc(order?.product_name||item.sku)}</h3><p>Order ${esc(order?.number||item.order_id)} · Requested ${safeDate(item.created_at)}</p>${item.task_id?`<p>${esc(careTask(item.order_id,item.task_id)?.label||'Scheduled care check-in')}</p>`:''}<p>${adminMode?(item.test_only?'Payment-test product; no medication will be shipped.':'A request is separate from medical approval, billing and fulfillment.'):'Follow the status of your refill request here.'}</p></div>${status(textStatus(item.status),item.status==='completed'?'good':'pending')}</article>`;}).join(''):empty('No refill requests','When a product becomes eligible, request a refill from its order.','clipboard')}</section>`;}
+  function renderModal(){const modal=state.modal;return `<div class="modal-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="action-title"><div class="eyebrow">Review your request</div><h2 id="action-title">${esc(modal.title)}</h2><p>${esc(modal.description)}</p>${notice(state.error,'error')}${modal.kind==='clock'?`<div class="field"><label for="care-simulation-day">Preview timeline</label><select id="care-simulation-day"><option value="off" ${modal.body.day_offset===null?'selected':''}>Use actual dates (simulation off)</option>${modal.days.map(day=>`<option value="${day}" ${modal.body.day_offset===day?'selected':''}>Day ${day}${day===0?' · initial intake':' · check-in'}</option>`).join('')}</select></div>`:modal.kind==='address'?addressFields(modal.address,modal.scope==='subscription'):modal.kind==='early'||modal.kind==='review'?`<div class="field"><label for="action-reason">${modal.kind==='early'?'Reason for your early refill request':'Review note'}</label><textarea id="action-reason" maxlength="1000" ${modal.kind==='early'?'required':''}>${esc(modal.reason||'')}</textarea><p class="field-hint">${modal.kind==='early'?'Describe the timing or delivery issue. Do not include sensitive medical details.':'This records an operational review, not a prescription or clinical approval.'}</p></div>`:''}<div class="action-row">${button(modal.readOnly?'Close':'Go back','close-modal','btn-secondary')}${modal.support&&state.site?.support_email?`<a class="btn btn-primary" href="mailto:${esc(state.site.support_email)}">Contact support</a>`:''}${modal.readOnly?'':button(state.busy?'Submitting…':modal.label,'confirm-action','btn-primary',state.busy?'disabled':'')}</div></section></div>`;}
+  function renderMessages(){
+    const connected=state.messagingProviderConnected,dirty=state.messageDraft!==state.messageDraftSaved;
+    return pageHead('Your care team','Chat with your doctor','A dedicated space for your care conversations.')+`<div class="message-layout"><section class="card doctor-chat"><div class="message-header"><div class="product-icon">${icon('chat',26)}</div><div><h2>${connected?'Your care conversation':'Your message draft'}</h2><p>${connected?'Send a message to your care team.':'Save your message here to finish later.'}</p></div></div>${connected?`<div class="message-list" id="message-list">${state.messages.length?state.messages.map(message=>`<article class="message ${message.sender==='patient'?'patient':''}"><div class="message-name">${message.sender==='patient'?'You':'Care team'}</div><div class="bubble">${esc(message.body)}</div><div class="message-date">${safeDate(message.created_at)}</div></article>`).join(''):empty('Start a conversation','Your messages with your care team will appear here.','chat')}</div>`:''}<form id="message-form" class="message-compose"><label for="message-body">Your message</label><textarea id="message-body" maxlength="2000" aria-describedby="message-draft-status" ${state.sending||state.draftSaving?'disabled':''}>${esc(state.messageDraft)}</textarea><div id="message-draft-error">${notice(state.draftError,'error')}${state.draftConflict?button('Load saved draft','reload-message-draft','btn-secondary'):''}</div><div class="compose-footer"><div class="message-save-meta">${!connected?'<span class="draft-mode-label">Draft · not sent</span>':''}<span id="message-draft-status" class="saved-state" aria-live="polite">${state.draftSaving?'Saving draft…':state.draftError?'Draft not saved':dirty?'Unsaved changes':state.messageDraftLoaded&&state.messageDraftSaved?'Draft saved':'Up to 2,000 characters'}</span></div><div class="action-row">${button(state.draftSaving?'Saving…':'Save draft','save-message-draft','btn-secondary',state.draftSaving||state.sending?'disabled':'')}${connected?`<button class="btn btn-primary" type="submit" ${state.sending||state.draftSaving||!state.messageDraft.trim()?'disabled':''}>${state.sending?'Sending…':'Send message'}</button>`:''}</div></div></form></section><aside class="card card-pad chat-help"><h2>Need help with an order?</h2><p class="small-note">Your order details and refill dates are available in your account.</p><div class="action-row">${button('View my orders','navigate','btn-secondary','data-view="orders"')}${state.site?.support_email?`<a class="subtle-link" href="mailto:${esc(state.site.support_email)}">Contact support ${icon('arrow',16)}</a>`:''}</div></aside></div>`;
+  }
+  function shipmentCard(order){
+    if(!order.tracking_number&&!order.shipping_date&&!['shipped','delivered'].includes(order.fulfillment_status))return '';
+    return `<section class="shipment-card" data-shipment-order="${esc(order.id)}" aria-labelledby="shipment-title-${esc(order.id)}"><div class="shipment-icon">${icon('box',27)}</div><div><h3 id="shipment-title-${esc(order.id)}">${order.fulfillment_status==='delivered'?'Your delivery':'Shipment details'}</h3><dl class="shipment-facts">${order.tracking_number?`<div><dt>Tracking number</dt><dd class="tracking-number">${esc(order.tracking_number)}</dd></div>`:'<div><dt>Tracking</dt><dd>Your tracking number will appear here when available.</dd></div>'}${order.shipping_date?`<div><dt>Shipped on</dt><dd><time datetime="${esc(order.shipping_date)}">${safeDate(order.shipping_date)}</time></dd></div>`:''}</dl></div></section>`;
+  }
+  function refillPlanOptions(order){
+    let plans=state.storePlans.filter(plan=>plan.therapy_id===order.therapy_id&&safeCheckoutUrl(plan.checkout_url));
+    plans=plans.filter(plan=>String(plan.product_name).split(' · ')[0]===productTitle(order));
+    if(!plans.length)return '';
+    const key=`refill:${order.id}`,selected=plans.find(plan=>plan.plan_id===state.storeChoices[key])||plans[0];
+    return `<details class="refill-plan-options"><summary>Explore another ${esc(productTitle(order))} plan</summary><p class="small-note">These are separate purchases. Review the price before continuing.</p><label for="refill-option-${esc(order.id)}">Choose a plan</label><select id="refill-option-${esc(order.id)}" data-store-group="${esc(key)}">${plans.map(plan=>`<option value="${esc(plan.plan_id)}" ${plan.plan_id===selected.plan_id?'selected':''}>${esc(plan.plan_name)} · ${money(plan)}</option>`).join('')}</select><div class="refill-option-action"><strong>${money(selected)}</strong><a class="btn btn-secondary" href="${esc(safeCheckoutUrl(selected.checkout_url))}">View this plan ${icon('arrow',16)}</a></div></details>`;
+  }
+  function renderRefills(){
+    const orders=careOrders(filteredOrders());
+    return pageHead('Your ongoing care','Manage your refills','Each treatment has its own refill schedule. Choose the treatment you want to manage.',true)+`<div class="refill-plans">${orders.length?orders.map(refillPlanCard).join(''):`<section class="card">${empty('Your refills will appear here','After your first order, you can follow the refill schedule for each treatment.','clock')}</section>`}</div>`;
+  }
+  function refillPlanCard(order){
+    const native=order.care_plan?.included_claims_enabled===true,tasks=(order.care_plan?.tasks||[]).filter(task=>task.kind==='check_in'),initial=order.care_plan?.tasks?.find(task=>task.kind==='initial'),claimed=tasks.filter(task=>task.claim?.status==='claimed'),remaining=tasks.length-claimed.length;
+    const held=['pending','processing','submitting','uncertain','reconciliation_required'];
+    const needsCheckIn=native&&claimed.find(task=>task.status!=='submitted'),pending=native&&tasks.find(task=>held.includes(task.claim?.status)),available=native&&tasks.find(task=>task.claim?.available&&!held.includes(task.claim?.status)&&task.claim?.status!=='claimed'),next=tasks.find(task=>task.claim?.status!=='claimed');
+    let title='',copy='',action='',task=null;
+    if(initial&&initial.status!=='submitted'){title='Complete your first health intake';copy='Your health intake is the first step for this treatment.';task=initial;action=initial.can_open?button(initial.status==='draft'?'Continue intake':'Start intake','open-care-task','btn-primary',`data-order="${esc(order.id)}" data-task="${esc(task.id)}"`):'';}
+    else if(needsCheckIn){task=needsCheckIn;title='Your refill is claimed';copy=`Complete the health check-in for refill order ${task.claim.order_id}.`;action=task.can_open?button(task.status==='draft'?'Continue check-in':'Complete check-in','open-care-task','btn-primary',`data-order="${esc(order.id)}" data-task="${esc(task.id)}"`):'';}
+    else if(pending){task=pending;title='We’re confirming your refill';copy='Check the status of your existing claim before trying again.';action=button('Check claim status','check-claim','btn-secondary',`data-order="${esc(order.id)}" data-task="${esc(task.id)}" ${state.busy?'disabled':''}`);}
+    else if(available){task=available;title='Your included refill is ready';copy='Included in this plan · $0 due today. Complete a short check-in after claiming.';action=button('Claim included refill','claim-refill','btn-primary',`data-order="${esc(order.id)}" data-task="${esc(task.id)}"`);}
+    else if(native&&next){title='Your next included refill';copy=next.claim?.opens_at?`Available ${safeDate(next.claim.opens_at)}.`:next.claim?.reason||'Your next refill date will appear here.';}
+    else if(native&&tasks.length){title='All included refills claimed';copy='You can review each refill and its health check-in below.';}
+    else if(tasks.length){task=tasks.find(item=>item.refill?.eligible)||tasks.find(item=>item.can_open&&item.status!=='submitted')||tasks.find(item=>item.status!=='submitted')||tasks.at(-1);if(task.refill?.eligible){title='Request a refill review';copy='Your health check-in is complete. Request a review for this treatment; no payment or shipment is created.';action=button('Request refill review','request-refill','btn-primary',`data-order="${esc(order.id)}" data-task="${esc(task.id)}"`);}else if(task.can_open&&task.status!=='submitted'){title='Your health check-in is next';copy='Complete the check-in for this treatment to see its next refill step.';action=button(task.status==='draft'?'Continue check-in':'Complete check-in','open-care-task','btn-primary',`data-order="${esc(order.id)}" data-task="${esc(task.id)}"`);}else{title='Your next refill review';copy=task.refill?.reason||(task.opens_at?`Health check-in available ${safeDate(task.opens_at)}.`:'Your next eligible date will appear here.');}}
+    else{title=order.refill?.eligible?'You can request a refill':'Your refill options';copy=order.refill?.reason||'This plan has no included refill cycles.';if(order.refill?.eligible)action=button('Request a refill','request-refill','btn-primary',`data-order="${esc(order.id)}"`);}
+    return `<article class="card refill-plan" data-refill-order="${esc(order.id)}"><div class="refill-plan-heading"><div class="product-icon">${icon('bottle',27)}</div><div><p class="eyebrow">${esc(order.therapy_name)}</p><h2>${esc(productTitle(order))}</h2><p class="small-note">${esc(planSummary(order))} · Order ${esc(order.number||order.id)}</p></div></div>${native&&tasks.length?`<div class="refill-counts"><div><strong>${remaining}</strong><span>included ${remaining===1?'refill':'refills'} remaining</span></div><div><strong>${claimed.length} of ${tasks.length}</strong><span>claimed for this plan</span></div></div>`:''}<section class="refill-next-step"><h3>${esc(title)}</h3><p>${esc(copy)}</p>${action?`<div class="action-row">${action}</div>`:''}</section>${native&&tasks.length?`<details class="refill-schedule"><summary>View this treatment’s refill schedule</summary>${careTimeline(order)}</details>`:''}<div class="action-row">${button('View treatment order','order-detail','btn-secondary',`data-order="${esc(order.id)}"`)}</div>${!available&&!pending&&!needsCheckIn?refillPlanOptions(order):''}</article>`;
+  }
+  function applyNotifications(result){state.notifications=result.notifications||[];state.unreadCount=Number(result.unread_count)||0;state.notificationsError='';}
+  function renderNotifications(){
+    return pageHead('Your updates','Notifications','Order updates and the next steps for your care.')+notice(state.notificationsError,'error')+`<section class="card notification-list">${state.notifications.length?state.notifications.map(item=>`<article class="notification-item ${item.read_at?'':'unread'}" data-notification="${esc(item.id)}"><div class="notification-symbol">${icon(item.kind?.includes('ship')?'box':item.kind?.includes('refill')?'clock':'clipboard',24)}</div><div class="notification-copy"><div class="notification-heading"><h2>${esc(item.title)}</h2>${!item.read_at?'<span class="status good">New</span>':''}</div><p>${esc(item.body)}</p>${item.created_at?`<time datetime="${esc(item.created_at)}">${safeDate(item.created_at)}</time>`:''}<div class="action-row">${button(item.action==='claim-refill'?'Review this refill':item.action==='open-care-task'?'Open health form':'View order update','open-notification','btn-primary btn-small',`data-notification="${esc(item.id)}" ${state.readingNotification===item.id?'disabled':''}`)}${!item.read_at?button('Mark as read','read-notification','btn-secondary btn-small',`data-notification="${esc(item.id)}" ${state.readingNotification===item.id?'disabled':''}`):''}</div></div></article>`).join(''):state.notificationsError?empty('Updates are temporarily unavailable','Please try again shortly.','bell'):empty('You’re all caught up','Your order updates and care reminders will appear here.','bell')}</section>`;
+  }
+  function adminTools(){return `<div class="admin-tools"><section class="card card-pad"><h2>Bring in actual Sticky orders</h2><p>Sync completed checkouts for this site, or import existing order IDs. The server verifies the campaign and customer before linking them.</p><div class="action-row">${button(state.busy?'Syncing…':'Sync captured orders','sync-orders','btn-primary btn-small',state.busy?'disabled':'')}</div><form id="import-form"><div class="field"><label for="import-orders">Import order IDs</label><input id="import-orders" inputmode="numeric" placeholder="Order IDs separated by commas" autocomplete="off"></div><button class="btn btn-secondary btn-small" type="submit" ${state.busy?'disabled':''}>Import orders</button></form></section><section class="card card-pad"><h2>Patient account invitations</h2><p>Create an invitation from an imported order below. Share the private link directly with its customer.</p><p>No patient accounts or orders are generated for this page.</p>${state.inviteResult?`<div class="invite-result"><strong style="font-size:12px">Private enrollment link</strong><label class="sr-only" for="enrollment-url">Private enrollment link</label><input id="enrollment-url" type="text" readonly value="${esc(state.inviteResult.enrollment_url)}"><button class="text-button" data-action="copy-invite">Copy invitation</button><p class="small-note">Expires ${safeDate(state.inviteResult.expires_at)}. Share only with the customer.</p></div>`:''}</section></div>`;}
+  function adminOrderTable(orders){return `<section class="card"><div class="table-caption"><h2>Site orders</h2><span class="demo-tag">${orders.length} ${orders.length===1?'ORDER':'ORDERS'}</span></div>${orders.length?`<div class="table-wrap" tabindex="0" aria-label="Site orders table"><table class="data-table"><thead><tr><th>Order / product</th><th>Therapy</th><th>Payment</th><th>Intake</th><th>Total</th><th>Patient access</th></tr></thead><tbody>${orders.map(order=>`<tr><td><strong>${esc(order.number||order.id)}</strong><div class="table-sub">${esc(adminMode?order.product_name:productTitle(order))}<br>${esc(adminMode?order.plan_name:planSummary(order))}</div></td><td>${esc(order.therapy_name)}</td><td>${status(textStatus(order.payment_status),['paid','approved','captured'].includes(order.payment_status)?'good':'neutral')}</td><td>${status(textStatus(order.intake_status),order.intake_status==='submitted'?'good':'pending')}</td><td><strong>${money(order)}</strong></td><td><button class="text-button" data-action="create-invite" data-order="${esc(order.id)}" ${state.busy?'disabled':''}>Create invitation</button>${order.care_plan?.simulation?.available?`<div class="table-sub"><button class="text-button" data-action="care-simulation" data-order="${esc(order.id)}">Simulate care timeline</button>${order.care_plan.simulation.enabled?`<br>Simulation: day ${Number(order.care_plan.simulation.day_offset)||0}`:''}</div>`:''}</td></tr>`).join('')}</tbody></table></div>`:empty('No synced orders yet','Sync captured checkouts or import Sticky order IDs for this site.')}</section>`;}
+  function checkoutTestingPanel(){
+    const config=state.checkoutTesting;
+    return `<section class="card card-pad" style="margin-bottom:22px"><div class="card-heading"><h2>Checkout testing</h2>${config?status(config.enabled?'Enabled':'Off',config.enabled?'pending':'neutral'):''}</div>${config?.available?`<label class="choice"><input id="checkout-testing" type="checkbox" ${config.enabled?'checked':''} ${state.busy?'disabled':''}><span>Turn on $1 checkout testing</span></label><p class="small-note" style="margin-top:12px">${esc(config.terms||'Opted-in test checkouts charge $1 upfront and $1 at renewal. Included prepaid cycles remain $0.')}</p>`:`<p class="small-note">${esc(config?.terms||state.testingError||'Checkout testing is not available for this site.')}</p>`}</section>`;
+  }
+  function adminIntakeTable(intakes){return `<section class="card"><div class="table-caption"><h2>Intake queue</h2></div>${intakes.length?`<div class="table-wrap" tabindex="0" aria-label="Intake queue table"><table class="data-table"><thead><tr><th>Patient / order</th><th>Therapy</th><th>Intake status</th><th>Progress</th><th>Last saved</th></tr></thead><tbody>${intakes.map(item=>`<tr><td><strong>${esc(item.patient_name||'Patient')}</strong><div class="table-sub">${esc(item.order_id)}${item.task_label?`<br>${esc(item.task_label)}`:''}</div></td><td>${esc(item.therapy_name)}</td><td>${status(textStatus(item.status),item.status==='submitted'?'good':'pending')}</td><td>${esc(item.answered||0)} / ${esc(item.total||0)}</td><td>${safeDate(item.updated_at)}</td></tr>`).join('')}</tbody></table></div>`:empty('No intake sessions yet','Saved intake progress will appear here.','clipboard')}</section>`;}
+  function renderAdmin(){
+    const orders=state.overview?.orders||[],intakes=state.overview?.intakes||[],refills=state.overview?.refills||[];
+    if(state.view==='refills')return pageHead('Site administration','Refill requests','Requests stay separate from clinical approval, billing and fulfillment.',true)+refillList(refills);
+    if(state.view==='intakes')return pageHead('Site administration','Intake queue','Saved intake progress for actual orders in this site.',true)+notice('The medical intake provider is not connected. Submitted preview answers have not been sent to the medical team.')+adminIntakeTable(intakes);
+    if(state.view==='orders')return pageHead('Site administration','Orders','Actual Sticky orders linked to this site, organized by therapy.',true)+adminTools()+checkoutTestingPanel()+adminOrderTable(orders);
+    return pageHead('Site administration','Your orders, clearly organized.','Actual orders, subscriptions and refill requests for this site.',true)+`<div class="summary-grid">${stat(orders.length,'Synced orders','box')}${stat(orders.flatMap(order=>order.subscriptions||[]).length,'Subscriptions','clock')}${stat(refills.length,'Refill requests','clipboard')}</div>`+adminTools()+checkoutTestingPanel()+adminOrderTable(orders);
+  }
+  function visibleQuestions(intake=state.intake){return(intake?.template?.questions||[]).filter(question=>!question.show_if||intake.answers?.[question.show_if.question_id]===question.show_if.equals);}
+  const answered=(question,answers=state.intake?.answers||{})=>{const value=answers[question.id];return Array.isArray(value)?value.length>0:value!==undefined&&value!==null&&String(value).trim()!=='';};
+  function progress(){const questions=visibleQuestions(),count=questions.filter(question=>answered(question)).length;return{count,total:questions.length,percent:questions.length?Math.round(count/questions.length*100):0};}
+  function savedMarkup(){if(state.intake?.status==='submitted')return`${icon('check',12)} Submitted`;if(state.saveError)return`${icon('clock',12)} Not saved <button type="button" data-action="retry-save">Retry</button>`;if(state.saving||state.dirtyVersion>state.savedVersion)return`${icon('clock',12)} Saving…`;return`${icon('check',12)} Saved`;}
+  function renderIntake(){
+    const intake=state.intake;
+    if(!intake)return careOverview();
+    const order=state.orders.find(item=>item.id===state.orderId),sections=intake.template.sections||[];
+    const step=Math.max(0,Math.min(Number(intake.current_step)||0,sections.length-1)),section=sections[step],completion=progress();
+    const task=careTask(state.orderId,state.taskId),checkIn=['check_in','checkin'].includes(task?.kind);
+    const head=pageHead(order?.therapy_name||'Medical intake',task?.label||(intake.status==='submitted'?'Your submitted intake':'Let’s get to know you.'),`${order?productTitle(order):'Your therapy'}${order?' · '+planSummary(order):''}`);
+    if(intake.status==='submitted'||task?.can_submit===false)return head+`<section class="card submitted-hero"><div class="submitted-icon">${icon('check',27)}</div><h2>${intake.status==='submitted'?(checkIn?'Check-in saved':'Initial intake saved'):'Your saved answers'}</h2><p>${intake.status==='submitted'?'Your answers have been saved. You can review them below or return to your care plan.':'This form is outside its submission window. Your saved answers are shown below; this step has not been submitted.'}</p>${button('Back to my care plan','care-overview','btn-secondary')}<dl class="answer-list">${visibleQuestions().map(question=>`<div class="answer-row"><dt>${esc(question.label)}</dt><dd>${esc(answerLabel(question,intake.answers[question.id]))}</dd></div>`).join('')}</dl></section>`;
+    return head+`<div class="intake-layout"><section class="card intake-card"><div class="intake-toolbar"><span class="step-label">STEP ${step+1} OF ${sections.length}</span><span class="saved-state ${state.saveError?'error':''}" id="save-status" aria-live="polite">${savedMarkup()}</span></div><h2>${esc(section?.title||intake.template.title)}</h2><p class="section-description">${esc(section?.description||intake.template.description||'Your progress saves as you answer.')}</p><div id="intake-error">${notice(state.saveError,'error')}</div><form id="intake-form" novalidate>${step===sections.length-1?reviewAnswers(section?.id):''}${visibleQuestions().filter(question=>question.section_id===section?.id).map(questionField).join('')}<div class="intake-actions">${step>0?button('Back','intake-back','btn-secondary'):button('My care plan','care-overview','btn-secondary')}${step===sections.length-1?button(checkIn?'Submit check-in':'Submit intake','submit-intake','btn-primary','','check'):button('Save & continue','intake-next','btn-primary','','arrow')}</div></form></section><aside class="intake-side"><section class="card card-pad"><div class="eyebrow">Your intake</div><h3>${esc(intake.template.title)}</h3><div class="progress-copy"><span id="progress-count">${completion.count} of ${completion.total} answered</span><strong id="progress-percent">${completion.percent}%</strong></div><div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:${completion.percent}%"></div></div><nav class="section-nav" aria-label="Intake sections">${sections.map((item,index)=>`<button class="section-link ${index===step?'active':''}" data-action="intake-section" data-step="${index}" ${index===step?'aria-current="step"':''}><span class="section-number">${index+1}</span>${esc(item.title)}</button>`).join('')}</nav></section></aside></div>`;
+  }
+  function reviewAnswers(currentSection) {
+    return `<section class="review-box"><div class="card-heading"><h3>Your answers so far</h3><button type="button" class="text-button" data-action="intake-section" data-step="0">Edit answers</button></div><dl>${visibleQuestions().filter(question=>question.section_id!==currentSection).map(question=>`<div class="answer-row"><dt>${esc(question.label)}</dt><dd>${esc(answerLabel(question,state.intake.answers[question.id]))}</dd></div>`).join('')}</dl></section>`;
+  }
+  function answerLabel(question, value) {
+    const label = val => (question.options || []).find(option=>option.value===val)?.label || val;
+    return Array.isArray(value) ? value.map(label).join(', ') : value===undefined || value==='' ? 'Not answered' : label(value);
+  }
+  function questionField(question) {
+    const value = state.intake.answers?.[question.id];
+    const qid = esc(question.id);
+    const id = `question-${qid}`;
+    const label = `${esc(question.label)}${question.required?'<span class="required" aria-label="required">*</span>':''}`;
+    const hint = question.hint ? `<p class="field-hint" id="hint-${qid}">${esc(question.hint)}</p>` : '';
+    const description = question.hint ? `aria-describedby="hint-${qid}"` : '';
+    const error = state.fieldsError[question.id] ? `<p class="field-error" role="alert">${esc(state.fieldsError[question.id])}</p>` : '';
+    if (question.type==='single_choice' || question.type==='multi_choice') return `<div class="field"><fieldset><legend>${label}</legend>${hint}<div class="choices">${(question.options || []).map((option,index)=>`<label class="choice" for="${id}-${index}"><input id="${id}-${index}" data-question="${qid}" name="${qid}" type="${question.type==='multi_choice'?'checkbox':'radio'}" value="${esc(option.value)}" ${question.type==='multi_choice'?(Array.isArray(value)&&value.includes(option.value)?'checked':''):(value===option.value?'checked':'')} ${description}><span>${esc(option.label)}</span></label>`).join('')}</div>${error}</fieldset></div>`;
+    return `<div class="field"><label for="${id}">${label}</label>${hint}${question.type==='textarea'?`<textarea id="${id}" data-question="${qid}" ${description} maxlength="1000">${esc(value)}</textarea>`:`<input id="${id}" data-question="${qid}" type="${question.type==='number'?'number':'text'}" value="${esc(value)}" ${question.type==='number'?'step="any"':'maxlength="500"'} ${description} ${question.required?'aria-required="true"':''}>`}${error}</div>`;
+  }
+  async function loadConfiguration(siteId=state.siteId){const config=await request(endpoint('/configuration',siteId));if(siteId!==state.siteId)return;state.site=config.site;state.therapies=config.therapies||[];state.intakeProviderConnected=config.intake_provider_connected===true;state.messagingProviderConnected=config.messaging_provider_connected===true;}
+  async function refreshData(){
+    const current=++generation,siteId=state.siteId,context={token:state.token,csrf:state.csrf};
+    state.loading=true;render();
+    try{
+      if(adminMode){const [overview,testing]=await Promise.all([request(adminEndpoint('/overview',siteId)+query(),{},context),request(`/api/admin/sites/${encodeURIComponent(siteId)}/checkout-testing`,{},context).catch(error=>({error:error.message}))]);if(current!==generation)return;state.overview=overview;state.orders=overview.orders||[];state.refills=overview.refills||[];state.checkoutTesting=testing.error?null:testing;state.testingError=testing.error||'';}
+      else{const[orders,refills,store,notifications]=await Promise.all([request(endpoint('/orders',siteId),{},context),request(endpoint('/refills',siteId),{},context),request(endpoint('/store',siteId),{},context).catch(error=>({error:error.message})),request(endpoint('/notifications',siteId),{},context).catch(error=>({error:error.message}))]);if(current!==generation)return;state.orders=orders.orders||[];state.refills=refills.requests||[];state.storePlans=store.plans||[];state.storeError=store.error||'';if(notifications.error)state.notificationsError=notifications.error;else applyNotifications(notifications);}
+    }catch(error){if(current!==generation)return;state.error=error.message;}
+    if(current===generation){state.loading=false;render();}
+  }
+  async function loadOwnerSites(){
+    const response=await request('/api/admin/portal/sites');state.sites=response.sites||[];
+    if(!state.sites.some(site=>site.id===state.siteId))state.siteId=state.sites[0]?.id||'';
+    if(!state.siteId){state.error='Create a site in checkout administration before managing its orders.';state.site={name:'Site administration'};render();return;}
+    history.replaceState(null,'',`/portal-admin/${encodeURIComponent(state.siteId)}`);await loadConfiguration();await refreshData();
+  }
+  async function authenticate(form){
+    if(state.busy)return;
+    const password=form.querySelector('#auth-password').value,email=form.querySelector('#auth-email')?.value.trim();
+    const enrolling=!adminMode&&Boolean(state.inviteToken)&&state.authMode!=='login';
+    if(enrolling&&password!==form.querySelector('#auth-confirm').value){state.error='The passwords do not match.';render();return;}
+    state.busy=true;state.error='';render();
+    try{
+      if(adminMode){const result=await request('/api/admin/login',{method:'POST',body:JSON.stringify({email,password})});state.csrf=result.csrfToken;state.authenticated=true;await loadOwnerSites();}
+      else{
+        const result=await request(endpoint(enrolling?'/auth/enroll':'/auth/login'),{method:'POST',body:JSON.stringify(enrolling?{invite_token:state.inviteToken,password}:{email,password})});
+        if(state.inviteToken&&!enrolling)await request(endpoint('/auth/claim'),{method:'POST',body:JSON.stringify({invite_token:state.inviteToken})},{token:result.access_token});
+        state.token=result.access_token;state.patient=result.patient;state.site=result.site||state.site;state.authenticated=true;
+        sessionStorage.setItem(storageKey(state.siteId),JSON.stringify({access_token:result.access_token,expires_at:result.expires_at}));
+        state.inviteToken=null;sessionStorage.removeItem(inviteKey(state.siteId));history.replaceState(null,'',location.pathname);await refreshData();
+      }
+    }catch(error){state.error=error.message;}
+    state.busy=false;render();
+  }
+  async function logout(){
+    if(!await flushIntake())return;
+    try{await request(adminMode?'/api/admin/logout':endpoint('/auth/logout'),{method:'POST',body:'{}'});}catch(error){state.error=error.message;render();return;}
+    generation++;sessionStorage.removeItem(storageKey(state.siteId));state.token=null;state.authenticated=false;state.patient=null;state.orders=[];state.refills=[];state.overview=null;state.intake=null;state.messages=[];state.notifications=[];state.unreadCount=0;state.messageDraft='';state.messageDraftSaved='';state.messageDraftRevision=0;state.messageDraftLoaded=false;state.draftError='';state.draftConflict=false;state.draftSaving=false;state.readingNotification=null;state.notificationsError='';state.inviteResult=null;state.error='';state.feedback='';render();
+  }
+  async function navigate(view){
+    if(state.loading)return;
+    if(!await flushIntake())return;
+    const current=++generation,siteId=state.siteId,context={token:state.token,csrf:state.csrf};
+    state.view=view;state.error='';state.feedback='';state.loading=false;state.readingNotification=null;
+    if(view==='messages'&&!adminMode){state.loading=true;render();const dirty=state.messageDraft!==state.messageDraftSaved;try{const[result,draft]=await Promise.all([request(endpoint('/messages',siteId),{},context),dirty?Promise.resolve(null):request(endpoint('/messages/draft',siteId),{},context).catch(error=>({error:error.message}))]);if(current!==generation)return;state.messages=result.messages||[];state.messagingProviderConnected=result.provider_connected===true;if(draft?.error)state.draftError=draft.error;else if(draft){state.messageDraft=draft.body||'';state.messageDraftSaved=state.messageDraft;state.messageDraftRevision=draft.revision;state.messageDraftLoaded=true;state.draftError='';}}catch(error){if(current!==generation)return;state.error=error.message;}state.loading=false;render();}
+    else if(view==='notifications'&&!adminMode){state.loading=true;render();try{const result=await request(endpoint('/notifications',siteId),{},context);if(current!==generation)return;applyNotifications(result);}catch(error){if(current!==generation)return;state.notificationsError=error.message;}state.loading=false;render();}
+    else if(view==='intake'&&!adminMode){state.intake=null;state.taskId=null;render();}
+    else if(adminMode)await refreshData();else render();
+  }
+  async function openIntake(orderId,taskId=null){
+    if(!await flushIntake())return;
+    taskId=taskId||state.orders.find(order=>order.id===orderId)?.care_plan?.tasks?.find(task=>task.kind==='initial')?.id||null;
+    const current=++generation,siteId=state.siteId,context={token:state.token};state.view='intake';state.loading=true;state.error='';render();
+    try{const intake=await request(endpoint(intakePath(orderId,taskId),siteId),{},context);if(current!==generation)return;state.intake=intake;state.intakeProviderConnected=intake.provider_connected===true;state.intake.answers=state.intake.answers||{};state.orderId=orderId;state.taskId=taskId;state.dirtyVersion=0;state.savedVersion=0;state.saveError='';state.fieldsError={};}
+    catch(error){if(current!==generation)return;state.error=error.message;state.intake=null;}
+    state.loading=false;render();
+  }
+  function updateSavedUI(){
+    const element=document.getElementById('save-status');if(element){element.innerHTML=savedMarkup();element.classList.toggle('error',Boolean(state.saveError));}
+    const errors=document.getElementById('intake-error');if(errors)errors.innerHTML=notice(state.saveError,'error');
+    const value=progress(),count=document.getElementById('progress-count'),percent=document.getElementById('progress-percent'),fill=document.getElementById('progress-fill');
+    if(count)count.textContent=`${value.count} of ${value.total} answered`;if(percent)percent.textContent=`${value.percent}%`;if(fill)fill.style.width=`${value.percent}%`;
+  }
+  function markDirty(){state.dirtyVersion++;state.saveError='';clearTimeout(autosaveTimer);updateSavedUI();autosaveTimer=setTimeout(()=>flushIntake(),600);}
+  async function flushIntake(){
+    clearTimeout(autosaveTimer);if(savePromise){await savePromise;if(state.saveError)return false;}
+    if(!state.intake||state.intake.status==='submitted'||state.dirtyVersion<=state.savedVersion)return true;
+    const intake=state.intake,version=state.dirtyVersion,siteId=state.siteId,orderId=state.orderId,taskId=state.taskId,context={token:state.token};
+    const body={revision:intake.revision,answers:JSON.parse(JSON.stringify(intake.answers)),current_step:Number(intake.current_step)||0};
+    state.saving=true;state.saveError='';updateSavedUI();
+    savePromise=(async()=>{try{const saved=await request(endpoint(intakePath(orderId,taskId),siteId),{method:'PATCH',body:JSON.stringify(body)},context);if(state.intake===intake){intake.revision=saved.revision;intake.updated_at=saved.updated_at;state.savedVersion=version;}}
+      catch(error){if(state.intake===intake)state.saveError=error.status===409?'This intake changed elsewhere. Your unsaved answers are still here; keep a copy before reloading.':error.message;}
+      finally{state.saving=false;savePromise=null;updateSavedUI();}})();
+    await savePromise;if(state.saveError)return false;if(state.dirtyVersion>state.savedVersion)return flushIntake();return true;
+  }
+  function validate(questions){state.fieldsError={};questions.forEach(question=>{if(question.required&&!answered(question))state.fieldsError[question.id]='Please answer this question.';});if(!Object.keys(state.fieldsError).length)return true;const missing=questions.find(question=>state.fieldsError[question.id]),index=state.intake.template.sections.findIndex(section=>section.id===missing.section_id);if(index>=0&&index!==state.intake.current_step){state.intake.current_step=index;markDirty();}render();document.querySelector('.field-error')?.closest('.field')?.querySelector('input,textarea')?.focus();return false;}
+  async function changeStep(next){const previous=Number(state.intake.current_step)||0,sections=state.intake.template.sections;if(next>previous&&!validate(visibleQuestions().filter(question=>question.section_id===sections[previous].id)))return;state.intake.current_step=Math.max(0,Math.min(next,sections.length-1));markDirty();if(!await flushIntake()){state.intake.current_step=previous;state.dirtyVersion++;}render();document.querySelector('.intake-card')?.scrollIntoView({block:'start'});}
+  async function submitIntake(){
+    if(!validate(visibleQuestions())||!await flushIntake())return;
+    const current=++generation,siteId=state.siteId,context={token:state.token},orderId=state.orderId,taskId=state.taskId,revision=state.intake.revision;state.loading=true;render();
+    try{const result=await request(endpoint(intakePath(orderId,taskId)+'/submit',siteId),{method:'POST',body:JSON.stringify({revision})},context);if(current!==generation)return;state.intake=result;const orders=await request(endpoint('/orders',siteId),{},context);if(current!==generation)return;state.orders=orders.orders||[];announce('Your answers are saved.');}catch(error){if(current!==generation)return;state.error=error.message;}state.loading=false;render();
+  }
+  function updateDraftStatus(){const element=document.getElementById('message-draft-status');if(element)element.textContent=state.draftSaving?'Saving draft…':state.draftError?'Draft not saved':state.messageDraft!==state.messageDraftSaved?'Unsaved changes':state.messageDraftLoaded?'Draft saved':'Up to 2,000 characters';}
+  async function saveMessageDraft(){
+    if(state.draftSaving||state.sending)return false;
+    const siteId=state.siteId,token=state.token,body=state.messageDraft,revision=state.messageDraftRevision;
+    state.draftSaving=true;state.draftError='';state.draftConflict=false;render();
+    try{const result=await request(endpoint('/messages/draft',siteId),{method:'PUT',body:JSON.stringify({body,revision})},{token});if(siteId!==state.siteId||token!==state.token)return false;state.messageDraftSaved=body;state.messageDraftRevision=result.revision;state.messageDraftLoaded=true;state.draftSaving=false;announce('Draft saved. Your message has not been sent.');render();return true;}
+    catch(error){if(siteId!==state.siteId||token!==state.token)return false;state.draftSaving=false;state.draftConflict=error.status===409;state.draftError=error.status===409?'This draft changed in another window. Your unsaved message is still here. Keep a copy before reloading.':error.message;render();return false;}
+  }
+  async function reloadMessageDraft(){
+    const current=generation,siteId=state.siteId,context={token:state.token};state.busy=true;render();
+    try{const draft=await request(endpoint('/messages/draft',siteId),{},context);if(current!==generation)return;state.messageDraft=draft.body||'';state.messageDraftSaved=state.messageDraft;state.messageDraftRevision=draft.revision;state.messageDraftLoaded=true;state.draftError='';state.draftConflict=false;state.modal=null;}
+    catch(error){if(current!==generation)return;state.error=error.message;}
+    if(current===generation){state.busy=false;render();}
+  }
+  async function readNotification(id,open=false){
+    const item=state.notifications.find(item=>String(item.id)===String(id));if(!item||state.readingNotification)return;
+    const current=generation,siteId=state.siteId,context={token:state.token};state.readingNotification=item.id;state.notificationsError='';render();
+    try{const result=await request(endpoint(`/notifications/${encodeURIComponent(item.id)}/read`,siteId),{method:'POST',body:'{}'},context);if(current!==generation)return;applyNotifications(result);state.readingNotification=null;
+      if(open){const order=state.orders.find(order=>String(order.id)===String(item.order_id));if(!order){state.notificationsError='This order is not available. Refresh your orders and try again.';render();return;}if(item.action==='open-care-task'){await openIntake(order.id,item.task_id||null);return;}if(item.action==='claim-refill'){state.therapy='';await navigate('refills');document.querySelector(`[data-refill-order="${CSS.escape(String(careOwner(order).id))}"]`)?.scrollIntoView({block:'start'});return;}state.view='orders';state.tab='orders';state.therapy='';render();document.getElementById(`order-${order.id}`)?.scrollIntoView({block:'start'});return;}
+    }catch(error){if(current!==generation)return;state.notificationsError=error.message;}
+    if(current===generation){state.readingNotification=null;render();}
+  }
+  async function sendMessage(){
+    const body=state.messageDraft.trim();if(!state.messagingProviderConnected||!body||state.sending)return;const current=generation,siteId=state.siteId,context={token:state.token};state.sending=true;state.error='';state.messageId=state.messageId||uid();const messageId=state.messageId;render();
+    try{const result=await request(endpoint('/messages',siteId),{method:'POST',body:JSON.stringify({body,client_message_id:messageId})},context);if(current!==generation){if(siteId===state.siteId&&state.messageId===messageId){state.sending=false;state.messageDraft='';state.messageId=null;if(state.view==='messages')await navigate('messages');}return;}state.messages=result.messages||[];state.messageDraft='';state.messageId=null;}
+    catch(error){if(current!==generation){if(siteId===state.siteId&&state.messageId===messageId){state.sending=false;if(state.view==='messages'){state.error=error.message;render();}}return;}state.error=error.message;}
+    state.sending=false;render();document.getElementById('message-list')?.scrollTo(0,99999);
+  }
+  async function syncOrders(orderIds=[]){if(state.busy)return;const current=generation,siteId=state.siteId,context={csrf:state.csrf};state.busy=true;state.error='';state.feedback='';render();try{await request(adminEndpoint('/sync',siteId),{method:'POST',body:JSON.stringify({order_ids:orderIds,...(orderIds.length?{allow_import:true}:{})})},context);if(current!==generation)return;state.feedback='Order synchronization completed. The latest recorded orders are shown below.';await refreshData();}catch(error){if(current!==generation)return;state.error=error.message;}state.busy=false;render();}
+  async function createInvite(orderId){if(state.busy)return;const current=generation,siteId=state.siteId,context={csrf:state.csrf};state.busy=true;state.error='';state.inviteResult=null;render();try{const result=await request(adminEndpoint('/invites',siteId),{method:'POST',body:JSON.stringify({order_id:orderId})},context);if(current!==generation)return;state.inviteResult=result;announce('Private account invitation created.');}catch(error){if(current!==generation)return;state.error=error.message;}state.busy=false;render();document.getElementById('enrollment-url')?.scrollIntoView({block:'nearest'});}
+  const usStates=Object.fromEntries('AL:Alabama|AK:Alaska|AZ:Arizona|AR:Arkansas|CA:California|CO:Colorado|CT:Connecticut|DE:Delaware|DC:District of Columbia|FL:Florida|GA:Georgia|HI:Hawaii|ID:Idaho|IL:Illinois|IN:Indiana|IA:Iowa|KS:Kansas|KY:Kentucky|LA:Louisiana|ME:Maine|MD:Maryland|MA:Massachusetts|MI:Michigan|MN:Minnesota|MS:Mississippi|MO:Missouri|MT:Montana|NE:Nebraska|NV:Nevada|NH:New Hampshire|NJ:New Jersey|NM:New Mexico|NY:New York|NC:North Carolina|ND:North Dakota|OH:Ohio|OK:Oklahoma|OR:Oregon|PA:Pennsylvania|RI:Rhode Island|SC:South Carolina|SD:South Dakota|TN:Tennessee|TX:Texas|UT:Utah|VT:Vermont|VA:Virginia|WA:Washington|WV:West Virginia|WI:Wisconsin|WY:Wyoming|AS:American Samoa|GU:Guam|MP:Northern Mariana Islands|PR:Puerto Rico|VI:Virgin Islands|AA:Armed Forces Americas|AE:Armed Forces Europe|AP:Armed Forces Pacific'.split('|').map(pair=>pair.split(':')));
+  function addressFields(address,future=false){return `<form id="address-form"><div class="address-grid">${[['first_name','First name',64],['last_name','Last name',64],['address','Street address',150],['address2','Apartment / suite (optional)',150],['city','City',80]].map(([key,label,max])=>`<div class="field"><label for="address-${key}">${label}</label><input id="address-${key}" data-address="${key}" type="text" maxlength="${max}" value="${esc(address[key]||'')}" ${key==='address2'?'':'required'} ${future&&['first_name','last_name','address2'].includes(key)?'readonly':''}></div>`).join('')}<div class="field"><label for="address-region">State</label><select id="address-region" data-address="region" required><option value="">Choose a state</option>${Object.entries(usStates).map(([code,name])=>`<option value="${code}" ${address.region===code?'selected':''}>${name}</option>`).join('')}</select></div><div class="field"><label for="address-postal_code">ZIP code</label><input id="address-postal_code" data-address="postal_code" type="text" inputmode="numeric" maxlength="10" pattern="[0-9]{5}(-[0-9]{4})?" required value="${esc(address.postal_code||'')}"></div></div><p class="small-note">United States · ${future?'future subscription orders only. Recipient name and apartment stay unchanged.':'this change applies to this order only.'}</p></form>`;}
+  async function confirmAction(){
+    const modal=state.modal;if(!modal||state.busy)return;
+    if(modal.kind==='reload-draft'){await reloadMessageDraft();return;}
+    if(modal.kind==='address'){if(!document.getElementById('address-form').reportValidity())return;modal.body.address={...modal.address,country:'US'};}
+    if(modal.kind==='early'){const reason=(modal.reason||'').trim();if(!reason){document.getElementById('action-reason')?.reportValidity();return;}modal.body.reason=reason;}
+    if(modal.owner&&!adminMode)return;
+    const current=generation,siteId=state.siteId,context={token:state.token,csrf:state.csrf};state.busy=true;state.error='';render();
+    try{const result=await request(modal.owner?adminEndpoint(modal.path,siteId):endpoint(modal.path,siteId),{method:'POST',body:JSON.stringify(modal.body)},context);if(current!==generation)return;state.modal=null;state.feedback=result.status==='reconciliation_required'?'The request needs confirmation. Its recorded state has been preserved.':'Your request was recorded. Check the updated status below.';await refreshData();if(modal.kind==='claim'){const task=careTask(modal.orderId,modal.taskId);state.feedback=task?.claim?.status==='claimed'?'Refill claimed. Complete your check-in below.':'We’re confirming your refill claim. Check its status before trying again.';if(task?.claim?.status==='claimed'&&task.can_open){state.busy=false;await openIntake(modal.orderId,modal.taskId);}}}
+    catch(error){if(current!==generation)return;state.error=error.message;}
+    state.busy=false;render();
+  }
+  root.addEventListener('click',async event=>{
+    const target=event.target.closest('[data-action]');if(!target)return;event.preventDefault();const action=target.dataset.action;
+    if(!state.modal)modalOpener={...target.dataset};
+    if(action==='navigate')await navigate(target.dataset.view);
+    if(action==='save-message-draft')await saveMessageDraft();
+    if(action==='reload-message-draft'){state.error='';state.modal={kind:'reload-draft',title:'Load your saved draft?',description:'This replaces the unsaved message in this window. Copy any text you want to keep before continuing.',label:'Load saved draft'};render();}
+    if(action==='read-notification')await readNotification(target.dataset.notification);
+    if(action==='open-notification')await readNotification(target.dataset.notification,true);
+    if(action==='logout')await logout();
+    if(action==='open-intake')await openIntake(target.dataset.order);
+    if(action==='open-care-task')await openIntake(target.dataset.order,target.dataset.task);
+    if(action==='care-overview')await navigate('intake');
+    if(action==='order-detail'){state.view='orders';state.tab='orders';state.therapy='';render();document.getElementById(`order-${target.dataset.order}`)?.scrollIntoView({block:'start'});}
+    if(action==='order-tab'){state.tab=target.dataset.tab;render();}
+    if(action==='refresh'){state.error='';await refreshData();}
+    if(action==='sync-orders')await syncOrders();
+    if(action==='create-invite')await createInvite(target.dataset.order);
+    if(action==='care-simulation'&&adminMode){const order=state.orders.find(item=>item.id===target.dataset.order);if(!order?.care_plan?.simulation?.available)return;state.error='';state.modal={kind:'clock',owner:true,title:'Simulate this care timeline',description:'Staff preview for this verified Dry Run order only. Advancing the timeline unlocks mock care steps. It does not change billing, renewals, shipments or the dates in Sticky.',label:'Apply timeline preview',days:[...new Set([0,...order.care_plan.tasks.flatMap(task=>task.kind==='initial'?[0]:[Math.max(0,Number(task.day_offset)-10),Number(task.day_offset)])])].sort((a,b)=>a-b),path:`/orders/${encodeURIComponent(order.id)}/care-clock`,body:{day_offset:order.care_plan.simulation.enabled?Number(order.care_plan.simulation.day_offset):null}};render();}
+    if(action==='copy-invite'){try{await navigator.clipboard.writeText(state.inviteResult.enrollment_url);target.textContent='Copied';}catch(_error){document.getElementById('enrollment-url')?.select();target.textContent='Select and copy the link';}}
+    if(action==='use-login'){state.authMode='login';state.error='';render();}
+    if(action==='intake-back')await changeStep(Number(state.intake.current_step||0)-1);
+    if(action==='intake-next')await changeStep(Number(state.intake.current_step||0)+1);
+    if(action==='intake-section')await changeStep(Number(target.dataset.step));
+    if(action==='retry-save')await flushIntake();
+    if(action==='submit-intake')await submitIntake();
+    if(action==='close-modal'&&!state.busy){state.modal=null;render();}
+    if(action==='confirm-action')await confirmAction();
+    if(action==='check-claim'){
+      if(state.busy)return;const orderId=target.dataset.order,taskId=target.dataset.task,current=generation,siteId=state.siteId,context={token:state.token};state.busy=true;state.error='';render();
+      try{await request(endpoint(`/orders/${encodeURIComponent(orderId)}/care-tasks/${encodeURIComponent(taskId)}/claim`,siteId),{method:'POST',body:JSON.stringify({client_request_id:claimRequestId(orderId,taskId)})},context);if(current!==generation)return;await refreshData();const task=careTask(orderId,taskId);state.feedback=task?.claim?.status==='claimed'?'Your refill is claimed. Complete its check-in.':'We’re still confirming your refill order. Check its status again shortly.';if(task?.claim?.status==='claimed'&&task.can_open){state.busy=false;await openIntake(orderId,taskId);}}
+      catch(error){if(current!==generation)return;state.error=error.message;}state.busy=false;render();
+    }
+    if(action==='claim-refill'){
+      const order=state.orders.find(item=>item.id===target.dataset.order),task=careTask(order?.id,target.dataset.task);if(!task?.claim?.available)return;
+      state.error='';state.modal={kind:'claim',orderId:order.id,taskId:task.id,title:'Claim your included refill',description:'This refill is included in your plan, with $0 due today. Claim it to create your refill order, then complete a short health check-in. Medical approval is still required before treatment.',label:'Claim included refill',path:`/orders/${encodeURIComponent(order.id)}/care-tasks/${encodeURIComponent(task.id)}/claim`,body:{client_request_id:claimRequestId(order.id,task.id)}};render();
+    }
+    if(action==='request-refill'){
+      const order=state.orders.find(item=>item.id===target.dataset.order),task=target.dataset.task?careTask(order?.id,target.dataset.task):null;if(!(task?task.refill?.eligible:order?.refill?.eligible))return;
+      state.modal={title:'Request a refill?',description:'This creates a refill request for this product. It does not charge your card, approve treatment or send a shipment. Your product’s refill rules and any required review still apply.',label:'Request refill',path:'/refills',body:{order_id:order.id,sku:order.sku,...(task?{task_id:task.id}:{}),client_request_id:uid()}};render();
+    }
+    if(action==='early-refill'){
+      const order=state.orders.find(item=>item.id===target.dataset.order);if(!order?.refill?.early_allowed)return;
+      state.error='';state.modal={kind:'early',reason:'',title:'Request an early refill review',description:'Tell the team why you need a refill sooner. This sends a review request; it does not move a billing date, charge your card or create a shipment.',label:'Send early refill request',path:'/refills',body:{order_id:order.id,sku:order.sku,kind:'early',...(order.refill.task_id?{task_id:order.refill.task_id}:{}),client_request_id:uid()}};render();
+    }
+    if(action==='update-address'){
+      const order=state.orders.find(item=>item.id===target.dataset.order);if(!order?.address_update_available)return;
+      const existing=order.shipping_address||{},address=Object.fromEntries(['first_name','last_name','address','address2','city','region','postal_code'].map(key=>[key,existing[key]||'']));
+      state.error='';state.modal={kind:'address',address,title:'Update delivery address',description:'This updates the current unshipped order. It does not change delivery addresses for future subscription orders.',label:'Save this order’s address',path:`/orders/${encodeURIComponent(order.id)}/address`,body:{client_request_id:uid()}};render();
+    }
+    if(action==='subscription-address'){
+      const order=state.orders.find(item=>item.id===target.dataset.order),subscription=order?.subscriptions?.find(item=>String(item.id)===target.dataset.subscription);if(!subscription?.address_update_available)return;
+      const current=generation,siteId=state.siteId,context={token:state.token},path=`/orders/${encodeURIComponent(order.id)}/subscriptions/${encodeURIComponent(subscription.id)}/address`;
+      state.error='';target.disabled=true;target.textContent='Loading address…';
+      try{
+        const result=await request(endpoint(path,siteId),{},context);if(current!==generation)return;
+        const existing=result.address||{},address=Object.fromEntries(['first_name','last_name','address','address2','city','region','postal_code'].map(key=>[key,existing[key]||'']));
+        state.modal={kind:'address',scope:'subscription',address,title:'Future subscription delivery',description:'This changes the delivery address used for future cycles of this subscription. The current order stays unchanged. Recipient names and apartment details cannot be changed through this option.',label:'Save future delivery address',path,body:{client_request_id:uid()}};
+      }catch(error){if(current!==generation)return;state.error=error.message;}
+      if(current===generation)render();
+    }
+    if(action==='payment-method'){
+      const current=generation,siteId=state.siteId,context={token:state.token};state.error='';
+      try{const result=await request(endpoint(`/orders/${encodeURIComponent(target.dataset.order)}/payment-method`,siteId),{},context);if(current!==generation)return;state.modal={readOnly:true,title:'Update your payment card',description:'Contact support for help updating your payment card. Please keep card details out of email and messages.',support:true};render();}
+      catch(error){if(current!==generation)return;state.error=error.message;render();}
+    }
+    if(action==='subscription-action'){
+      const order=state.orders.find(item=>item.id===target.dataset.order),subscription=order?.subscriptions?.find(item=>String(item.id)===target.dataset.subscription),subaction=target.dataset.subaction;
+      if(!subscription?.actions?.includes(subaction)||!['pause','resume'].includes(subaction))return;
+      state.modal={title:subaction==='pause'?'Pause your subscription?':'Resume your subscription?',description:subaction==='pause'?'This pauses future automatic cycles for this subscription. It does not refund a previous charge or change medical approval. Included prepaid shipments may also be affected.':'This resumes future automatic cycles under your existing subscription terms. Future cycles may charge your saved payment method. This request does not submit an immediate charge or approve treatment.',label:subaction==='pause'?'Confirm pause':'Confirm resume',path:`/orders/${encodeURIComponent(order.id)}/subscriptions/${encodeURIComponent(subscription.id)}/${subaction}`,body:{client_request_id:uid()}};render();
+    }
+  });
+  root.addEventListener('submit',async event=>{event.preventDefault();if(event.target.id==='auth-form')await authenticate(event.target);if(event.target.id==='message-form'){if(state.messagingProviderConnected)await sendMessage();else await saveMessageDraft();}if(event.target.id==='import-form'){const value=document.getElementById('import-orders').value.trim();const ids=value.split(/[\s,]+/).filter(Boolean);if(!ids.length||ids.some(id=>!/^\d+$/.test(id))){state.error='Enter valid order IDs, separated by commas.';render();return;}await syncOrders([...new Set(ids)]);}});
+  root.addEventListener('input',event=>{const target=event.target;if(target.dataset.address&&state.modal?.kind==='address'){state.modal.address[target.dataset.address]=target.value;return;}if(target.id==='action-reason'&&state.modal){state.modal.reason=target.value;return;}if(target.id==='message-body'){if(!state.sending&&state.messageDraft!==target.value)state.messageId=null;state.messageDraft=target.value;state.draftError='';updateDraftStatus();return;}if(!target.dataset.question||['radio','checkbox'].includes(target.type))return;const question=state.intake.template.questions.find(item=>item.id===target.dataset.question);state.intake.answers[target.dataset.question]=question?.type==='number'?(target.value!==''?Number(target.value):null):target.value;delete state.fieldsError[target.dataset.question];markDirty();});
+  root.addEventListener('change',async event=>{
+    const target=event.target;
+    if(target.id==='checkout-testing'){
+      const enabled=target.checked,siteId=state.siteId,current=generation;state.busy=true;state.error='';render();
+      try{await request(`/api/admin/sites/${encodeURIComponent(siteId)}/checkout-testing`,{method:'PUT',body:JSON.stringify({enabled})});if(current!==generation)return;state.feedback=enabled?'$1 checkout testing is enabled for this site.':'$1 checkout testing is off.';await refreshData();}
+      catch(error){if(current!==generation)return;state.error=error.message;}state.busy=false;render();return;
+    }
+    if(target.dataset.address&&state.modal?.kind==='address'){state.modal.address[target.dataset.address]=target.value;return;}
+    if(target.id==='site-select'){
+      if(state.busy){target.value=state.siteId;return;}if(!await flushIntake()){target.value=state.siteId;return;}generation++;state.siteId=target.value;state.site=null;state.therapy='';state.orders=[];state.refills=[];state.overview=null;state.inviteResult=null;state.error='';state.feedback='';state.loading=true;render();history.replaceState(null,'',`/portal-admin/${encodeURIComponent(state.siteId)}`);try{await loadConfiguration();await refreshData();}catch(error){state.error=error.message;state.loading=false;render();}return;
+    }
+    if(target.dataset.storeGroup){const expanded=Boolean(target.closest('details')?.open),id=target.id;state.storeChoices[target.dataset.storeGroup]=target.value;render();if(expanded){const select=document.getElementById(id);if(select?.closest('details'))select.closest('details').open=true;select?.focus();}return;}
+    if(target.id==='care-simulation-day'&&adminMode&&state.modal?.kind==='clock'){state.modal.body.day_offset=target.value==='off'?null:Number(target.value);return;}
+    if(target.id==='therapy-filter'){state.therapy=target.value;if(adminMode)await refreshData();else render();return;}
+    if(target.dataset.question&&['radio','checkbox'].includes(target.type)){const id=target.dataset.question;if(target.type==='checkbox'){const values=Array.isArray(state.intake.answers[id])?[...state.intake.answers[id]]:[];state.intake.answers[id]=target.checked?[...new Set([...values,target.value])]:values.filter(value=>value!==target.value);}else state.intake.answers[id]=target.value;delete state.fieldsError[id];markDirty();render();document.getElementById(target.id)?.focus();}
+  });
+  document.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&state.modal&&!state.busy){event.preventDefault();state.modal=null;render();}
+    if(event.key==='Tab'&&state.modal){
+      const modal=document.querySelector('.modal');
+      const focusable=[...modal.querySelectorAll('a[href],button:not(:disabled),input:not(:disabled):not([type=hidden]),textarea:not(:disabled),select:not(:disabled),[tabindex="0"]')].filter(node=>node.getClientRects().length);
+      const first=focusable[0],last=focusable.at(-1),outside=!modal.contains(document.activeElement);
+      if(event.shiftKey&&(document.activeElement===first||outside)){event.preventDefault();last?.focus();}
+      else if(!event.shiftKey&&(document.activeElement===last||outside)){event.preventDefault();first?.focus();}
+    }
+  });
+  window.addEventListener('beforeunload',event=>{if(state.dirtyVersion>state.savedVersion||state.messageDraft!==state.messageDraftSaved){event.preventDefault();event.returnValue='';}});
+  async function initialize(){
+    try{
+      if(adminMode){const auth=await request('/api/admin/auth');state.authenticated=Boolean(auth.authenticated);state.csrf=auth.csrfToken;if(state.authenticated){await loadOwnerSites();return;}if(state.siteId)await loadConfiguration();render();return;}
+      if(!state.siteId)throw new Error('Open the patient portal link for your site.');
+      const fragment=new URLSearchParams(location.hash.slice(1)),invite=fragment.get('invite')||fragment.get('invite_token');
+      if(invite){state.inviteToken=invite;sessionStorage.setItem(inviteKey(state.siteId),invite);history.replaceState(null,'',location.pathname);}else state.inviteToken=sessionStorage.getItem(inviteKey(state.siteId));
+      if(state.inviteToken)state.authMode='enroll';
+      await loadConfiguration();
+      let saved;try{saved=JSON.parse(sessionStorage.getItem(storageKey(state.siteId)));}catch(_error){saved=null;}
+      if(saved?.access_token&&(!saved.expires_at||new Date(saved.expires_at)>new Date())&&!state.inviteToken){state.token=saved.access_token;try{const me=await request(endpoint('/me'));state.patient=me.patient;state.site=me.site||state.site;state.authenticated=true;await refreshData();return;}catch(error){if(error.status!==401)throw error;sessionStorage.removeItem(storageKey(state.siteId));state.token=null;}}
+      render();
+    }catch(error){state.error=error.message;state.loading=false;render();}
+  }
+  initialize();
+})();

@@ -264,3 +264,224 @@ Use tools/stripe-v2-checkout/checkout-reference-deployment.json for actual live
 publication and final test evidence. Hosted visual checks must not submit a
 payment; local financial regression tests use the fake backend. No customer
 screenshots or private checkout URLs are committed.
+
+## Patient portal direction and isolated demo
+
+The owner confirmed separate patient portals/records per site. The medical team
+will fetch information from Sticky; intake and doctor-messaging APIs will be
+provided later. Use backend-served therapy-specific sample questions and mock
+messaging in the meantime. Do not introduce medical-network integration as a
+prerequisite or infer clinical approval from payment/submission.
+
+Read PATIENT_PORTAL_PLAN.md and tools/stripe-v2-checkout/patient_demo/README.md.
+The new loopback demo has its own synthetic database, site/role-scoped demo
+tokens, sample orders, saved intake drafts, immutable submissions, messages,
+admin progress views and site Swagger. Its persona switch is not real patient
+authentication. Partial leads are display fixtures. No production order import,
+Sticky intake handoff, clinical decision, refill, store or funnel builder is
+connected yet. Existing live checkout and API deployments remain unchanged.
+
+
+## Latest: real Sticky member portal (23 October 2026)
+
+The owner rejected synthetic portal orders. The implementation now lives in
+`tools/stripe-v2-checkout/member_portal`, integrated into the real checkout app.
+See its README for accounts, exact APIs, order import/renewal lineage, address
+updates, subscription holds, per-SKU refill/early-request policies and the $1
+checkout toggle. The old `patient_demo` module is an offline fixture only, apart
+from its reusable mock questionnaire functions. Never serve it as real orders.
+
+Existing Fly/Sticky authentication was verified without requesting credentials.
+Read-only inspection found both the campaign 422 test site and markrx campaign
+423. Historical captured receipts need current Sticky status reconciliation;
+do not display every locally captured row as currently paid. No customer or
+credential data belongs in this handoff.
+
+Eight new actual Sticky Dry Run orders verified $1 full-term renewals and $0
+included cycles. Their sanitized evidence is documented in the member README.
+The gateway, catalog prices and existing live order records were preserved.
+Medical-provider APIs and the tokenized saved-card replacement contract remain
+external dependencies. Code readiness is not a claim of production deployment;
+check the release record and process version before directing members to it.
+
+Private real-data preview is running at `http://127.0.0.1:8873` through a Fly
+proxy to an additional process on port 8081. Owner entry is
+`/portal-admin/master-therapy-test-422`; member entry is
+`/portal/master-therapy-test-422`. Use the existing owner login. The preview
+reuses the existing server-side Sticky credentials and database in place; no
+credentials or customer data were copied locally. No orders were fabricated.
+The original checkout worker and all existing payment rows were unchanged.
+The old synthetic localhost listener was stopped. See
+`tools/stripe-v2-checkout/member-portal-preview.json` for verification.
+
+This private process/tunnel is a development preview, not a durable public
+deployment. The public checkout's new $1 toggle, receipt enrollment and the
+external session API enrollment endpoint still need their normal releases.
+At preflight, the existing worker had 15 awaiting-card and 2 authorization-
+pending attempts; preserve them and honor the owner's prior request to leave
+open payments untouched before restarting. The portal does not auto-import
+account-wide orders: sync site-bound receipts or explicitly import exact
+matching order IDs, then issue a member invitation.
+
+Customer experience: send patients to `/portal/{site_id}`. The separate
+`/portal-admin/{site_id}` area is labeled **Administration · staff only** and
+contains order import and checkout testing. It is not the patient experience.
+An existing owner cookie never signs someone into a patient account or grants
+patient order access. Admin has an explicit link to open the customer portal.
+
+## Latest: SKU intakes and quarterly care journey (23 October 2026)
+
+Forty existing master SKUs now have explicit product intake assignments across
+Semaglutide, Tirzepatide, Sermorelin, Metformin and PT-141. The master editor's
+member-portal settings expose intake selection, purchase-intake requirement and
+check-in day offsets. These settings do not change Sticky prices or billing.
+Twelve-month terms use days 0/90/180/270; six-month terms use 0/90; one- and
+three-month terms use the purchase intake. See DECISIONS.md and the member README.
+
+Each verified paid term keeps its own questions and care schedule. Every step
+has a separate autosaved draft and immutable submission. The matching current
+check-in and earlier required steps must be completed before a refill review
+request. Site, patient, task and term boundaries are enforced. Staff summaries
+include the individual checkpoint labels. Medical provider APIs remain mocked.
+
+The owner's existing markrx Sticky Dry Run order completed the full requested
+test: four mock intakes and three simulated refill requests awaiting review.
+Partial drafts resumed, submissions remained immutable, and retries did not
+duplicate requests. Original Sticky order, subscription dates and billing state
+were verified unchanged. No additional order, real charge or shipment occurred.
+The care-only test clock is restricted to a verified non-shippable Dry Run order,
+expires after 24 hours, and retains simulation provenance. It does not advance
+Sticky. Never use simulated answers to qualify a live medication request.
+
+Private preview updated; the original public checkout worker was preserved.
+Verification: 352 backend tests, followed by all 17 final care/security cases;
+8 portal browser scenarios, 23 provider cases, 6 master-policy cases, 2 template
+cases and the repaired master-editor browser regression passed. Check
+member-portal-preview.json for the exact running source bundle. Customer data,
+test answers, passwords and private account links are excluded from this handoff.
+
+
+## Verified private preview: native included claims (23 October 2026)
+
+The latest request supersedes the earlier review-only refill interaction. The
+customer sequence is now purchase → initial intake if missing → claim the next
+included shipment → fresh check-in for the resulting native Sticky child order.
+A 360-day / 12-month four-shipment term opens included claims at days 80/170/260;
+a 180-day / six-month term opens one at day 80. These are ten-day windows before
+the original 90-day shipment anchors. One- and three-month purchases have only
+the initial shipment. The portal store links to the site's existing paid checkout
+choices for new purchases, independently of whether an included claim is open.
+
+Implementation lives in `member_portal/claims.py`, the provider adapter, and the
+care/member API modules. `member_refill_claims` journals one native claim per paid
+term/cycle; retries reconcile uncertain outcomes through reads. Claims verify
+original paid terms, exact native cycle and ownership, zero additional
+order/shipping/tax amounts, current configuration and scheduler conflicts. The following native
+cycle remains anchored to the original paid term. The final paid renewal is not
+an included claim and must never be forced by this endpoint.
+
+Initial forms remain in `member_care_intakes`. New post-claim forms live in the
+separate `member_claim_intakes` table, scoped to a claim and verified child order.
+Existing review-only requests and old submissions are preserved and exposed as
+history; they cannot silently satisfy the fresh post-claim form. Staff progress
+summaries include checkpoint and claim/order references. Patient views use one
+care journey per paid term while retaining the actual child orders in history.
+The care clock now follows `term_order_id`, so native children share the parent's
+simulated day and a later paid renewal remains separate.
+
+The current native-order path is restricted to verified non-shippable,
+non-taxable configurations without external fulfillment integrations and with
+zero recurring shipping. Actual $0 Dry Run orders can exercise the order flow.
+Physical medication release still needs a clinical/fulfillment hold contract;
+medical intake and messaging APIs and secure saved-card replacement also remain
+external work. The original public checkout worker and existing payment attempts
+must stay untouched unless a separately authorized release changes that status.
+
+The private Fly portal preview now runs this claim-first implementation. On the
+existing authorized Markrx Dry Run term, all three actual included native Sticky
+orders were created and read back at $0, using simulated claim days 80/170/260.
+Each claim received its own submitted mock check-in; the original initial intake
+and earlier review-only history were preserved. Duplicate claims returned the
+same order. Following cycle anchors remained 180/270/360 days from purchase, and
+the paid renewal boundary was rejected without a charge. No medication shipped.
+The public checkout worker and every existing checkout row remained unchanged.
+
+Real Sticky responses omit shipping IDs on some native children and include all
+descendants in ancestor child lists. The provider verifies the original free
+shipping profile and exact descendant lineage; unrelated references, changed
+profiles, fees and ambiguous writes remain blocked.
+
+Validation includes the full backend suite, targeted provider/claim regressions,
+and nine browser scenarios, including a full three-claim journey and delayed
+page loading. Exact counts and bundle identity are in `member-portal-preview.json`.
+Markrx's four existing checkout plans remain private, so they are excluded from
+the paid portal store. Publishing those plans or adding a scoped patient checkout
+handoff is still needed for Markrx repurchases. Card replacement, clinical APIs,
+and physical fulfillment hold/release remain the provider dependencies above.
+No customer details, passwords, private invitation links, tokens or questionnaire
+answers are recorded here.
+
+## Patient portal design pass (23 October 2026)
+
+Patient screens now use a calmer card layout, readable 17–18px text, larger
+controls, stronger contrast and responsive order timelines. Technical provider
+and testing notices remain in staff controls rather than patient intake, order
+or care screens. Submission confirms that answers are saved; it does not claim
+that a clinician has received or approved them.
+
+The timeline shows order received, health intake (or the exact refill check-in),
+medical review, prescription and shipping from recorded evidence. Unknown or
+blocked states stay pending or need attention. Monthly plans do not promise
+included prepaid shipments. Patient plan labels avoid raw SKU identifiers.
+Address dialogs now contain keyboard focus and restore the opening control.
+Light brand colors receive an accessible foreground/button variant without
+changing saved branding.
+
+All 12 member browser scenarios passed across the full and affected follow-up
+runs. Desktop, tablet and mobile screenshots were reviewed; the release record
+identifies the private preview bundle. This design pass changes no provider,
+billing, clinical, fulfillment or authentication contract. The dependencies
+recorded above still apply.
+
+## Delivery updates, refills hub and doctor-chat drafts (23 October 2026)
+
+The patient portal now has a dedicated refill view, notification inbox with an
+unread indicator, shipment details, and a doctor-chat composer. The refill view
+groups by original paid term so separate treatment purchases remain independent
+and native child orders do not inflate remaining entitlements. Existing claim
+confirmation, per-order check-ins and provider protections remain in place.
+
+Authorized order responses now include normalized Sticky tracking numbers and
+shipping dates. The UI displays shipment details only for recorded shipped or
+delivered orders; it invents no carrier, arrival estimate or tracking URL.
+`member_portal/notifications.py` derives patient updates from authorized local
+snapshots without extra Sticky reads. Read receipts are durable and scoped to
+site and patient. Alerts open the relevant order, form or treatment card; they
+never place orders by themselves.
+
+The doctor-chat box supports private server-backed message drafts with revision
+checks. Drafts are explicitly saved, can be reopened, and remain drafts until a
+real messaging adapter is connected. No clinician reply or delivery is faked.
+The new `member_message_drafts` and `member_notification_reads` tables are
+additive migrations. Medical providers, notification delivery by email/SMS and
+scheduled order reconciliation remain separate integrations. Source and API
+contracts are documented in the member portal README; preview identity and
+verification counts are in `member-portal-preview.json`.
+
+
+## Latest: action-first refresh of the existing member portal (23 October 2026)
+
+The standalone option-1 prototype was rejected as too limited. The real member
+frontend now uses its neutral action-first style while retaining all six nav
+sections and existing handlers/APIs. Home shows the next care action, verified
+plan facts, distinct purchased treatment terms, latest order progress and
+shortcuts. Full order history, subscription/address actions, intake/check-ins,
+refills, notifications, drafts and paid choices remain in their existing views.
+
+All 17 browser scenarios passed across the main and focused final runs, including
+new same-medication purchase grouping and retained-filter coverage. The private
+preview received only verified JS/CSS replacements with backups; both worker
+processes stayed running and healthy. Public checkout/database untouched.
+No real provider transaction was performed for this design change. User chose
+automated checks rather than signing into the real-data portal for inspection.
+Read PORTAL_DESIGN_REFRESH.md and member-portal-preview.json for exact scope.

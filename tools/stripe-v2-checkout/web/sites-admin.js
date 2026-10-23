@@ -99,6 +99,8 @@ function renderSites(){
  $('site-form').querySelector('button[type=submit]').disabled=!enabled.length||enabled.some(t=>t.ready===false);
  list('site-list',state.sites||[],site=>{
  const b=state.brands.find(b=>b.id===site.brand_id),e=card(site.name,b?.name||'');if(b?.color)e.style.borderLeft='4px solid '+b.color;
+ const portalActions=element('div',undefined,'actions');
+ for(const [label,path] of [['Orders & members','/portal-admin/'],['Member login','/portal/']]){const a=element('a',label+' ↗');a.href=path+encodeURIComponent(site.id);a.target='_blank';a.rel='noopener noreferrer';portalActions.append(a);}e.append(portalActions);
  for(const row of site.checkouts){const checkout=element('div',undefined,'site-checkout'),p=(state.planCheckouts||[]).find(p=>p.id===row.checkout_id);checkout.append(element('h3',row.name));
  let status=row.status==='paused'?'Paused':row.status==='incomplete'?'Needs attention':row.status==='live'?'Published':p?.visibility==='public'?'Published in test mode · payments blocked':'Ready to preview';
  checkout.append(element('p',status+(row.update_available?' · Template update available':'')));if(row.reason)checkout.append(element('p',row.reason,'hint'));

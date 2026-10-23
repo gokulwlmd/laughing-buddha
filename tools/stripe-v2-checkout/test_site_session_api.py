@@ -111,6 +111,24 @@ class SessionApiTests(unittest.TestCase):
         self.assertEqual(self.fake.count('/authorize_payment'),1);self.assertEqual(self.fake.count('/new_order'),1)
         self.assertEqual(self.client.get(path,headers=headers).json()['status'],'captured')
 
+    def test_portal_handoff_requires_owned_completed_checkout_and_trusted_destination(self):
+        path,headers,data,payment=self.prepared()
+        self.assertEqual(self.client.post(path+'/portal',headers=headers,json={}).status_code,409)
+        self.fake.confirmed.add(payment['payment_intent_id'])
+        self.assertEqual(self.client.post(path+'/complete',headers=headers,json={'payment_intent_id':payment['payment_intent_id']}).status_code,200)
+        issued=[]
+        def invitation(row):
+            issued.append(row['id'])
+            return {'site_id':'real-site','enrollment_url':PUBLIC_UPSTREAM+'/portal/real-site#invite=test-only-token','expires_at':None}
+        self.engine.state.member_portal.receipt_invite=invitation
+        self.assertEqual(self.client.post(path+'/portal',json={}).status_code,401)
+        response=self.client.post(path+'/portal',headers=headers,json={})
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(issued,[self.store.read(data['session_id'])['attempt']])
+        self.engine.state.member_portal.receipt_invite=lambda row:{'site_id':'real-site','enrollment_url':'https://untrusted.example/portal/real-site','expires_at':None}
+        self.assertEqual(self.client.post(path+'/portal',headers=headers,json={}).status_code,502)
+        self.assertEqual(self.fake.count('/new_order'),1)
+
     def test_session_tokens_isolate_same_plan_and_expire_without_resetting_attempt(self):
         a,ha,da=self.create();b,hb,db=self.create()
         self.assertNotEqual(da['session_token'],db['session_token'])

@@ -12,7 +12,9 @@ suite=unittest.defaultTestLoader.discover(str(ROOT),pattern='test_*.py')
 result=unittest.TextTestRunner(verbosity=2).run(suite)
 (results/'backend.json').write_text(json.dumps({'tests':result.testsRun,'failures':len(result.failures),'errors':len(result.errors),'skipped':len(result.skipped)},indent=2)+'\n')
 if not result.wasSuccessful():raise SystemExit(1)
-for script in sorted(Path('web').glob('*.js')):subprocess.run(['node','--check',str(script)],check=True)
+for directory in ('web', 'member_portal/web'):
+    for script in sorted(Path(directory).glob('*.js')):
+        subprocess.run(['node','--check',str(script)],check=True)
 env=os.environ.copy();env['QA_PYTHON']=sys.executable
 (results/'results.json').unlink(missing_ok=True)
 test=subprocess.run(['npm','--prefix','qa','test','--','--config=playwright.config.cjs'],env=env)
