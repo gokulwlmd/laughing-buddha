@@ -15,7 +15,7 @@
     "backend_suite_passed": 386,
     "additional_refill_concurrency_regression_passed": true,
     "member_backend_total_passed": 92,
-    "member_browser_cases_passed": 16,
+    "member_browser_cases_passed": 17,
     "affected_checkout_browser_cases_passed": 18,
     "javascript_syntax_files_passed": 19,
     "care_and_security_final_regressions_passed": 17,
@@ -24,7 +24,8 @@
     "master_policy_cases_passed": 7,
     "native_claim_manager_cases_passed": 8,
     "design_pass_backend_rerun": true,
-    "member_updates_backend_cases_passed": 7
+    "member_updates_backend_cases_passed": 7,
+    "home_purchase_grouping_and_retained_filter_passed": true
   },
   "provider_verification": {
     "method": "read-only real order and subscription responses; isolated Dry Run price verification",
@@ -102,6 +103,25 @@
     "recorded_shipment_tracking": true,
     "scoped_notifications_and_read_receipts": true,
     "per_treatment_refill_management": true,
-    "doctor_chat_drafts": true
+    "doctor_chat_drafts": true,
+    "action_first_existing_portal": true,
+    "existing_features_preserved": true
+  },
+  "presentation_update": {
+    "date": "2026-10-23",
+    "method": "atomic static JS/CSS replacement in existing private release",
+    "worker_restarted": false,
+    "processes_unchanged": true,
+    "health": {
+      "public": 200,
+      "private": 200
+    },
+    "backup_id": "20261023T142736Z-a3404692261e",
+    "sha256": {
+      "portal.js": "397f5cb3d0aa9227b7a39f155b3687267525da36fe00d94fa6ea147400669710",
+      "portal.css": "2277bf0bcb2c9976608e975d7b051c2e4b3bdda4bded2846cfe40646bed7b742"
+    },
+    "authenticated_live_visual_review": false,
+    "review_method": "in-app browser with offline contract fixture and 17 automated member scenarios"
   }
 }

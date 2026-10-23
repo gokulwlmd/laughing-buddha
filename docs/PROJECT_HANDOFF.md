@@ -467,3 +467,21 @@ additive migrations. Medical providers, notification delivery by email/SMS and
 scheduled order reconciliation remain separate integrations. Source and API
 contracts are documented in the member portal README; preview identity and
 verification counts are in `member-portal-preview.json`.
+
+
+## Latest: action-first refresh of the existing member portal (23 October 2026)
+
+The standalone option-1 prototype was rejected as too limited. The real member
+frontend now uses its neutral action-first style while retaining all six nav
+sections and existing handlers/APIs. Home shows the next care action, verified
+plan facts, distinct purchased treatment terms, latest order progress and
+shortcuts. Full order history, subscription/address actions, intake/check-ins,
+refills, notifications, drafts and paid choices remain in their existing views.
+
+All 17 browser scenarios passed across the main and focused final runs, including
+new same-medication purchase grouping and retained-filter coverage. The private
+preview received only verified JS/CSS replacements with backups; both worker
+processes stayed running and healthy. Public checkout/database untouched.
+No real provider transaction was performed for this design change. User chose
+automated checks rather than signing into the real-data portal for inspection.
+Read PORTAL_DESIGN_REFRESH.md and member-portal-preview.json for exact scope.

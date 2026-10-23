@@ -340,3 +340,14 @@ paid purchase choices separate from included claims.
 Until the medical messaging API arrives, the chat composer saves a private draft
 with optimistic revision checks. Do not display a draft as sent or create a
 fictional doctor response. Patient records remain separate across sites.
+
+
+## Preserve portal functionality while redesigning (23 October 2026)
+
+The owner selected action-first option 1, then rejected the reduced standalone
+prototype because it omitted features. Apply that visual direction directly to
+the existing member portal. Preserve all existing screens, actions, site-bound
+records, API integrations and provider limitations. Simplify the default home
+view and keep details accessible; do not replace real state with fixture data.
+Separate purchases of one medication remain separate treatment rows; included
+children group under their paid term. See PORTAL_DESIGN_REFRESH.md for coverage.

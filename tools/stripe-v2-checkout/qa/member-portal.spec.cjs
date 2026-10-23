@@ -16,9 +16,9 @@ const test=base.extend({careMode:[false,{option:true}],member:async({careMode},u
 async function ownerLogin(page,member){await page.goto(member.origin+'/portal-admin/site-a');await page.locator('#auth-email').fill('owner@example.invalid');await page.locator('#auth-password').fill('owner-only-test-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.locator('#site-select')).toHaveValue('site-a');await expect(page.getByRole('button',{name:'Sync captured orders',exact:true})).toBeVisible();}
 async function enroll(page,member){
   await ownerLogin(page,member);await expect(page.getByRole('heading',{name:'No synced orders yet'})).toBeVisible();await page.getByRole('button',{name:'Sync captured orders',exact:true}).click();await expect(page.locator('.data-table')).toContainText('9001');
-  await page.getByRole('button',{name:'Create invitation',exact:true}).click();const invitation=await page.locator('#enrollment-url').inputValue();await page.goto(invitation);await expect(page.getByRole('heading',{name:'Create your patient account'})).toBeVisible();await page.locator('#auth-password').fill('patient-only-test-password');await page.locator('#auth-confirm').fill('patient-only-test-password');await page.getByRole('button',{name:'Create account',exact:true}).click();await expect(page.getByRole('heading',{name:'Welcome, Sample.'})).toBeVisible();
+  await page.getByRole('button',{name:'Create invitation',exact:true}).click();const invitation=await page.locator('#enrollment-url').inputValue();await page.goto(invitation);await expect(page.getByRole('heading',{name:'Create your patient account'})).toBeVisible();await page.locator('#auth-password').fill('patient-only-test-password');await page.locator('#auth-confirm').fill('patient-only-test-password');await page.getByRole('button',{name:'Create account',exact:true}).click();await expect(page.getByRole('heading',{name:'Your next step',level:1,exact:true})).toBeVisible();await expect(page.locator('.care-home')).toContainText('Welcome, Sample.');
 }
-async function patientCopy(page){await expect(page.locator('main')).not.toContainText(/medical (?:service|team|intake provider) is not connected|test order|test timeline|dry run|use test answers|payment-test product|fictional answers|not been sent to a (?:medical team|clinician)/i);}
+async function patientCopy(page){await expect(page.locator('main')).not.toContainText(/medical (?:service|team|intake provider) is not connected|\btest order\b|\btest timeline\b|dry run|use test answers|payment-test product|fictional answers|not been sent to a (?:medical team|clinician)/i);}
 async function readable(page){
   const details=await page.locator('.page-head p,.welcome-card p,.small-note,.section-description,.field>label,.field legend,.choice,.modal p,.care-task-date,.care-refill-state,.order-progress-note,.order-progress-copy p,.order-progress-copy h4').evaluateAll(nodes=>nodes.filter(node=>node.getClientRects().length&&node.textContent.trim()).map(node=>({text:node.textContent.trim().slice(0,70),size:parseFloat(getComputedStyle(node).fontSize)})));
   for(const item of details)expect(item.size,JSON.stringify(item)).toBeGreaterThanOrEqual(16);
@@ -266,11 +266,58 @@ test.describe('Independent treatment refill cards',()=>{
     });
     await page.route('**/api/v1/sites/site-a/portal/notifications**',async route=>{if(route.request().method()==='POST')readAt='2026-10-23T12:00:00Z';await route.fulfill({json:{notifications:[{id:'qa-refill-9100',kind:'refill-ready',title:'Your Metformin refill is ready',body:'Review your included refill.',created_at:'2026-10-23T12:00:00Z',read_at:readAt,order_id:'9100',task_id:'checkin-90',action:'claim-refill'}],unread_count:readAt?0:1}});});
     await page.route('**/api/v1/sites/site-a/portal/orders/*/care-tasks/*/claim',async route=>{claims.push({url:route.request().url(),body:route.request().postDataJSON()});await route.fulfill({status:503,json:{detail:'Offline QA stopped before creating a refill.'}});});
-    await enroll(page,member);await page.locator('[data-action="navigate"][data-view="refills"]').click();await expect(page.locator('.refill-plan')).toHaveCount(2);await expect(page.locator('[data-refill-order="9002"]')).toHaveCount(0);
+    await enroll(page,member);await page.getByRole('navigation',{name:'Patient navigation',exact:true}).getByRole('button',{name:'Refills',exact:true}).click();await expect(page.locator('.refill-plan')).toHaveCount(2);await expect(page.locator('[data-refill-order="9002"]')).toHaveCount(0);
     const first=page.locator('.refill-plan[data-refill-order="9001"]'),second=page.locator('.refill-plan[data-refill-order="9100"]');await expect(first).toContainText('Semaglutide');await expect(second).toContainText('Metformin');
     await expect(first.locator('.refill-next-step [data-action="open-care-task"]')).toHaveAttribute('data-task','checkin-90');await expect(first.locator('.refill-next-step [data-action="open-care-task"]')).toHaveAttribute('data-order','9001');await expect(first.locator('[data-action="claim-refill"]')).toHaveCount(0);await expect(second.locator('.refill-next-step [data-action="claim-refill"]')).toHaveAttribute('data-order','9100');await expect(page.getByRole('button',{name:/claim all|refill all/i})).toHaveCount(0);expect(claims).toEqual([]);
     for(const width of [1440,390]){await page.setViewportSize({width,height:1000});await reflow(page,width);await readable(page);await page.screenshot({path:testInfo.outputPath(`independent-refills-${width}.png`),fullPage:true});}
     await page.locator('.nav-link[data-action="navigate"][data-view="notifications"]').click();await page.locator('[data-notification="qa-refill-9100"] [data-action="open-notification"]').click();await expect(second).toBeVisible();await expect(page.getByRole('dialog')).toHaveCount(0);expect(claims).toEqual([]);await second.locator('.refill-next-step [data-action="claim-refill"]').click();const dialog=page.getByRole('dialog');await expect(dialog).toContainText('$0 due today');expect(claims).toEqual([]);
     await dialog.getByRole('button',{name:'Claim included refill',exact:true}).click();await expect.poll(()=>claims.length).toBe(1);expect(claims[0].url).toContain('/orders/9100/care-tasks/checkin-90/claim');expect(claims[0].body.client_request_id).toBeTruthy();await expect(page.locator('body')).toContainText('Offline QA stopped before creating a refill.');await proof(page,member);
+  });
+});
+
+test.describe('Treatment overview',()=>{
+  test.use({careMode:true});
+  test('MEMBER-17 home keeps separate purchased terms, groups included orders and preserves patient navigation',async({page,member})=>{
+    await page.route('**/api/v1/sites/site-a/portal/configuration',async route=>{
+      const response=await route.fetch(),body=await response.json();body.therapies.push({id:'metformin',name:'Metformin'});await route.fulfill({response,json:body});
+    });
+    await page.route('**/api/v1/sites/site-a/portal/orders',async route=>{
+      const response=await route.fetch(),body=await response.json();if(!body.orders.length)return route.fulfill({response,json:body});
+      const first=structuredClone(body.orders[0]);
+      const second=structuredClone(first);Object.assign(second,{id:'9100',number:'9100',created_at:'2026-10-23T12:00:00Z',plan_name:'6-month subscription'});
+      Object.assign(second.care_plan,{id:'care-9100',order_id:'9100',term_order_id:'9100',coverage_days:180});second.care_plan.tasks=second.care_plan.tasks.slice(0,2);
+      Object.assign(first.care_plan.tasks[1],{status:'draft',intake_status:'draft',can_open:true,can_submit:true,claim:{status:'claimed',available:false,order_id:'9002',amount:'0.00',created_at:'2026-10-24T12:00:00Z'}});
+      const child=structuredClone(first);Object.assign(child,{id:'9002',number:'9002',total:'0.00',created_at:'2026-10-24T12:00:00Z'});
+      // A newer included order must not replace its purchased term, and the
+      // same medication bought again must keep its own treatment entry.
+      body.orders=[child,second,first];await route.fulfill({response,json:body});
+    });
+    await enroll(page,member);
+    const navigation=page.getByRole('navigation',{name:'Patient navigation',exact:true});
+    const routes=[['Overview','Your next step'],['Orders & plans','Orders & plans'],['Refills','Manage your refills'],['Medical intake','Intake & check-ins'],['Messages','Chat with your doctor'],['Notifications','Notifications']];
+    for(const [label] of routes)await expect(navigation.getByRole('button',{name:label,exact:true})).toBeVisible();
+    for(const width of [1440,390]){
+      await page.setViewportSize({width,height:1000});await navigation.getByRole('button',{name:'Overview',exact:true}).click();
+      const treatments=page.locator('.home-treatments'),rows=treatments.locator('.treatment-summary-row');
+      await expect(rows).toHaveCount(2);await expect(rows.filter({hasText:'Semaglutide'})).toHaveCount(2);
+      const original=rows.filter({has:page.locator('[data-action="order-detail"][data-order="9001"]')}),repeat=rows.filter({has:page.locator('[data-action="order-detail"][data-order="9100"]')});
+      await expect(original).toHaveCount(1);await expect(original).toContainText('12-month plan');await expect(repeat).toHaveCount(1);await expect(repeat).toContainText('6-month plan');
+      await expect(treatments.locator('[data-action="order-detail"][data-order="9002"]')).toHaveCount(0);await reflow(page,width);await readable(page);await patientCopy(page);
+      for(const orderId of ['9001','9100']){
+        await treatments.locator(`[data-action="order-detail"][data-order="${orderId}"]`).click();
+        await expect(navigation.getByRole('button',{name:'Orders & plans',exact:true})).toHaveAttribute('aria-current','page');
+        await expect(page.locator(`#order-${orderId} .order-head .order-id`)).toBeInViewport();
+        await navigation.getByRole('button',{name:'Overview',exact:true}).click();
+      }
+      for(const [label,heading] of routes){
+        const link=navigation.getByRole('button',{name:label,exact:true});await link.click();
+        await expect(link).toHaveAttribute('aria-current','page');await expect(page.getByRole('heading',{name:heading,level:1,exact:true})).toBeVisible();
+      }
+    }
+    await navigation.getByRole('button',{name:'Overview',exact:true}).click();
+    const planFacts=page.locator('.home-plan-facts');await expect(planFacts).toContainText('Next scheduled date');const unfilteredFacts=await planFacts.innerText();
+    await navigation.getByRole('button',{name:'Orders & plans',exact:true}).click();await page.locator('#therapy-filter').selectOption('metformin');await expect(page.locator('.full-order')).toHaveCount(0);
+    await navigation.getByRole('button',{name:'Overview',exact:true}).click();await expect(planFacts).toHaveText(unfilteredFacts,{useInnerText:true});await expect(page.locator('.home-plan-summary [data-action="order-detail"]')).toHaveAttribute('data-order','9001');
+    await proof(page,member);
   });
 });
