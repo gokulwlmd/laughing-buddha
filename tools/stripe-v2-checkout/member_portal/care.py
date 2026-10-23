@@ -306,7 +306,7 @@ class CareManager:
             raise HTTPException(409, 'This checkpoint does not match an included shipment in the purchased term')
         start = self.s.date(data['start_date'])
         due = start + timedelta(days=task['day_offset'])
-        window = int(self.s.rule(row['sku'], row['site_id']).get('claim_window_days', 10))
+        window = int(self.s.rule(row['sku'], row['site_id']).get('claim_window_days', 20))
         with self.s.db() as db:
             initial = db.execute("SELECT status,simulated FROM member_care_intakes WHERE plan_id=? AND task_id='initial'", (plan['id'],)).fetchone()
             checks = db.execute('SELECT task_id,status,simulated,claim_id,claim_order_id FROM member_claim_intakes WHERE plan_id=?', (plan['id'],)).fetchall()
@@ -480,11 +480,15 @@ class CareManager:
                     (plan['id'], task_id, claim['claim_id'], str(claim['order_id']))).fetchone()
                 if not intake and create:
                     template = json.loads(plan['snapshot'])['templates'][task_id]
+                    template, answers = self.s.answer_profile.seed(db, row, patient, template)
                     db.execute('INSERT OR IGNORE INTO member_claim_intakes VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                        ('intake_' + secrets.token_urlsafe(18), plan['id'], task_id, claim['claim_id'], str(claim['order_id']), 'draft', 0, '{}', 0,
+                        ('intake_' + secrets.token_urlsafe(18), plan['id'], task_id, claim['claim_id'], str(claim['order_id']), 'draft', 0, encoded(answers), 0,
                          encoded(template), self.s.clock(), None, None, int(self.simulation(row)['enabled'] or bool(claim.get('simulated')))))
                     intake = db.execute('SELECT * FROM member_claim_intakes WHERE plan_id=? AND task_id=? AND claim_id=? AND claim_order_id=?',
                         (plan['id'], task_id, claim['claim_id'], str(claim['order_id']))).fetchone()
+            if intake:
+                with self.s.db() as db:
+                    intake = self.s.answer_profile.hydrate(db, row, patient, intake, 'member_claim_intakes')
             return plan, task, dict(intake, _table='member_claim_intakes') if intake else None
         with self.s.db() as db:
             intake = db.execute('SELECT * FROM member_care_intakes WHERE plan_id=? AND task_id=?', (plan['id'], task_id)).fetchone()
@@ -493,15 +497,19 @@ class CareManager:
         if not intake and create:
             template = json.loads(plan['snapshot'])['templates'][task_id]
             with self.s.db() as db:
-                db.execute('INSERT OR IGNORE INTO member_care_intakes VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', ('intake_' + secrets.token_urlsafe(18), plan['id'], task_id, 'draft', 0, '{}', 0, encoded(template), self.s.clock(), None, None, int(self.simulation(row)['enabled'])))
+                template, answers = self.s.answer_profile.seed(db, row, patient, template)
+                db.execute('INSERT OR IGNORE INTO member_care_intakes VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', ('intake_' + secrets.token_urlsafe(18), plan['id'], task_id, 'draft', 0, encoded(answers), 0, encoded(template), self.s.clock(), None, None, int(self.simulation(row)['enabled'])))
                 intake = db.execute('SELECT * FROM member_care_intakes WHERE plan_id=? AND task_id=?', (plan['id'], task_id)).fetchone()
+        if intake:
+            with self.s.db() as db:
+                intake = self.s.answer_profile.hydrate(db, row, patient, intake, 'member_care_intakes')
         return plan, task, dict(intake) if intake else None
 
     def intake_public(self, row, record):
         return {'claim_id': record.get('claim_id'), 'claim_order_id': record.get('claim_order_id'), 'id': record['id'], 'task_id': record['task_id'], 'order_id': row['order_id'], 'therapy_id': row['therapy_id'],
             'status': record['status'], 'revision': record['revision'], 'answers': json.loads(record['answers']),
             'current_step': record['current_step'], 'updated_at': stamp(record['updated']), 'submitted_at': stamp(record['submitted']),
-            'template': json.loads(record['template']), 'reused_fields': [], 'provider_connected': False, 'simulated': bool(record['simulated'])}
+            'template': json.loads(record['template']), 'reused_fields': [q['id'] for q in json.loads(record['template'])['questions'] if q.get('reuse_status') in ('stable', 'verified')], 'provider_connected': False, 'simulated': bool(record['simulated'])}
 
     def modify(self, row, patient, task_id, body, submit=False):
         plan, task, record = self.intake(row, patient, task_id)
@@ -515,6 +523,7 @@ class CareManager:
             if record['status'] == 'submitted' or record['revision'] != body.revision:
                 raise HTTPException(409, 'This check-in is submitted or changed. Reload before saving.')
             answers, template, now = json.loads(record['answers']), json.loads(record['template']), self.s.clock()
+            self.s.answer_profile.validate(db, row, patient, template, incoming=None if submit else body.answers, submit=submit, answers=answers)
             if submit:
                 questions = [q for q in template['questions'] if visible(q, answers)]
                 missing = [q['id'] for q in questions if q.get('required') and answers.get(q['id']) in (None, '', [])]

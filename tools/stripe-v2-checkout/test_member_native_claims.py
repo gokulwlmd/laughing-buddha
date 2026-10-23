@@ -22,6 +22,27 @@ class NativeClaimTests(care.MemberCareTests):
     def forces(self):
         return [b for _, p, b in self.fake.calls if p.endswith('/order_force_bill')]
 
+    def test_twenty_day_window_claims_only_unused_cycles_at_70_160_250(self):
+        rule = self.app.state.admin.get('refill_policy', self.sku)
+        rule['claim_window_days'] = 20
+        self.app.state.admin.put('refill_policy', self.sku, rule)
+        self.complete('initial')
+        for index, day in enumerate((90, 180, 270), 1):
+            self.simulate(day - 21)
+            self.assertEqual(self.claim(day).status_code, 409)
+            self.assertEqual(len(self.forces()), index-1)
+            self.simulate(day - 20)
+            context = self.service.care.claim_context(self.service.order_record('site-a','9001'), 'checkin-'+str(day))
+            self.assertEqual((self.service.date(context['due_date'])-self.service.date(context['opens_at'])).days,20)
+            result = self.claim(day)
+            self.assertEqual(result.status_code,200,result.text)
+            self.assertEqual(result.json()['claim']['amount'],'0.00')
+            self.assertEqual(self.claim(day, key='repeat-new-key-'+str(day)).status_code,200)
+            self.assertEqual(len(self.forces()),index)
+            self.complete('checkin-'+str(day))
+        self.assertEqual(self.claim(360).status_code,404)
+        self.assertEqual(len(self.forces()),3)
+
     def test_claim_first_journey_creates_three_zero_native_orders_and_stops_before_renewal(self):
         self.simulate(80)
         self.assertEqual(self.claim().status_code, 409)

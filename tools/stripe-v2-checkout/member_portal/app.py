@@ -367,6 +367,10 @@ class MemberService:
             if 'reason' not in existing_columns:
                 db.execute("ALTER TABLE member_refills ADD COLUMN reason TEXT NOT NULL DEFAULT ''")
 
+        from .answer_profile import AnswerProfile
+        from refill_rules import migrate_claim_window
+        migrate_claim_window(self.store)
+        self.answer_profile = AnswerProfile(self)
         self.care = CareManager(self)
         self.claims = ClaimsManager(self)
         self._store_cache = {}
@@ -913,7 +917,7 @@ class MemberService:
             order = self.sync(site_id, str(row['order_id']))
         with self.db() as db:
             grant = db.execute('SELECT patient_id FROM member_grants WHERE site_id=? AND order_id=?', (site_id, order['order_id'])).fetchone()
-        return order, {'id': grant['patient_id'] if grant else 'receipt:' + order['order_id']}
+        return order, {'id': grant['patient_id'] if grant else 'receipt:' + order['order_id'], '_reuse_allowed': False}
 
     def modify_initial(self, order, body, patient, submit=False):
         site_id, order_id = order["site_id"], order["order_id"]
@@ -928,6 +932,7 @@ class MemberService:
                 raise HTTPException(409, 'This intake is submitted or changed. Reload before saving.')
             template, answers = json.loads(row['template']), json.loads(row['answers'])
             now = self.clock()
+            self.answer_profile.validate(db, order, patient, template, incoming=None if submit else body.answers, submit=submit, answers=answers)
             if submit:
                 questions = [q for q in template['questions'] if visible(q, answers)]
                 missing = [q['id'] for q in questions if q.get('required') and answers.get(q['id']) in (None, '', [])]
@@ -953,21 +958,22 @@ class MemberService:
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT * FROM member_intakes WHERE site_id=? AND order_id=? AND patient_id=?', (order['site_id'], order['order_id'], patient['id'])).fetchone()
             if row:
-                return dict(row)
+                return self.answer_profile.hydrate(db, order, patient, row, 'member_intakes')
             therapy = order['therapy_id']
             if therapy not in QUESTION_THERAPIES:
                 raise HTTPException(409, 'This therapy’s intake questions have not been configured yet')
             from .intake_templates import get_template as sku_template, binding_for_sku
             template = sku_template(therapy, sku=order['sku']) if binding_for_sku(order['sku']) else get_template(therapy)
             template['questions'] = [q for q in template['questions'] if q['id'] != 'demo_confirmation']
-            db.execute('INSERT INTO member_intakes VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', (identifier('intake'), order['site_id'], order['order_id'], patient['id'], 'draft', 0, '{}', 0, encoded(template), self.clock(), None, None))
+            template, answers = self.answer_profile.seed(db, order, patient, template)
+            db.execute('INSERT INTO member_intakes VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', (identifier('intake'), order['site_id'], order['order_id'], patient['id'], 'draft', 0, encoded(answers), 0, encoded(template), self.clock(), None, None))
             return dict(db.execute('SELECT * FROM member_intakes WHERE site_id=? AND order_id=? AND patient_id=?', (order['site_id'], order['order_id'], patient['id'])).fetchone())
 
     def intake_public(self, row, order):
         return {'id': row['id'], 'order_id': row['order_id'], 'therapy_id': order['therapy_id'], 'status': row['status'], 'revision': row['revision'],
                 'answers': json.loads(row['answers']), 'current_step': row['current_step'], 'updated_at': stamp(row['updated']),
                 'submitted_at': stamp(row['submitted']) if row['submitted'] is not None else None, 'template': json.loads(row['template']),
-                'reused_fields': [], 'provider_connected': False}
+                'reused_fields': [q['id'] for q in json.loads(row['template'])['questions'] if q.get('reuse_status') in ('stable', 'verified')], 'provider_connected': False}
 
     def messages(self, site_id, patient_id):
         with self.db() as db:

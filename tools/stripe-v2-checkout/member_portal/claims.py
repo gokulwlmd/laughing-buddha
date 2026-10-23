@@ -77,7 +77,7 @@ class ClaimsManager:
             return result
         start = self.s.date(data['start_date'])
         opens = max(start + timedelta(days=int(rule.get('minimum_days', 0))),
-                    start + timedelta(days=task['day_offset'] - int(rule.get('claim_window_days', 10))))
+                    start + timedelta(days=task['day_offset'] - int(rule.get('claim_window_days', 20))))
         result['opens_at'] = opens.isoformat()
         saved = self.recorded(plan['id'], target)
         if saved and saved['status'] in ('processing', 'uncertain'):

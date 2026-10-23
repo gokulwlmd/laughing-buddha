@@ -383,3 +383,55 @@ test('MEMBER-20 navigation scrolls to content and modal keeps page stationary',a
   await expect(page.getByRole('button',{name:'Update delivery address',exact:true})).toBeFocused();
   await proof(page,member);
 });
+
+
+test('MEMBER-21 saved intake details and explicit confirmation remain readable on mobile',async({page,member},info)=>{
+ await page.setViewportSize({width:390,height:900});await enroll(page,member);
+ await page.route('**/api/v1/sites/site-a/portal/intakes/9001',async route=>{
+   const response=await route.fetch(),data=await response.json();
+   if(data.template){
+     const height=data.template.questions.find(q=>q.id==='height_inches');Object.assign(height,{reuse_policy:'stable',reuse_status:'stable',saved_value:68});
+     if(data.answers.height_inches===undefined)data.answers.height_inches=68;
+     const goal=data.template.questions.find(q=>q.id==='weight_goals');Object.assign(goal,{reuse_policy:'confirm',reuse_status:'confirm',saved_value:'Synthetic prior goal'});
+   }
+   await route.fulfill({response,json:data});
+ });
+ await page.getByRole('button',{name:'Medical intake',exact:true}).click();await page.getByRole('button',{name:'Start intake',exact:true}).click();
+ await expect(page.getByText('Saved from your previous intake',{exact:false})).toBeVisible();
+ await expect(page.locator('[data-question="height_inches"]')).not.toBeVisible();
+ await page.getByRole('button',{name:'Still correct',exact:true}).click();
+ await expect(page.locator('[data-question="weight_goals"]')).toHaveValue('Synthetic prior goal');
+ await expect(page.locator('#save-status')).toHaveText('Saved');
+ await page.getByText('Change saved answer',{exact:true}).click();await page.locator('[data-question="height_inches"]').fill('69');
+ await expect(page.locator('#save-status')).toHaveText('Saved');await readable(page);await reflow(page,390);
+ await page.screenshot({path:info.outputPath('member-reused-answers-mobile.png'),fullPage:true});
+ await proof(page,member);
+});
+
+test('MEMBER-22 one-shipment order always exposes disabled included refill with paid-supply instructions',async({page,member},info)=>{
+ await enroll(page,member);await orders(page);
+ await page.getByRole('button',{name:'Refill options',exact:true}).click();
+ const card=page.locator('[data-refill-order="9001"]');
+ await expect(card.getByRole('button',{name:'Claim included refill',exact:true})).toBeDisabled();
+ await expect(card).toContainText('No included refill is currently available');
+ await expect(card).toContainText('paid purchase or subscription renewal');
+ await page.setViewportSize({width:390,height:1000});await reflow(page,390);await readable(page);
+ await page.screenshot({path:info.outputPath('one-shipment-refill-options.png'),fullPage:true});
+ await proof(page,member);
+});
+test.describe('Visible included-refill instructions',()=>{
+ test.use({careMode:true,timezoneId:'America/Los_Angeles'});
+ test('MEMBER-23 upcoming refill remains visible and disabled with opening date and steps',async({page,member},info)=>{
+  await enroll(page,member);await page.getByRole('button',{name:'Refills',exact:true}).click();
+  const card=page.locator('[data-refill-order="9001"]');
+  await expect(card.getByRole('button',{name:'Claim included refill',exact:true})).toBeDisabled();
+  const schedule=(await patientData(page,'/orders/9001/care-plan')).body;
+  const expectedDate=new Date(schedule.tasks[1].claim.opens_at+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  await expect(card).toContainText('Claim window opens: '+expectedDate);
+  await expect(card).toContainText('3');
+  await expect(card.locator('.refill-locked ol li')).toHaveCount(3);
+  await expect(card).toContainText('Complete your initial health intake');
+  for(const width of [1440,390]){await page.setViewportSize({width,height:1000});await reflow(page,width);await readable(page);await page.screenshot({path:info.outputPath('locked-refill-'+width+'.png'),fullPage:true});}
+  await proof(page,member);
+ });
+});

@@ -4,7 +4,7 @@
   const origin = new URL(document.currentScript.src).origin;
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   class PurchaseIntake extends HTMLElement {
-    constructor() { super(); this.attachShadow({mode:'open'}); this.shadowRoot.addEventListener('input',e=>this.input(e));this.shadowRoot.addEventListener('click',e=>{const action=e.target.closest('[data-action]')?.dataset.action;if(action)this.action(action);}); this.shadowRoot.addEventListener('submit',e=>{e.preventDefault();if(e.target.id==='account-form')this.action('account-save');});this.orders=[]; this.index=0; this.dirty=0; this.saved=0; this.pending=null; this.busy=false; this.error=''; this.missing=[]; this.exit=e=>{if(this.dirty>this.saved){e.preventDefault();e.returnValue='';}}; }
+    constructor() { super(); this.attachShadow({mode:'open'}); this.shadowRoot.addEventListener('pointerdown',e=>{const button=e.target.closest('button[data-action]');if(button&&!button.disabled&&e.button===0){e.preventDefault();}}); this.shadowRoot.addEventListener('input',e=>this.input(e));this.shadowRoot.addEventListener('click',e=>{const action=e.target.closest('[data-action]')?.dataset.action;if(action)this.action(action,e.target.closest('[data-action]')?.dataset.q);}); this.shadowRoot.addEventListener('submit',e=>{e.preventDefault();if(e.target.id==='account-form')this.action('account-save');});this.orders=[]; this.index=0; this.dirty=0; this.saved=0; this.pending=null; this.busy=false; this.error=''; this.missing=[]; this.exit=e=>{if(this.dirty>this.saved){e.preventDefault();e.returnValue='';}}; }
     connectedCallback(){window.addEventListener('beforeunload',this.exit);}
     disconnectedCallback(){window.removeEventListener('beforeunload',this.exit);clearTimeout(this.timer);}
     async configure({siteId,sessions}) {
@@ -56,12 +56,16 @@
       if(this.error)return false;
       return this.dirty>this.saved?this.flush():true;
     }
-    status(){const node=this.shadowRoot.querySelector('[data-save]');if(node)node.textContent=this.error|| (this.dirty>this.saved?'Saving your answers…':'Your answers are saved');}
+    status(){const node=this.shadowRoot.querySelector('[data-save]');if(node)node.textContent=this.error?'Please review your answers.':(this.dirty>this.saved?'Saving your answers…':'Your answers are saved');}
     focus(){const node=this.shadowRoot.querySelector('h2');node?.focus({preventScroll:true});this.scrollIntoView({block:'start',behavior:'instant'});}
-    field(q){const value=this.answers[q.id],id=`q-${q.id}`;let input;
+    field(q,editing=false){
+      if(q.reuse_policy==='verified')return `<fieldset><legend>${esc(q.label)}</legend><p>${q.reuse_status==='verified'?'Verified · saved securely':'Complete verification with the identity service to continue.'}</p></fieldset>`;
+      if(q.reuse_status==='stable'&&!editing)return `<fieldset><legend>${esc(q.label)}</legend><p>${esc(this.answers[q.id])} · Saved from your previous intake</p><details><summary>Change saved answer</summary>${this.field(q,true)}</details></fieldset>`;
+      const previous=q.reuse_status==='confirm'?`<p>Previously: ${esc(q.saved_value)}</p><p>Confirm this is still correct, or enter an updated answer below.</p><button type="button" class="secondary" data-action="confirm-saved" data-q="${esc(q.id)}">Still correct</button>`:'';
+      const value=this.answers[q.id],id=`q-${q.id}`;let input;
       if(q.type==='single_choice'||q.type==='multi_choice')input=q.options.map((o,i)=>`<label class="choice"><input id="${esc(id+'-'+i)}" data-q="${esc(q.id)}" type="${q.type==='single_choice'?'radio':'checkbox'}" name="${esc(q.id)}" value="${esc(o.value)}" ${(q.type==='single_choice'?value===o.value:Array.isArray(value)&&value.includes(o.value))?'checked':''}>${esc(o.label)}</label>`).join('');
       else input=q.type==='textarea'?`<textarea aria-label="${esc(q.label)}" id="${esc(id)}" data-q="${esc(q.id)}" rows="3" maxlength="1000">${esc(value)}</textarea>`:`<input aria-label="${esc(q.label)}" id="${esc(id)}" data-q="${esc(q.id)}" type="${q.type==='number'?'number':'text'}" ${q.type==='number'?'step="any"':'maxlength="1000"'} value="${esc(value)}">`;
-      return `<fieldset><legend>${esc(q.label)} ${q.required?'':'<small>(optional)</small>'}</legend>${input}${this.missing.includes(q.id)?'<p class="error">Please answer this question.</p>':''}</fieldset>`;
+      return `<fieldset><legend>${esc(q.label)} ${q.required?'':'<small>(optional)</small>'}</legend>${previous}${input}${this.missing.includes(q.id)?'<p class="error">Please answer this question.</p>':''}</fieldset>`;
     }
     render(){
       const f=this.form,sections=f?.template.sections||[],step=f?.current_step||0,section=sections[step];
@@ -69,7 +73,9 @@
       this.status();
     }
     input(e){const el=e.target,id=el.dataset.q;if(!id||!this.form)return;const q=this.form.template.questions.find(q=>q.id===id);this.answers[id]=q.type==='multi_choice'?[...this.shadowRoot.querySelectorAll('input[type=checkbox]:checked')].filter(n=>n.dataset.q===id).map(n=>n.value):q.type==='number'?(el.value===''?null:Number(el.value)):el.value;this.dirty++;this.error='';this.missing=this.missing.filter(x=>x!==id);if(['single_choice','multi_choice'].includes(q.type)){this.render();this.shadowRoot.getElementById(el.id)?.focus({preventScroll:true});}this.status();clearTimeout(this.timer);this.timer=setTimeout(()=>this.flush(),500);}
-    async action(action){
+    async action(action,questionId){
+      if(this.busy||this.acting||this.accountBusy)return;
+      if(action==='confirm-saved'){const q=this.form?.template.questions.find(q=>q.id===questionId);if(q?.reuse_status!=='confirm')return;this.answers[q.id]=structuredClone(q.saved_value);this.dirty++;this.error='';this.missing=this.missing.filter(id=>id!==q.id);this.render();this.status();clearTimeout(this.timer);this.timer=setTimeout(()=>this.flush(),500);return;}
       if(this.busy||this.acting||this.accountBusy)return;this.acting=true;
       try{await this.performAction(action);}finally{this.acting=false;}
     }

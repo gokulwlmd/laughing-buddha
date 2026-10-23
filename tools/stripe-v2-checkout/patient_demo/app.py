@@ -152,6 +152,13 @@ class IntakeQuestion(BaseModel):
     options: list[QuestionOption] | None = None
     show_if: QuestionCondition | None = None
     sample: AnswerValue | None = None
+    reuse_key: str | None = None
+    reuse_version: str | None = None
+    reuse_policy: Literal['stable', 'confirm', 'verified', 'never'] | None = None
+    reuse_max_age_days: int | None = None
+    reuse_status: Literal['stable', 'confirm', 'verified'] | None = None
+    saved_value: AnswerValue | None = None
+    saved_at: float | None = None
 
 
 class IntakeTemplate(BaseModel):

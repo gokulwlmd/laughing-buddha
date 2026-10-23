@@ -66,6 +66,22 @@ or repeat a real payment/password change merely to validate a skill update.
 
 Use this skill for Sticky-managed Stripe payments, campaign/SKU checkout links, or updates to the existing Fly checkout. Read the [application guide](../../../tools/stripe-v2-checkout/README.md) and [Fly deployment guide](../../../tools/stripe-v2-checkout/FLY.md). For catalog exploration or synthetic billing tests, use [stickyio-catalog-billing](../stickyio-catalog-billing/SKILL.md).
 
+## Saved intake answers and included refill windows
+
+Read [the reuse/refill contract](../../../docs/INTAKE_REUSE_AND_REFILL_WINDOWS.md)
+when changing questionnaires or refill eligibility. Reuse only submitted,
+site/patient/grant-scoped answers via semantic keys and versions. Stable values
+may skip re-entry; changing health details require explicit confirmation. A
+checkout receipt alone cannot unlock cross-order answer history. Trusted ID/SSN
+status comes from the backend provider adapter, never a patient answer PATCH.
+The actual verification APIs are still unconnected.
+
+The owner's current included-claim lead time is 20 days: 70/160/250 for the
+12-month quarterly-delivery plan, 70 for six months. Preserve actual unused
+prepaid cycles, required check-ins and uncertain-write protection; do not turn a
+single-shipment plan into a free refill. Keep unavailable refill actions visible,
+gray and disabled, with their date/reason/instructions, plus paid plan options.
+
 ## Working implementation
 
 Source: `tools/stripe-v2-checkout`. FastAPI + Stripe.js Elements, persistent SQLite, one Uvicorn worker on one Fly machine. Host: `https://wlmd-stripe-test-0f89b1bb.fly.dev`.

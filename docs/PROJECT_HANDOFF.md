@@ -495,3 +495,24 @@ request. See [the contract, migration and boundaries](STICKY_MEMBER_PASSWORDS.md
 The shared post-checkout component carries the form across sites. Existing
 Sticky passwords are never overwritten by a new receipt. Site-scoped patient
 records, order grants and clinical drafts stay in this application.
+
+
+## 24 October 2026 — intake reuse and earlier included refills
+
+The owner approved reusing stable answers and verified identity facts, with
+explicit confirmation for changing health information. The included-refill
+window opens 20 days before supply ends (70/160/250 for 90-day supplies in a
+12-month plan); no additional free cycles are created. Unavailable refills must
+stay visible, grayed out with dates and full instructions. Every order now
+links to its refill options; paid plan choices remain separate checkout actions.
+
+See [the implementation and provider contract](INTAKE_REUSE_AND_REFILL_WINDOWS.md).
+Existing site/patient/order grants protect answer reuse. Submitted snapshots
+remain immutable and guest receipts do not expose other-order health history.
+The real ID/SSN verification APIs are still needed; only the trusted backend
+adapter hook is implemented. No clinical review or identity verification is
+fabricated.
+
+This release is live on the shared Fly app. Hosted code hashes and policy
+migration were verified; 473 backend tests and 10 targeted browser scenarios
+passed. Existing orders, patients, app, machine and volume were preserved.

@@ -33,7 +33,7 @@ def refill_policy_for(sku, site_id):
     rule = RefillRules(enabled=True, intake_template_id=product['therapy_id'],
                        initial_intake_required=True, check_in_required=True,
                        check_in_days=days, included_refills_enabled=bool(days),
-                       claim_window_days=10).model_dump()
+                       claim_window_days=20).model_dump()
     return dict(rule, site_id=site_id, sku=sku, revision=1)
 
 

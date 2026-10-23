@@ -484,5 +484,21 @@
     "live_customer_passwords_changed_by_verification": false,
     "live_payment_submitted": false,
     "reference": "docs/STICKY_MEMBER_PASSWORDS.md"
+  },
+  "intake_reuse_refill_release": {
+    "date": "2026-10-24",
+    "app": "wlmd-stripe-test-0f89b1bb",
+    "image": "registry.fly.io/wlmd-stripe-test-0f89b1bb@sha256:4e01838320f9368c68283f23757d9a08d7db30c49a50f1e692e83bcdcc5c1683",
+    "backend_tests": 473,
+    "targeted_browser_tests": 10,
+    "timezone_boundary_recheck": "passed",
+    "claim_window_days": 20,
+    "external_identity_verification_api": "not connected",
+    "live_payment_or_refill_writes_performed": false,
+    "status": "deployed and verified",
+    "health_status": 200,
+    "source_hashes_match": true,
+    "enabled_included_policies_updated": 40,
+    "pre_post_order_and_patient_counts_unchanged": true
   }
 }

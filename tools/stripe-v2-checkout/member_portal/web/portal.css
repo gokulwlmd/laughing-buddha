@@ -927,3 +927,10 @@ svg { display: block; }
 body.modal-open{overflow:hidden}
 .modal{overscroll-behavior:contain}
 @media(max-width:760px){.main h1,.intake-card,[id^="order-"],#main-content{scroll-margin-top:24px}}
+
+/* Keep unavailable refills visible, with readable instructions. */
+.refill-locked { margin: 20px 0; padding: 20px; background: #f5f6f5; border: 1px solid #dfe3e1; border-radius: 12px; }
+.refill-locked button:disabled { opacity: 1; color: #58615d; background: #e3e7e5; border-color: #ccd3cf; }
+.refill-locked p,.refill-locked li { font-size: 16px; line-height: 1.6; }
+.refill-locked ol { padding-left: 24px; }
+.refill-locked li+li { margin-top: 8px; }
