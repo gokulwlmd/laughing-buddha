@@ -14,6 +14,7 @@ class RefillRules(BaseModel):
     review_required: Literal[True] = True
     test_requests_enabled: bool = False
     allow_early_requests: bool = False
+    allow_paid_early_renewal: bool = False
     early_request_minimum_days: int = Field(default=0, ge=0, le=730, strict=True)
     early_request_cooldown_days: int = Field(default=7, ge=1, le=90, strict=True)
     early_reason_required: Literal[True] = True

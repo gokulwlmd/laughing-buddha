@@ -260,7 +260,7 @@ class StickyOrderProvider:
             result_products.append({'product_id': pid, 'sku': sku, 'name': text(product.get('name')) or sku,
                 'subscription_id': sid, 'is_recurring': recurring, 'on_hold': held,
                 'billing_status': billing, 'next_billing_date': bill_date, 'next_cycle_date': cycle_date,
-                'quantity': quantity, 'prepaid': prepaid, 'is_shippable': flag(product.get('is_shippable')),
+                'quantity': quantity, 'prepaid': prepaid, 'in_trial': flag(product.get('is_in_trial')), 'is_shippable': flag(product.get('is_shippable')),
                 'billing_model_id': model_id, 'billing_interval_days': interval_days,
                 'offer_id': offer_id,
                 'stop_after_next_cycle': flag(product.get('is_terminal'))})

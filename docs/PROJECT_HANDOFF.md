@@ -546,3 +546,26 @@ No live payment, refill, subscription or identity writes were performed.
 Live release verified: health 200, unauthenticated portal 401, hosted JavaScript,
 CSS and backend hashes match. Existing checkout and patient counts are unchanged.
 Immutable image and validation details are in `tools/stripe-v2-checkout/deployment.json`.
+
+
+### Native early renewal supersedes the separate-purchase shortcut
+
+24 October 2026: the owner asked to implement the intended subscription behavior.
+For active standard monthly/90-day subscriptions, Request refill sooner now
+quotes Sticky's recurring total and explicitly confirms the charge plus next
+payment date, then advances that same subscription with a native child order.
+The previous one-time-purchase shortcut is removed from subscription cards.
+The old statement that the recurring price is unavailable is superseded by the
+verified recurring_total/calculate integration. Included prepaid cycles remain
+on their own $0-claim path. See [Native early renewals](NATIVE_EARLY_RENEWALS.md)
+for API contracts, policy rollout, durable uncertainty handling and limitations.
+No live payment or renewal was performed during development.
+
+Release verified 24 October 2026 on the existing shared Fly app: image
+`sha256:c2711bff95fa3ebbe7462ae72f4dadcfd27f9a1c1c1feba835ca5f4e4978bbd9`.
+118 member backend tests, 48 targeted tests (overlapping renewal coverage), and
+26 portal browser scenarios passed. Hosted source hashes match; health returned
+200 and unauthenticated member data returned 401. Saved checkout/patient counts
+were unchanged. Ten existing FortifyHP 1/3-month SKU policies were enabled.
+Read-only live recurring pricing included the continuing discount; no live
+charge, subscription advance or included-refill claim was submitted as QA.

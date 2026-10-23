@@ -82,8 +82,11 @@ prepaid cycles, required check-ins and uncertain-write protection; do not turn a
 single-shipment plan into a free refill. Keep unavailable refill actions visible,
 gray and disabled for plans with included cycles, with their date/reason/instructions.
 Single-shipment plans instead say included refills are not part of the plan.
-For an existing subscription, early paid supply must be an explicitly one-time
-purchase with the unchanged renewal explained; never quietly add another subscription.
+For an existing standard subscription, use the confirmed native early-renewal
+flow in [Native early renewals](../../../docs/NATIVE_EARLY_RENEWALS.md). Quote
+through Sticky recurring_total/calculate, show the price and following date,
+then advance the same subscription once. Never substitute a separate sale.
+Preserve the durable journal and read-only reconciliation after uncertainty.
 Do not infer a renewal amount from the first charge or a supply duration from billing frequency.
 
 ## Working implementation

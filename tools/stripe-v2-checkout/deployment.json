@@ -514,5 +514,22 @@
     "order_and_patient_counts_preserved": true,
     "live_payment_or_refill_writes_performed": false,
     "renewal_amount": "not available in current provider adapter; never inferred from initial total"
+  },
+  "native_early_renewal_release": {
+    "date": "2026-10-24",
+    "image_digest": "sha256:c2711bff95fa3ebbe7462ae72f4dadcfd27f9a1c1c1feba835ca5f4e4978bbd9",
+    "status": "deployed_and_verified",
+    "member_backend_tests": 118,
+    "additional_targeted_tests_including_renewal_tests": 48,
+    "portal_browser_scenarios": 26,
+    "health_status": 200,
+    "unauthenticated_portal_status": 401,
+    "hosted_source_hashes_match": true,
+    "order_and_patient_counts_preserved": true,
+    "fortify_enabled_sku_policies": 10,
+    "sticky_discounted_recurring_quote_verified": true,
+    "live_payment_or_refill_writes_performed": false,
+    "live_paid_renewal_end_to_end_tested": false,
+    "reference": "docs/NATIVE_EARLY_RENEWALS.md"
   }
 }

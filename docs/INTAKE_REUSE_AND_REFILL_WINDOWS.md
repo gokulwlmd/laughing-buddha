@@ -82,22 +82,15 @@ steps for intake, claiming and check-in. Single-shipment plans show a compact
 “Not included in this plan” explanation instead of an irrelevant disabled free
 refill button. Exhausted prepaid plans retain their completed schedule.
 
-When no included claim is currently available, the portal shows same-site,
-same-product paid plans and their prices under **Buy your next supply**. For
-active, paused or unknown-status subscriptions, **Get next supply early** shows
-only explicitly one-time plans, avoiding an accidental second subscription.
-Matching uses site/therapy and canonical SKU family, with a normalized-name
-fallback for older responses. The patient reviews the price and continues through
-checkout; this separate purchase does not move, cancel or replace the scheduled
-renewal. It does not charge automatically. Missing options show a support path.
+For one-time purchases, the portal offers same-site/product paid plans. Existing
+standard subscriptions instead use **Request refill sooner**, with a verified
+recurring total and following payment date before explicit confirmation. This
+advances the existing subscription and does not open a separate checkout.
+See [Native early renewals](NATIVE_EARLY_RENEWALS.md) for supported plans, APIs,
+policy gates, read-only reconciliation and live-test limitations.
 
-Subscription cards show the recorded Sticky next-payment date and, for ordinary
-single-delivery subscriptions, the verified billing interval. They do not treat
-a prepaid shipment-cycle date as a paid-renewal date. The current provider
-contract does not expose a verified renewal amount, so the UI states that it is
-unavailable rather than reusing the initial order total (which may be discounted).
-**Manage subscription** scrolls directly to the existing controls. Medication
-names no longer repeat slash-delimited duration/payment labels.
+**Manage subscription** scrolls directly to existing controls. Medication names
+no longer repeat slash-delimited duration/payment labels.
 
 ## Verification
 

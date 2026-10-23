@@ -377,6 +377,8 @@ class MemberService:
         self.answer_profile = AnswerProfile(self)
         self.care = CareManager(self)
         self.claims = ClaimsManager(self)
+        from .renewals import RenewalsManager
+        self.renewals = RenewalsManager(self)
         self._store_cache = {}
 
     def db(self):
@@ -1227,7 +1229,7 @@ class MemberService:
                     if previous['status'] != 'complete':
                         raise HTTPException(409, 'This subscription action needs review before retrying')
                     return self.order_public(row)
-                if db.execute("SELECT 1 FROM member_actions WHERE site_id=? AND order_id=? AND subscription_id=? AND status IN ('pending','uncertain')", (site_id, order_id, subscription_id)).fetchone():
+                if db.execute("SELECT 1 FROM member_actions WHERE site_id=? AND subscription_id=? AND status IN ('pending','uncertain')", (site_id, subscription_id)).fetchone():
                     raise HTTPException(409, 'An earlier subscription action needs review')
                 action_id = identifier('action')
                 db.execute('INSERT INTO member_actions VALUES(?,?,?,?,?,?,?,?,?)', (action_id, site_id, patient['id'], order_id, subscription_id, action, body.client_request_id, 'pending', self.clock()))
@@ -1282,7 +1284,7 @@ class MemberService:
                     if previous['status'] != 'complete':
                         raise HTTPException(409, 'The previous subscription-address update needs review')
                     return self.order_public(row)
-                if db.execute("SELECT 1 FROM member_actions WHERE site_id=? AND order_id=? AND subscription_id=? AND status IN ('pending','uncertain')", (site_id, order_id, subscription_id)).fetchone():
+                if db.execute("SELECT 1 FROM member_actions WHERE site_id=? AND subscription_id=? AND status IN ('pending','uncertain')", (site_id, subscription_id)).fetchone():
                     raise HTTPException(409, 'An earlier subscription update needs review')
                 action_id = identifier('action')
                 db.execute('INSERT INTO member_actions VALUES(?,?,?,?,?,?,?,?,?)', (action_id, site_id, patient['id'], order_id, subscription_id, action, body.client_request_id, 'pending', self.clock()))
@@ -1581,6 +1583,7 @@ class MemberService:
 
         self.care.attach(router, owner, auth)
         self.claims.attach(router, auth)
+        self.renewals.attach(router, auth)
         app.include_router(router)
         app.include_router(owner)
 

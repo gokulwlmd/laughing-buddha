@@ -408,47 +408,52 @@ test('MEMBER-21 saved intake details and explicit confirmation remain readable o
  await proof(page,member);
 });
 
-test('MEMBER-22 monthly subscription shows paid renewal and matching one-time early supply',async({page,member},info)=>{
+test('MEMBER-22 monthly refill confirms native charge and schedule without a second checkout',async({page,member},info)=>{
+ const writes=[];
  await page.route('**/api/v1/sites/site-a/portal/orders',async route=>{
   const response=await route.fetch(),body=await response.json();for(const order of body.orders){order.product_name='Semaglutide / 1 months / Subscription';order.care_plan={coverage_days:30,tasks:[]};order.subscriptions=[{id:'monthly-9001',status:'active',next_billing_date:'2026-11-22',billing_interval_days:30,actions:['pause']}];}
   await route.fulfill({response,json:body});
  });
- await page.route('**/api/v1/sites/site-a/portal/store',async route=>route.fulfill({json:{plans:[
-  {plan_id:'extra',sku:'SEMA-1M',therapy_id:'weight-loss',product_name:'Semaglutide / 1 months / One-time',plan_name:'1-month one-time plan',recurring:false,total:'249.00',currency:'USD',checkout_url:member.origin+'/plans/one-time'},
-  {plan_id:'sub',sku:'SEMA-1M-SUB',therapy_id:'weight-loss',product_name:'Semaglutide',plan_name:'1-month subscription',recurring:true,total:'249.00',currency:'USD',checkout_url:member.origin+'/plans/recurring'},
-  {plan_id:'other',sku:'TIRZ-1M',therapy_id:'weight-loss',product_name:'Tirzepatide',plan_name:'1-month one-time plan',recurring:false,total:'449.00',currency:'USD',checkout_url:member.origin+'/plans/other'},
-  {plan_id:'unknown',sku:'SEMA-1M',therapy_id:'weight-loss',product_name:'Semaglutide',plan_name:'Unknown billing',total:'149.00',currency:'USD',checkout_url:member.origin+'/plans/unknown'}
- ]}}));
- await enroll(page,member);await orders(page);
- await page.getByRole('button',{name:'Refill options',exact:true}).click();
+ await page.route('**/api/v1/sites/site-a/portal/orders/9001/subscriptions/monthly-9001/renewal',async route=>{
+  if(route.request().method()==='POST'){writes.push(route.request().postDataJSON());return route.fulfill({status:409,json:{detail:'We are confirming your payment and next renewal date. Do not pay again.'}});}
+  return route.fulfill({json:{available:true,quote_id:'renew_offline_quote_1234',amount:'2.99',currency:'USD',scheduled_date:'2026-11-22',next_billing_date:'2026-12-01',interval_days:30}});
+ });
+ await enroll(page,member);await orders(page);await page.getByRole('button',{name:'Refill options',exact:true}).click();
  const card=page.locator('[data-refill-order="9001"]');
  await expect(card.getByRole('heading',{name:'Semaglutide',exact:true})).toBeVisible();
  await expect(card).toContainText('Monthly subscription · 30-day supply');
+ await expect(card).toContainText('Payment: $2.99');
+ await expect(card).not.toContainText('Not included in this plan');await expect(card).not.toContainText('amount is not available');
  await expect(card.getByRole('button',{name:'Claim included refill',exact:true})).toHaveCount(0);
- await expect(card).toContainText('Included refills: Not included in this plan');
- await expect(card).toContainText('Nov 22');await expect(card).toContainText('Renews every 30 days');
- await expect(card).not.toContainText('Your next delivery belongs');
- await card.getByText('Get next supply early',{exact:true}).click();
- await expect(card.locator('select option')).toHaveCount(1);
- await expect(card).toContainText('Your existing subscription and next payment date stay unchanged');
- await expect(card.getByRole('link',{name:'Review & checkout'})).toHaveAttribute('href',member.origin+'/plans/one-time');
- for(const width of [1440,390]){await page.setViewportSize({width,height:1000});await reflow(page,width);await readable(page);await page.screenshot({path:info.outputPath('monthly-refill-'+width+'.png'),fullPage:true});}
+ await expect(card.locator('.refill-plan-options')).toHaveCount(0);expect(writes).toEqual([]);
+ for(const width of [1440,390]){await page.setViewportSize({width,height:1000});await reflow(page,width);await readable(page);await page.screenshot({path:info.outputPath('monthly-native-renewal-'+width+'.png'),fullPage:true});}
+ await card.getByRole('button',{name:'Request refill sooner',exact:true}).click();
+ const dialog=page.getByRole('dialog');await expect(dialog).toContainText('existing subscription');await expect(dialog).toContainText('Dec 1');expect(writes).toEqual([]);
+ await dialog.getByRole('button',{name:'Go back',exact:true}).click();expect(writes).toEqual([]);
+ await card.getByRole('button',{name:'Request refill sooner',exact:true}).click();
+ await dialog.getByRole('button',{name:'Pay $2.99 & renew',exact:true}).click();
+ await expect(dialog).toContainText('Do not pay again');expect(writes).toEqual([{quote_id:'renew_offline_quote_1234',confirmed:true}]);
+ await expect(dialog.getByRole('button',{name:'Pay $2.99 & renew',exact:true})).toHaveCount(0);
+ await dialog.getByRole('button',{name:'Close',exact:true}).click();
  await card.getByRole('button',{name:'Manage subscription',exact:true}).click();
  await expect(page.locator('.line-subscriptions').getByRole('button',{name:'Pause subscription',exact:true})).toBeInViewport();
  await proof(page,member);
 });
-test('MEMBER-24 paused subscription and unavailable paid supply stay clear',async({page,member})=>{
+test('MEMBER-24 paused subscription does not offer a separate early purchase',async({page,member})=>{
  await page.route('**/api/v1/sites/site-a/portal/orders',async route=>{
   const response=await route.fetch(),body=await response.json();for(const order of body.orders)order.subscriptions=[{id:'paused',status:'held',next_billing_date:null,actions:['resume']}];
   await route.fulfill({response,json:body});
  });
- await page.route('**/api/v1/sites/site-a/portal/store',async route=>route.fulfill({json:{plans:[]}}));
  await enroll(page,member);await page.getByRole('button',{name:'Refills',exact:true}).click();
- const card=page.locator('[data-refill-order="9001"]');
- await expect(card).toContainText('Your subscription is paused');await expect(card).not.toContainText('Next payment:');
- await expect(card).toContainText('No one-time purchase option is available');
- await expect(card.getByRole('button',{name:'Claim included refill',exact:true})).toHaveCount(0);
- await proof(page,member);
+ const card=page.locator('[data-refill-order="9001"]');await expect(card).toContainText('Your subscription is paused');
+ await expect(card.getByRole('button',{name:'Request refill sooner',exact:true})).toHaveCount(0);
+ await expect(card.locator('.refill-plan-options')).toHaveCount(0);await proof(page,member);
+});
+test('MEMBER-26 required intake blocks renewal but displays verified price',async({page,member})=>{
+ await page.route('**/api/v1/sites/site-a/portal/orders/*/subscriptions/*/renewal',async route=>route.fulfill({json:{available:false,amount:'2.99',currency:'USD',scheduled_date:'2026-11-22',reason:'Complete your health intake for this order before requesting an early refill.'}}));
+ await enroll(page,member);await page.getByRole('button',{name:'Refills',exact:true}).click();
+ const card=page.locator('[data-refill-order="9001"]');await expect(card).toContainText('Payment: $2.99');
+ await expect(card.getByRole('button',{name:'Request refill sooner',exact:true})).toBeDisabled();await expect(card).toContainText('Complete your health intake');await proof(page,member);
 });
 test.describe('Visible included-refill instructions',()=>{
  test.use({careMode:true,timezoneId:'America/Los_Angeles'});
