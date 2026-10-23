@@ -921,3 +921,9 @@ svg { display: block; }
   .patient-mode .auth-main { padding: 34px 24px 42px; }
   .patient-mode .bottom-note { margin-top: 32px; }
 }
+
+/* Keep navigation and intake steps visible below the portal header. */
+.main h1,.intake-card,[id^="order-"],#main-content{scroll-margin-top:100px}
+body.modal-open{overflow:hidden}
+.modal{overscroll-behavior:contain}
+@media(max-width:760px){.main h1,.intake-card,[id^="order-"],#main-content{scroll-margin-top:24px}}

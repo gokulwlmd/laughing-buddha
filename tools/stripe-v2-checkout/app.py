@@ -682,6 +682,22 @@ def create_app(settings=None, sticky=None):
     @app.post('/api/portal-enrollment')
     def portal_enrollment(body: CaptureRequest, req: Request):
         return members.receipt_invite(member_receipt(req))
+    from patient_demo.app import IntakePatch, IntakeSubmit
+
+    @app.get('/api/post-checkout-intake')
+    def receipt_intake(req: Request):
+        order, patient = members.receipt_order(member_receipt(req, mutation=False))
+        return members.initial_intake(order, patient)
+
+    @app.patch('/api/post-checkout-intake')
+    def save_receipt_intake(body: IntakePatch, req: Request):
+        order, patient = members.receipt_order(member_receipt(req))
+        return members.modify_initial(order, body, patient)
+
+    @app.post('/api/post-checkout-intake/submit')
+    def submit_receipt_intake(body: IntakeSubmit, req: Request):
+        order, patient = members.receipt_order(member_receipt(req))
+        return members.modify_initial(order, body, patient, True)
     if os.environ.get('SITE_API_MANIFEST'):
         from demo.runtime import install_site_api
         install_site_api(app)

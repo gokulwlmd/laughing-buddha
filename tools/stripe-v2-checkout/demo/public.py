@@ -231,7 +231,7 @@ def create_public_app(origin=None, read_catalog=read_live_catalog, clock=time.ti
     for allowed in allowed_origins:
         if allowed != '*' and (not allowed.startswith('https://') or allowed.rstrip('/')!=allowed or '/' in allowed[8:]):
             raise ValueError('SITE_API_ALLOWED_ORIGINS must contain HTTPS origins or *')
-    app.add_middleware(CORSMiddleware,allow_origins=[origin,*allowed_origins],allow_methods=['GET','POST'],allow_headers=['Authorization','Content-Type'],expose_headers=['Server-Timing'])
+    app.add_middleware(CORSMiddleware,allow_origins=[origin,*allowed_origins],allow_methods=['GET','POST','PATCH'],allow_headers=['Authorization','Content-Type'],expose_headers=['Server-Timing'])
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(req,exc):

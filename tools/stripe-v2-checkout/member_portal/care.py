@@ -263,7 +263,7 @@ class CareManager:
                 'kind': 'initial' if day == 0 else 'check_in', 'day_offset': day, 'due_date': due.isoformat(), 'opens_at': opens.isoformat(),
                 'status': status, 'intake_status': saved['status'] if saved else 'not_started',
                 'request_opens_at': opens.isoformat(), 'can_open': unlocked or bool(saved), 'can_submit': unlocked and status != 'submitted',
-                'required': bool(required), 'refill_checkpoint': day != 0 or not rule.get('check_in_days'),
+                'required': bool(required), 'refill_checkpoint': day != 0,
                 'completed_at': stamp(saved['submitted']) if saved else None})
         # Only the currently applicable checkpoint may open for an early
         # request; enabling early requests never unlocks all future forms.
@@ -378,6 +378,8 @@ class CareManager:
             return result
         data, tasks = json.loads(plan['snapshot']), self.raw_tasks(row, plan)
         rule = data['rule']
+        if not any(t['refill_checkpoint'] for t in tasks):
+            return result | {'reason': 'This plan includes one delivery. Manage your subscription renewal or choose a new paid plan.', 'next_date': line.get('next_billing_date')}
         applicable = self.current_task(row, plan, tasks)
         task = next((t for t in tasks if t['id'] == (task_id or applicable['id'])), None)
         if not task:
@@ -603,16 +605,24 @@ class CareManager:
         @router.get('/orders/{order_id}/care-tasks/{task_id}/intake', response_model=CareIntake)
         def get_intake(site_id: str, order_id: str, task_id: str, patient=Depends(auth)):
             row = self.s.order_record(site_id, order_id, patient)
+            if task_id == 'initial':
+                return self.s.initial_intake(row, patient) | {'task_id': 'initial'}
             _, _, record = self.intake(row, patient, task_id)
             return self.intake_public(row, record)
 
         @router.patch('/orders/{order_id}/care-tasks/{task_id}/intake', response_model=CareIntake)
         def patch_intake(site_id: str, order_id: str, task_id: str, body: IntakePatch, patient=Depends(auth)):
-            return self.modify(self.s.order_record(site_id, order_id, patient), patient, task_id, body)
+            row = self.s.order_record(site_id, order_id, patient)
+            if task_id == 'initial':
+                return self.s.modify_initial(row, body, patient) | {'task_id': 'initial'}
+            return self.modify(row, patient, task_id, body)
 
         @router.post('/orders/{order_id}/care-tasks/{task_id}/intake/submit', response_model=CareIntake)
         def submit_intake(site_id: str, order_id: str, task_id: str, body: IntakeSubmit, patient=Depends(auth)):
-            return self.modify(self.s.order_record(site_id, order_id, patient), patient, task_id, body, True)
+            row = self.s.order_record(site_id, order_id, patient)
+            if task_id == 'initial':
+                return self.s.modify_initial(row, body, patient, True) | {'task_id': 'initial'}
+            return self.modify(row, patient, task_id, body, True)
 
         @owner.post('/orders/{order_id}/verify-care-schedule')
         def verify(site_id: str, order_id: str, body: VerifySchedule, req: Request):

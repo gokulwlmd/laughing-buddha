@@ -23,6 +23,7 @@ import time
 from urllib import parse
 import weakref
 
+from patient_demo.app import IntakePatch, IntakeSubmit
 from fastapi import APIRouter, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -311,7 +312,7 @@ class CheckoutTransport:
 
     def call(self,row,method,path,body=None,client_ip=None):
         # Paths and link IDs come only from the server's published catalog.
-        if not re.fullmatch(r'/c/choice-[a-f0-9]{32}|/api/(?:start-checkout|config|status|quote|authorize|resume|capture|portal-enrollment)',path):
+        if not re.fullmatch(r'/c/choice-[a-f0-9]{32}|/api/(?:start-checkout|config|status|quote|authorize|resume|capture|portal-enrollment|post-checkout-intake(?:/submit)?)',path):
             raise ValueError('Unexpected checkout path')
         target=path
         if path.startswith('/api/'):
@@ -322,7 +323,7 @@ class CheckoutTransport:
         headers={'Accept':'application/json','Host':parse.urlsplit(self.upstream).netloc,
             'Cookie':'; '.join(k+'='+v for k,v in cookies.items())}
         if row['attempt']:headers['X-Checkout-Attempt']=row['attempt']
-        if method=='POST':
+        if method in ('POST', 'PATCH'):
             headers.update({'Content-Type':'application/json','Origin':self.upstream,'X-CSRF-Token':row['csrf']})
         # Do not forward/spoof a customer IP through the public Fly proxy.
         # The unchanged engine attributes these calls to this API service.
@@ -575,5 +576,29 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
                     raise UpstreamError(detail='The member portal does not belong to this site')
                 return PortalEnrollmentResult.model_validate(result)
             except UpstreamError as exc:raise translated(exc)
+
+    @router.get('/{session_id}/intake', summary='Read the purchased product intake without signing in')
+    def intake(site_id: str, session_id: str, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
+        row = auth(site_id, session_id, req, credentials)
+        try:
+            return call(row, 'GET', '/api/post-checkout-intake', req=req)
+        except UpstreamError as exc:
+            raise translated(exc)
+
+    @router.patch('/{session_id}/intake', summary='Save a partial purchased product intake')
+    def save_intake(site_id: str, session_id: str, body: IntakePatch, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
+        row = auth(site_id, session_id, req, credentials)
+        try:
+            return call(row, 'PATCH', '/api/post-checkout-intake', body.model_dump(), req)
+        except UpstreamError as exc:
+            raise translated(exc)
+
+    @router.post('/{session_id}/intake/submit', summary='Submit the purchased product intake')
+    def submit_intake(site_id: str, session_id: str, body: IntakeSubmit, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
+        row = auth(site_id, session_id, req, credentials)
+        try:
+            return call(row, 'POST', '/api/post-checkout-intake/submit', body.model_dump(), req)
+        except UpstreamError as exc:
+            raise translated(exc)
 
     app.include_router(router)

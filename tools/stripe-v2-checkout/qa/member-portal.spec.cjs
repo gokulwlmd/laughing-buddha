@@ -369,3 +369,17 @@ test.describe('Treatment overview',()=>{
     await proof(page,member);
   });
 });
+
+test('MEMBER-20 navigation scrolls to content and modal keeps page stationary',async({page,member})=>{
+  await enroll(page,member);await orders(page);
+  await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));
+  await page.getByRole('button',{name:'Medical intake',exact:true}).click();
+  await expect(page.getByRole('heading',{level:1})).toBeInViewport();
+  await orders(page);
+  const address=page.getByRole('button',{name:'Update delivery address',exact:true});await address.click();
+  await expect(page.locator('body')).toHaveClass(/modal-open/);
+  await expect(page.getByRole('dialog')).toBeInViewport();
+  await page.keyboard.press('Escape');await expect(page.locator('body')).not.toHaveClass(/modal-open/);
+  await expect(page.getByRole('button',{name:'Update delivery address',exact:true})).toBeFocused();
+  await proof(page,member);
+});

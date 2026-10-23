@@ -778,8 +778,82 @@ class MemberService:
             if invite_token:
                 db.execute('UPDATE member_invites SET used=? WHERE token_hash=?', (self.clock(), digest(invite_token)))
             patient = dict(db.execute('SELECT * FROM member_patients WHERE id=?', (patient_id,)).fetchone())
+        self.adopt_receipt_intake(order, patient)
         self.sync_children(order)
         return self.session(patient)
+
+    def adopt_receipt_intake(self, order, patient):
+        guest = 'receipt:' + order['order_id']
+        if patient['id'] == guest:
+            return
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            # The caller has proved this exact order grant. Never merge by email.
+            granted = db.execute('SELECT 1 FROM member_grants WHERE site_id=? AND order_id=? AND patient_id=?',
+                (order['site_id'], order['order_id'], patient['id'])).fetchone()
+            existing = db.execute('SELECT 1 FROM member_intakes WHERE site_id=? AND order_id=? AND patient_id=?',
+                (order['site_id'], order['order_id'], patient['id'])).fetchone()
+            if granted and not existing:
+                db.execute('UPDATE member_intakes SET patient_id=? WHERE site_id=? AND order_id=? AND patient_id=?',
+                    (patient['id'], order['site_id'], order['order_id'], guest))
+
+    def initial_intake(self, order, patient):
+        self.adopt_receipt_intake(order, patient)
+        if self.care.configured(order) and self.care.ensure(order):
+            _, _, record = self.care.intake(order, patient, 'initial')
+            return self.care.intake_public(order, record)
+        return self.intake_public(self.intake(order, patient), order)
+
+    def receipt_order(self, row):
+        if not row or row.get('status') != 'captured' or not row.get('order_id'):
+            raise HTTPException(409, 'Complete this checkout before opening its intake')
+        link = self.admin.get('link', row.get('link_id') or '') or {}
+        plan = self.admin.get('plan_checkout', link.get('plan_checkout_id') or '') or {}
+        site_id = plan.get('site_id')
+        if not site_id or not any(c['id'] == row['id'] for c in self.captured(site_id, str(row['order_id']))):
+            raise HTTPException(403, 'This receipt does not belong to a verified site order')
+        try:
+            order = self.order_record(site_id, str(row['order_id']))
+        except HTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            order = self.sync(site_id, str(row['order_id']))
+        with self.db() as db:
+            grant = db.execute('SELECT patient_id FROM member_grants WHERE site_id=? AND order_id=?', (site_id, order['order_id'])).fetchone()
+        return order, {'id': grant['patient_id'] if grant else 'receipt:' + order['order_id']}
+
+    def modify_initial(self, order, body, patient, submit=False):
+        site_id, order_id = order["site_id"], order["order_id"]
+        self.adopt_receipt_intake(order, patient)
+        if self.care.configured(order) and self.care.ensure(order):
+            return self.care.modify(order, patient, 'initial', body, submit)
+        self.intake(order, patient)
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = dict(db.execute('SELECT * FROM member_intakes WHERE site_id=? AND order_id=? AND patient_id=?', (site_id, order_id, patient['id'])).fetchone())
+            if row['status'] == 'submitted' or row['revision'] != body.revision:
+                raise HTTPException(409, 'This intake is submitted or changed. Reload before saving.')
+            template, answers = json.loads(row['template']), json.loads(row['answers'])
+            now = self.clock()
+            if submit:
+                questions = [q for q in template['questions'] if visible(q, answers)]
+                missing = [q['id'] for q in questions if q.get('required') and answers.get(q['id']) in (None, '', [])]
+                if missing:
+                    raise HTTPException(422, {'code': 'required_answers_missing', 'question_ids': missing})
+                answers = {q['id']: answers[q['id']] for q in questions if q['id'] in answers}
+                db.execute("UPDATE member_intakes SET status='submitted',revision=revision+1,answers=?,submitted_answers=?,updated=?,submitted=? WHERE id=?", (encoded(answers), encoded(answers), now, now, row['id']))
+            else:
+                for key, value in clean_answers(template, body.answers).items():
+                    if value is None:
+                        answers.pop(key, None)
+                    else:
+                        answers[key] = value
+                step = row['current_step'] if body.current_step is None else body.current_step
+                if not 0 <= step < len(template['sections']):
+                    raise HTTPException(422, 'Unknown intake step')
+                db.execute('UPDATE member_intakes SET answers=?,current_step=?,revision=revision+1,updated=? WHERE id=?', (encoded(answers), step, now, row['id']))
+            row = dict(db.execute('SELECT * FROM member_intakes WHERE id=?', (row['id'],)).fetchone())
+        return self.intake_public(row, order)
 
     def intake(self, order, patient):
         with self.db() as db:
@@ -790,11 +864,9 @@ class MemberService:
             therapy = order['therapy_id']
             if therapy not in QUESTION_THERAPIES:
                 raise HTTPException(409, 'This therapy’s intake questions have not been configured yet')
-            template = get_template(therapy)
+            from .intake_templates import get_template as sku_template, binding_for_sku
+            template = sku_template(therapy, sku=order['sku']) if binding_for_sku(order['sku']) else get_template(therapy)
             template['questions'] = [q for q in template['questions'] if q['id'] != 'demo_confirmation']
-            template['description'] = 'Preview questions from our backend. The clinical intake API is not connected; these answers will not be sent to the medical team.'
-            template['id'] = therapy + '-placeholder-intake'
-            template['version'] = 'placeholder-1'
             db.execute('INSERT INTO member_intakes VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', (identifier('intake'), order['site_id'], order['order_id'], patient['id'], 'draft', 0, '{}', 0, encoded(template), self.clock(), None, None))
             return dict(db.execute('SELECT * FROM member_intakes WHERE site_id=? AND order_id=? AND patient_id=?', (order['site_id'], order['order_id'], patient['id'])).fetchone())
 
@@ -998,6 +1070,7 @@ class MemberService:
                     raise HTTPException(403, 'This invitation has already been used')
                 db.execute('INSERT OR IGNORE INTO member_grants VALUES(?,?,?,?,?)', (site_id, invite['order_id'], patient['id'], self.clock(), 'owner_invitation'))
                 db.execute('UPDATE member_invites SET used=? WHERE token_hash=?', (self.clock(), digest(body.invite_token)))
+            self.adopt_receipt_intake(self.order_record(site_id, invite['order_id'], patient), patient)
             return {'connected': True}
 
         @router.get('/me', response_model=MeResult)
@@ -1153,50 +1226,15 @@ class MemberService:
         @router.get('/intakes/{order_id}', response_model=MemberIntakeResponse)
         def get_intake(site_id: str, order_id: str, patient=Depends(auth)):
             order = self.order_record(site_id, order_id, patient)
-            if self.care.configured(order):
-                _, _, record = self.care.intake(order, patient, 'initial')
-                return self.care.intake_public(order, record)
-            return self.intake_public(self.intake(order, patient), order)
-
-        def modify_intake(site_id, order_id, body, patient, submit=False):
-            order = self.order_record(site_id, order_id, patient)
-            if self.care.configured(order):
-                return self.care.modify(order, patient, 'initial', body, submit)
-            self.intake(order, patient)
-            with self.db() as db:
-                db.execute('BEGIN IMMEDIATE')
-                row = dict(db.execute('SELECT * FROM member_intakes WHERE site_id=? AND order_id=? AND patient_id=?', (site_id, order_id, patient['id'])).fetchone())
-                if row['status'] == 'submitted' or row['revision'] != body.revision:
-                    raise HTTPException(409, 'This intake is submitted or changed. Reload before saving.')
-                template, answers = json.loads(row['template']), json.loads(row['answers'])
-                now = self.clock()
-                if submit:
-                    questions = [q for q in template['questions'] if visible(q, answers)]
-                    missing = [q['id'] for q in questions if q.get('required') and answers.get(q['id']) in (None, '', [])]
-                    if missing:
-                        raise HTTPException(422, {'code': 'required_answers_missing', 'question_ids': missing})
-                    answers = {q['id']: answers[q['id']] for q in questions if q['id'] in answers}
-                    db.execute("UPDATE member_intakes SET status='submitted',revision=revision+1,answers=?,submitted_answers=?,updated=?,submitted=? WHERE id=?", (encoded(answers), encoded(answers), now, now, row['id']))
-                else:
-                    for key, value in clean_answers(template, body.answers).items():
-                        if value is None:
-                            answers.pop(key, None)
-                        else:
-                            answers[key] = value
-                    step = row['current_step'] if body.current_step is None else body.current_step
-                    if not 0 <= step < len(template['sections']):
-                        raise HTTPException(422, 'Unknown intake step')
-                    db.execute('UPDATE member_intakes SET answers=?,current_step=?,revision=revision+1,updated=? WHERE id=?', (encoded(answers), step, now, row['id']))
-                row = dict(db.execute('SELECT * FROM member_intakes WHERE id=?', (row['id'],)).fetchone())
-            return self.intake_public(row, order)
+            return self.initial_intake(order, patient)
 
         @router.patch('/intakes/{order_id}', response_model=MemberIntakeResponse)
         def save_intake(site_id: str, order_id: str, body: IntakePatch, patient=Depends(auth)):
-            return modify_intake(site_id, order_id, body, patient)
+            return self.modify_initial(self.order_record(site_id, order_id, patient), body, patient)
 
         @router.post('/intakes/{order_id}/submit', response_model=MemberIntakeResponse)
         def submit_intake(site_id: str, order_id: str, body: IntakeSubmit, patient=Depends(auth)):
-            return modify_intake(site_id, order_id, body, patient, True)
+            return self.modify_initial(self.order_record(site_id, order_id, patient), body, patient, True)
 
         @router.get('/messages', response_model=MessagesResult)
         def messages(site_id: str, patient=Depends(auth)):
@@ -1440,7 +1478,7 @@ class MemberService:
 
         @app.get('/portal-assets/{name}', include_in_schema=False)
         def asset(name: str):
-            if name not in ('portal.js', 'portal.css', 'red-hat-display-latin-v1.woff2', 'red-hat-display-OFL.txt'):
+            if name not in ('post-checkout.js', 'portal.js', 'portal.css', 'red-hat-display-latin-v1.woff2', 'red-hat-display-OFL.txt'):
                 raise HTTPException(404, 'Asset not found')
             return FileResponse(HERE / 'web' / name)
 

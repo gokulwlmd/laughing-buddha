@@ -59,6 +59,18 @@ class CheckoutConnectionPoolTests(unittest.TestCase):
             self.assertFalse(remote.called)
             transport.close()
 
+    def test_intake_patch_uses_receipt_csrf_and_preserves_answers(self):
+        connection=Connection([Response(b'{"revision":1}')])
+        with patch('demo.session_api.http.client.HTTPSConnection',return_value=connection):
+            transport=CheckoutTransport()
+            data,_=transport.call(row('customer'),'PATCH','/api/post-checkout-intake',{'revision':0,'answers':{'allergies':'Synthetic only'}})
+            self.assertEqual(data,{'revision':1})
+            sent=connection.requests[0]
+            self.assertEqual(sent[0],'PATCH')
+            self.assertIn('X-CSRF-Token',sent[3])
+            self.assertEqual(sent[3]['Origin'],transport.upstream)
+            transport.close()
+
     def test_portal_enrollment_uses_the_existing_attempt_and_fixed_upstream(self):
         connection=Connection([Response(b'{"site_id":"fortifyhp"}')])
         with patch('demo.session_api.http.client.HTTPSConnection',return_value=connection):

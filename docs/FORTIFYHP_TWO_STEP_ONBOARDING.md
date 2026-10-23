@@ -1,3 +1,5 @@
+Current onboarding update: [Shared post-checkout intake](SHARED_POST_CHECKOUT_INTAKE.md). Intake now stays on the storefront without embedded account forms; account access is in the separate member portal.
+
 # Two-step checkout and API-driven onboarding
 
 ## Checkout
