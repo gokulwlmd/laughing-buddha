@@ -80,6 +80,7 @@ class SiteTests(unittest.TestCase):
         c=TestClient(self.app,base_url=ORIGIN);self.assertEqual(c.get('/plans/'+plan['id']).status_code,401)
         self.assertEqual(c.get(plan['url']).status_code,200)
         data=c.get('/api/plans/'+plan['id']).json();self.assertEqual(data['branding']['color'],'#123456')
+        self.assertEqual(data['siteId'],self.site['id'])  # lets the Site API find this site's member portal
         self.assertEqual({e['durationMonths'] for e in data['entries']},{1,3})
         self.assertEqual(self.fake.count('/authorize_payment'),0);self.assertEqual(self.fake.count('/new_order'),0)
 

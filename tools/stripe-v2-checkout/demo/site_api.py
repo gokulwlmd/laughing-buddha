@@ -17,7 +17,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, PrivateAttr
 from therapy_skeletons import weight_loss_skeleton
 
 HERE = Path(__file__).parent
@@ -69,7 +69,9 @@ class Catalog(BaseModel):
     title: str | None = None
     therapy: str | None = None
     branding: Branding | None = None
+    portal_available: bool = Field(False, description='True when completed orders can create a member-portal account (POST sessions/{id}/portal)')
     plans: list[Plan]
+    _portal_site: str | None = PrivateAttr(default=None)
 
 
 class SiteInfo(BaseModel):

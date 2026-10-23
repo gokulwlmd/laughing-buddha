@@ -25,6 +25,17 @@ try {
     check('…and /complete is not called', !p.calls.some((c) => c.endsWith('/complete')));
     await p.close();
   }
+  { // brand design from the admin fills what a minimal domain JSON leaves out; the JSON still wins
+    const p = await mockPage(browser, { minimalConfig: true });
+    await p.goto(APP + '/'); await p.locator('#treatments button').first().waitFor();
+    const got = await p.evaluate(() => ({ name: document.querySelector('#brand-name').textContent, color: getComputedStyle(document.querySelector('.lb-plans')).getPropertyValue('--brand-color').trim(), layout: document.querySelector('.lb-plans').dataset.layout, title: document.querySelector('#plan-title').textContent, support: document.querySelector('#brand-support').textContent, notice: !!document.querySelector('.test-notice') }));
+    check('minimal JSON uses the admin brand design (name, colour, layout, title, support, test notice)', got.name === 'Admin Brand' && got.color === '#aa3300' && got.layout === 'stacked' && got.title === 'Admin plan title' && got.support === 'help@admin.example' && got.notice, JSON.stringify(got));
+    await p.close();
+    const q = await mockPage(browser); await q.goto(APP + '/'); await q.locator('#treatments button').first().waitFor();
+    const own = await q.evaluate(() => ({ name: document.querySelector('#brand-name').textContent, color: getComputedStyle(document.querySelector('.lb-plans')).getPropertyValue('--brand-color').trim() }));
+    check('…and a full JSON keeps its own name and colour', own.name === 'Master Therapy' && own.color === '#245844', JSON.stringify(own));
+    await q.close();
+  }
   { // member portal: hidden by default; when enabled, opens the one-time invitation
     const state = { status: 'new' }; const p = await mockPage(browser, { state });
     await toReview(p); await p.locator('#authorize').click(); await p.locator('#pay:not([disabled])').click(); await p.locator('#success').waitFor();

@@ -250,8 +250,13 @@ def map_catalog(data, site_id=SITE_ID, site=None):
     b = data.get('branding') or {}
     color = b.get('color') if re.fullmatch(r'#[0-9a-fA-F]{6}', str(b.get('color', ''))) else '#245844'
     branding = Branding(**{k: v for k, v in b.items() if k in Branding.model_fields and isinstance(v, str)})
-    return Catalog(site_id=site_id, site_name=site['name'], color=color, demo=bool(data.get('paymentTestOnly')),
-        title=data.get('title') or None, therapy=data.get('therapy') or None, branding=branding, plans=plans), routes
+    # Member portal site: the registry's "portal_site" if set, otherwise the admin
+    # site this plan checkout belongs to (published as "siteId").
+    portal_site = site.get('portal_site') or (data.get('siteId') if isinstance(data.get('siteId'), str) and SITE_ID_PATTERN.fullmatch(data['siteId']) else None)
+    catalog = Catalog(site_id=site_id, site_name=site['name'], color=color, demo=bool(data.get('paymentTestOnly')),
+        title=data.get('title') or None, therapy=data.get('therapy') or None, branding=branding, portal_available=bool(portal_site), plans=plans)
+    catalog._portal_site = portal_site
+    return catalog, routes
 
 
 def _catalog_reader(read_catalog):
@@ -408,7 +413,7 @@ def create_public_app(origin=None, read_catalog=read_live_catalog, clock=time.ti
         config = site(site_id); catalog = current(site_id)[0]
         return SiteInfo(site_id=site_id,site_name=catalog.site_name,color=catalog.color,demo=catalog.demo,title=catalog.title,
             therapy=catalog.therapy,branding=catalog.branding or Branding(),plan_count=len(catalog.plans),domains=config['domains'],
-            portal_url=(getattr(transport,'upstream',PUBLIC_UPSTREAM)+'/portal/'+config['portal_site']) if config.get('portal_site') else None)
+            portal_url=(getattr(transport,'upstream',PUBLIC_UPSTREAM)+'/portal/'+catalog._portal_site) if catalog._portal_site else None)
 
     @app.get('/api/v1/sites/{site_id}/plans',response_model=Catalog,tags=['1. Get plans'])
     def get_plans(site_id:str):

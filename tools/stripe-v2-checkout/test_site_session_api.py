@@ -139,6 +139,16 @@ class SessionApiTests(unittest.TestCase):
                                    sites={'payment-test':{'name':'Payment test','catalog':PUBLISHED_PLAN,'payment_test_only':True,'portal_site':'real-site'}})
         with TestClient(matching,base_url=ORIGIN) as other:
             self.assertEqual(other.post(path+'/portal',headers=headers,json={}).status_code,200)
+        # Without a registry pin, the catalog's own admin site is the expected portal.
+        self.catalog['siteId']='brand-b'
+        derived=create_public_app(ORIGIN,read_catalog=lambda catalog:self.catalog,session_store=self.store,transport=self.transport)
+        with TestClient(derived,base_url=ORIGIN) as other:
+            self.assertEqual(other.post(path+'/portal',headers=headers,json={}).status_code,502)
+        self.catalog['siteId']='real-site'
+        derived=create_public_app(ORIGIN,read_catalog=lambda catalog:self.catalog,session_store=self.store,transport=self.transport)
+        with TestClient(derived,base_url=ORIGIN) as other:
+            self.assertEqual(other.post(path+'/portal',headers=headers,json={}).status_code,200)
+        del self.catalog['siteId']
         self.engine.state.member_portal.receipt_invite=lambda row:{'site_id':'real-site','enrollment_url':'https://untrusted.example/portal/real-site','expires_at':None}
         self.assertEqual(self.client.post(path+'/portal',headers=headers,json={}).status_code,502)
         self.assertEqual(self.fake.count('/new_order'),1)

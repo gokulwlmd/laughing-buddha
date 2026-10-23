@@ -265,7 +265,7 @@ class PlanCatalog:
                 item.update(available=True,reason='',currency=c['currency'],options=options)
             except (HTTPException,CatalogError,ValueError):pass
             entries.append(item)
-        return {'id':plan['id'],'title':plan['title'],'paymentTestOnly':bool(plan.get('payment_test_only')),'therapy':therapy['name'],'treatments':therapy['treatments'],'branding':branding(brand),'entries':entries,'purchaseOptions':[{'id':p['id'],'name':p['name'],'durationMonths':p['duration_months']} for p in plan.get('purchase_options',[])]}
+        return {'id':plan['id'],'siteId':plan.get('site_id') or None,'title':plan['title'],'paymentTestOnly':bool(plan.get('payment_test_only')),'therapy':therapy['name'],'treatments':therapy['treatments'],'branding':branding(brand),'entries':entries,'purchaseOptions':[{'id':p['id'],'name':p['name'],'durationMonths':p['duration_months']} for p in plan.get('purchase_options',[])]}
 
     def attach_plans(self,app):
         @app.get('/api/admin/plan-options')

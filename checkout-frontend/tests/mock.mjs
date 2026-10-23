@@ -29,7 +29,7 @@ export function stripeStub(piStatus = 'requires_capture') {
 }
 
 // state: {status, down, expired, unavailable, quote422, prepare502, pending}
-export async function mockPage(browser, { state = { status: 'new' }, piStatus, payments = true, viewport, memberPortal = false } = {}) {
+export async function mockPage(browser, { state = { status: 'new' }, piStatus, payments = true, viewport, memberPortal = false, minimalConfig = false } = {}) {
   const page = await browser.newPage(viewport ? { viewport } : {});
   page.errors = [];
   page.calls = [];
@@ -48,6 +48,7 @@ export async function mockPage(browser, { state = { status: 'new' }, piStatus, p
     const j = await res.json();
     j.paymentsEnabled = payments;
     if (memberPortal) j.memberPortal = true;
+    if (minimalConfig) for (const k of ['name', 'logo', 'favicon', 'colors', 'font', 'layout', 'title', 'therapy', 'intro', 'supportEmail', 'testNotice']) delete j[k];
     r.fulfill({ response: res, json: j });
   });
   await page.route(`${API}/**`, async (r) => {
@@ -55,7 +56,8 @@ export async function mockPage(browser, { state = { status: 'new' }, piStatus, p
     const body = req.postData() ? JSON.parse(req.postData()) : null;
     page.calls.push(`${req.method()} ${path}`);
     const json = (j, s = 200) => r.fulfill({ status: s, json: j, headers: { 'access-control-allow-origin': '*' } });
-    if (path === '/plans') return json({ site_id: 'payment-test', site_name: 'Master Therapy Payment Test', color: '#245844', demo: true, plans });
+    if (path === '/plans') return json({ site_id: 'payment-test', site_name: 'Master Therapy Payment Test', color: '#aa3300', demo: true, title: 'Admin plan title', therapy: 'Admin therapy', portal_available: true,
+      branding: { name: 'Admin Brand', color: '#aa3300', logo_url: '', background_color: '', text_color: '', button_text_color: '#ffffff', font: 'serif', layout: 'stacked', support_email: 'help@admin.example', support_phone: '' }, plans });
     if (path.startsWith('/sessions/') && req.headers()['authorization'] !== 'Bearer tok_1') return json({ detail: 'Use the checkout session_token as a Bearer token' }, 401);
     if (state.down && path.startsWith('/sessions/')) return json({ detail: 'Bad gateway' }, 502);
     if (state.expired && path.startsWith('/sessions/')) return json({ detail: 'Session access expired' }, 410);

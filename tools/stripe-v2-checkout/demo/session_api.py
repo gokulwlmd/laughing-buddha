@@ -540,6 +540,9 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
     def portal(site_id:str,session_id:str,body:Empty,req:Request,credentials:HTTPAuthorizationCredentials|None=Security(bearer)):
         row=auth(site_id,session_id,req,credentials)
         expected=(site_check(site_id) or {}).get('portal_site')
+        if not expected:
+            try:expected=catalog_loader(site_id)[0]._portal_site
+            except Exception:expected=None  # the engine still binds the invitation to the order's own site
         with store.lock(row['id']):
             try:
                 current=upstream_status(row,req)

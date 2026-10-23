@@ -54,7 +54,9 @@ function asset(path) {
 
 // Flat per-domain file → the shape the views use.
 export function normalize(c, host = '') {
-  for (const field of ['name', 'siteId', 'siteApiUrl']) {
+  // "name", colours, logo and support details are optional: anything left out
+  // comes from the brand design saved in the admin (returned by GET /plans).
+  for (const field of ['siteId', 'siteApiUrl']) {
     if (!c[field]) throw new SiteConfigError(`Site config for ${c.domain || host} is missing "${field}".`);
   }
   const colors = c.colors || {};
@@ -108,10 +110,30 @@ export const FONTS = {
 };
 const HEX = /^#[0-9a-f]{6}$/i;
 
+const filled = (o) => Object.fromEntries(Object.entries(o || {}).filter(([, v]) => v !== undefined && v !== null && v !== ''));
+
+// Priority: this domain's JSON → the admin's brand design (from GET /plans) → defaults.
 export function brandOf(site, catalog) {
-  const b = { ...DEFAULTS, ...(site.brand || {}) };
+  const admin = filled(catalog?.branding);
+  if (admin.logo_url) admin.logo_url = asset(admin.logo_url);
+  const b = { ...DEFAULTS, ...admin, ...filled(site.brand) };
   if (!b.name) b.name = catalog?.site_name || 'Checkout';
   return b;
+}
+
+// Plan-page wording and the test notice fall back to the catalog the same way.
+export function withCatalog(site, catalog) {
+  if (!catalog) return site;
+  const p = site.plans || {};
+  return {
+    ...site,
+    plans: {
+      ...p,
+      title: p.title || catalog.title || undefined,
+      therapy: p.therapy || catalog.therapy || undefined,
+      testNotice: p.testNotice || catalog.demo === true,
+    },
+  };
 }
 
 // Inline CSS variables for a view root (the ported CSS defines its own defaults

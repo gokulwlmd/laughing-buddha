@@ -73,8 +73,12 @@ for this exact order (bound to its customer and site, valid for one hour) and
 returns its `enrollment_url`. Open that link in the customer's browser; do not
 email, log or store it. Before capture the call returns 409. A link that is not
 on the payment engine's host, or that names a portal other than the site's
-configured `portal_site`, is rejected with 502. `GET /api/v1/sites/{site_id}`
-includes `portal_url` (the portal sign-in page) when `portal_site` is set.
+portal site, is rejected with 502. The portal site is the registry's
+`portal_site` when set; otherwise it is the admin site that owns the plan
+checkout (the engine publishes it as `siteId`). `GET /plans` returns
+`portal_available`, and `GET /api/v1/sites/{site_id}` includes `portal_url`
+(the portal sign-in page). Plan checkouts made outside **Sites** have no admin
+site, so the portal handoff for them returns 409 until they are assigned.
 
 ### $1 checkout testing
 
@@ -250,10 +254,12 @@ Other sites are unaffected.
 
 No code change is needed:
 
-1. In the admin, create the brand/site and its plan checkout as usual
-   (**Checkout links → brand → New plan checkout**). Publish it with visibility
+1. In the admin, set the site up under **Sites** (brand, campaign, therapy
+   templates). Open the site's therapy checkout and set its visibility to
    **public**: the API holds no credentials, so it can only read public
-   publications. Note the plan checkout's id.
+   publications. Note the plan checkout's id (`site-…`). One Site API site
+   serves one therapy checkout; add one entry per therapy you sell on its own
+   domain or page.
 2. Add the site to the registry, `tools/stripe-v2-checkout/demo/sites.json`:
    ```json
    "glow-health": {
@@ -264,10 +270,12 @@ No code change is needed:
    ```
    `site_id` (the key): lowercase letters, digits and dashes. `payment_test_only: true`
    additionally requires the publication to be a payment-test one. `enabled: false`
-   hides a site everywhere without deleting it. Optional `"portal_site"`: the
-   member portal's site id from the admin (its `/portal/<id>` path). When set, the
-   portal handoff only accepts invitations for that portal, and site info returns
-   its `portal_url`.
+   hides a site everywhere without deleting it. Optional `"portal_site"`: pins the
+   member portal's site id (its `/portal/<id>` path). Usually unnecessary: a plan
+   checkout created under **Sites** already names its admin site.
+   Prefer the plan checkout that **Sites** created for the brand (id `site-…`,
+   made public): it carries the brand design, its own campaign prices and the
+   member-portal link. A brand-level plan checkout works for payments only.
 3. Deploy the API (`flyctl deploy --config fly-demo.toml …`, see the demo README).
    To change sites without redeploying, set `SITE_API_SITES_FILE=/data/sites.json`
    and keep the file on the API's volume. Changes are picked up automatically,

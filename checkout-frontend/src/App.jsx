@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { applyDocument, brandOf, brandStyle, loadSiteConfig } from './config/siteConfig.js';
+import { applyDocument, brandOf, brandStyle, loadSiteConfig, withCatalog } from './config/siteConfig.js';
 import { createApi } from './api/client.js';
 import { useCheckout } from './checkout/useCheckout.js';
 import PlansView from './views/PlansView.jsx';
@@ -9,6 +9,7 @@ export default function App() {
   const [site, setSite] = useState(null);
   const [catalog, setCatalog] = useState(null);
   const [fatal, setFatal] = useState(null);
+  const merged = useMemo(() => (site ? withCatalog(site, catalog) : null), [site, catalog]);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -24,6 +25,7 @@ export default function App() {
       }
       try {
         const c = await createApi(s).getPlans(ctrl.signal);
+        applyDocument(s, brandOf(s, c)); // admin brand design fills what the JSON leaves out
         setCatalog(c);
       } catch (e) {
         if (e.name !== 'AbortError') setFatal('These plans are temporarily unavailable. Please contact us for help.');
@@ -36,7 +38,7 @@ export default function App() {
   const brand = brandOf(site, catalog);
   if (fatal) return <Fatal message={fatal} brand={brand} retry />;
   if (!catalog) return <Loading label="Loading your plan options…" brand={brand} />;
-  return <Checkout site={site} brand={brand} catalog={catalog} />;
+  return <Checkout site={merged} brand={brand} catalog={catalog} />;
 }
 
 function Checkout({ site, brand, catalog }) {

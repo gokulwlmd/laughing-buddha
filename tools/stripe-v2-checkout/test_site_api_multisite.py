@@ -89,6 +89,17 @@ class MultiSiteTests(unittest.TestCase):
         self.assertEqual(self.client.get('/api/v1/domains/unknown.example').status_code, 404)
         self.assertTrue(info['portal_url'].endswith('/portal/glow-site'))
         self.assertIsNone(self.client.get('/api/v1/sites/payment-test').json()['portal_url'])
+        self.assertEqual([self.client.get(f'/api/v1/sites/{s}/plans').json()['portal_available'] for s in ('glow-health', 'payment-test')], [True, False])
+
+    def test_portal_site_comes_from_the_admin_site_of_the_catalog(self):
+        self.catalogs['site-api-public-weight-loss']['siteId'] = 'master-site'
+        self.client.get('/api/v1/sites/payment-test/plans')
+        info = self.client.get('/api/v1/sites/payment-test').json()
+        self.assertTrue(info['portal_url'].endswith('/portal/master-site'))
+        self.assertTrue(self.client.get('/api/v1/sites/payment-test/plans').json()['portal_available'])
+        # A malformed siteId is ignored rather than trusted.
+        catalog, _ = map_catalog(dict(self.catalogs['site-api-public-weight-loss'], siteId='../x'), 'payment-test', SITES['payment-test'])
+        self.assertFalse(catalog.portal_available)
 
     def test_unknown_disabled_and_invalid_sites_are_404_everywhere(self):
         for site_id in ('other', 'paused-brand', 'Bad_ID', 'a'):
