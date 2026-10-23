@@ -2,7 +2,16 @@
 
 Updated: 23 October 2026. Status: shared backend and Lovable storefront published.
 
-## Current release handoff
+## Latest cart and discount release
+
+The current release is documented in [FortifyHP cart and coupons](FORTIFYHP_CART_AND_COUPONS.md).
+Backend commit `128c38e4e6195c1f11d8a79f36a1b3f138a345e9` adds campaign-scoped
+coupons and concurrent quotes. Product pages now add products to a shared cart;
+each item retains its own Sticky order and charge. `FORTIFYTEST99` applies to
+initial payments and renewals. The prior inline-checkout implementation below
+is historical; its direct checkout route remains supported.
+
+## Initial shared release handoff (historical)
 
 - Shared backend commit `268b30befb6ba04edd8f41374895669456e37a8f`, branch
   `codex/fortifyhp-onboarding`; PR https://github.com/gokulwlmd/laughing-buddha/pull/3.
