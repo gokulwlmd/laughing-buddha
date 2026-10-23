@@ -18,8 +18,11 @@ The application's existing `member_verified_facts` table and `AnswerProfile`
 adapter already support trusted ID and SSN verification assertions scoped to a
 site and patient. They do not currently call WLMD. Their status comes from a
 trusted backend adapter, never from patient answer updates. No live identity
-gate or WLMD credential transport is enabled by this change. The production
-Fly secret-name inventory contained only Sticky credentials when checked.
+gate or WLMD credential transport is enabled by this change. The owner confirmed the live origin `https://api.whitelabelmd.com`
+and FortifyHP WLMD site ID `288`. The header is `authtoken` with the
+value `key=secret`; the complete value belongs only in the encrypted Fly
+secret `WLMD_AUTHTOKEN`. `WLMD_API_URL` selects the backend origin.
+WLMD membership is not used; Sticky remains the account identity provider.
 
 ## Owner-supplied endpoint
 
@@ -32,9 +35,12 @@ Known body fields:
 - `user`: present in the provider implementation; meaning is unconfirmed.
 - `debug`: present in the provider implementation; never enable for patient traffic.
 
-The supplied code does not define the base URL, credential transport, success
-status values, pending/failed outcomes, expiry, response reference, user mapping,
-or ID-image transport. Do not guess these, treat HTTP 200 as identity success,
+The later Postman screenshot shows a different route:
+`POST /v1/site/{site_id}/order/{order_id}/identity_ssncheck`.
+The correct identity route still needs confirmation. The provided examples
+also use different body shapes (`ssn` versus `last4` and demographics). Success
+status values, pending/failed outcomes, expiry, response reference, user mapping
+and ID-image transport remain unconfirmed. Do not guess these, treat HTTP 200 as identity success,
 or send real patient data to a guessed endpoint.
 
 ## Agreed intake behavior to connect after contract confirmation
@@ -59,14 +65,13 @@ or send real patient data to a guessed endpoint.
    site. Do not expose account-wide history to a checkout receipt without the
    existing ownership/account-linking checks.
 
-Credentials belong in server-side encrypted Fly secrets after the authentication
-scheme is confirmed. They must never be sent to Lovable or patient browsers.
+Credentials belong in server-side encrypted Fly secrets. The authentication
+header format is confirmed; no credential is included in this document. They must never be sent to Lovable or patient browsers.
 New site onboarding must request the WLMD site ID explicitly.
 
 ## Information still required
 
-- HTTPS API base URL and authentication scheme; credentials supplied securely.
-- FortifyHP's WLMD site ID.
+- Which of the two provided identity routes/body formats is current.
 - Sanitized successful, failed and pending response examples, including the
   meaning of `user`, verification reference and any expiry/revocation semantics.
 - Which check runs first, fallback sequence, which results satisfy the intake
@@ -74,3 +79,11 @@ New site onboarding must request the WLMD site ID explicitly.
 
 Until supplied, preserve the existing live intake behavior. Do not claim the
 identity service is connected or mark a patient verified with mock responses.
+
+Configuration deployed on 24 October 2026: FortifyHP maps to WLMD site 288;
+`WLMD_API_URL` and `WLMD_AUTHTOKEN` are configured on the existing shared Fly
+app. The credential has not yet been validated by an identity request. Site
+configuration tests: 31 backend and one browser scenario passed. Hosted source
+hashes match, health is 200 and existing checkout/patient counts are preserved.
+No identity request or patient-data transfer was performed. Identity gating
+is still inactive pending the confirmed route/body/result contract.

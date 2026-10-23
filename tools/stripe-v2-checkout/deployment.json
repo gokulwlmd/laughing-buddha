@@ -531,5 +531,21 @@
     "live_payment_or_refill_writes_performed": false,
     "live_paid_renewal_end_to_end_tested": false,
     "reference": "docs/NATIVE_EARLY_RENEWALS.md"
+  },
+  "wlmd_configuration_release": {
+    "date": "2026-10-24",
+    "image_digest": "sha256:d0c61ff881e0faf50c3219ca411f953dc571ef7d71a3abcc70f1720dddc77175",
+    "status": "site_configuration_deployed_identity_adapter_pending",
+    "wlmd_origin": "https://api.whitelabelmd.com",
+    "fortifyhp_wlmd_site_id": "288",
+    "backend_credential_configured": true,
+    "credential_authentication_verified": false,
+    "identity_checks_active": false,
+    "site_backend_tests": 31,
+    "site_browser_scenarios": 1,
+    "health_status": 200,
+    "source_hashes_match": true,
+    "existing_checkout_and_patient_counts_preserved": true,
+    "patient_data_sent_to_wlmd": false
   }
 }

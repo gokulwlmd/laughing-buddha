@@ -581,3 +581,18 @@ FortifyHP's WLMD ID, base URL/authentication, sanitized result examples, `user`
 semantics and check/image flow remain requested. Identity gating is not activated
 and no live identity request or patient-data transfer was performed. Do not
 confuse this foundation with the deployed native-refill release above.
+
+WLMD configuration update, 24 October 2026: owner confirmed live origin
+`https://api.whitelabelmd.com` (do not use stage-api) and FortifyHP WLMD ID `288`.
+The existing FortifyHP site record now contains that mapping. The complete
+`authtoken` header value is stored as encrypted Fly secret `WLMD_AUTHTOKEN`,
+with origin in `WLMD_API_URL`; no credential is stored in this repository.
+Site setup UI/model deployed in image
+`sha256:d0c61ff881e0faf50c3219ca411f953dc571ef7d71a3abcc70f1720dddc77175`.
+31 site/Fortify backend tests and one site browser scenario passed; deployed
+source hashes match and saved checkout/patient counts are unchanged.
+No identity request or patient-data transfer was performed. The Postman route
+`/v1/site/{site}/order/{order}/identity_ssncheck` differs from the supplied PHP
+route `/v1/site/{site}/identity-check/{order}`. Current route/body and response
+semantics still require confirmation. Credentials are configured, not yet
+authenticated against the identity endpoint. Shared intake remains unchanged.
