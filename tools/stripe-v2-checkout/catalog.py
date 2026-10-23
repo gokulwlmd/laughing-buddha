@@ -6,6 +6,8 @@ import time
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import hashlib
 import json
+import copy
+import weakref
 from prepaid import cycles_for, renewal_for
 from external_fulfillment import fortifyhp_prepaid_supported
 
@@ -16,6 +18,52 @@ class CatalogError(Exception):
 
 class CouponError(CatalogError):
     pass
+
+
+class CampaignSnapshots:
+    """Brief setup reuse for display/quotes; financial writes always force a read.
+
+    Owned by one application/API client. No customer, quote, gateway credential
+    or payment data is cached. Product prices, coupon profiles and calculated
+    totals still come from Sticky on every quote. Never serve expired-on-error.
+    """
+    def __init__(self, api, ttl=120, limit=64, clock=time.monotonic):
+        self.api, self.ttl, self.limit, self.clock = api, ttl, limit, clock
+        self.entries = OrderedDict()
+        self.guard = threading.Lock()
+        self.locks = weakref.WeakValueDictionary()
+
+    def read(self, campaign_id, fresh=False):
+        with self.guard:
+            lock = self.locks.get(campaign_id)
+            if lock is None:
+                lock = threading.Lock()
+                self.locks[campaign_id] = lock
+        with lock:
+            with self.guard:
+                entry = self.entries.get(campaign_id)
+                if not fresh and entry and entry[0] > self.clock():
+                    self.entries.move_to_end(campaign_id)
+                    return copy.deepcopy(entry[1])
+                self.entries.pop(campaign_id, None)
+            c = self.api.detail(f'/api/v2/campaigns/{campaign_id}')
+            # Retain catalog configuration only, never embedded provider secrets.
+            keys = ('id', 'c_id', 'name', 'is_active', 'is_archived', 'gateway_id',
+                    'tax_provider_id', 'fulfillment_id', 'countries', 'shipping_profiles',
+                    'offers', 'volume_discounts', 'fraud_providers', 'postback_profiles',
+                    'email_provider_id', 'membership_provider_id', 'coupon_profiles',
+                    'payment_methods')
+            value = {k: copy.deepcopy(c[k]) for k in keys if k in c}
+            value['alternative_payments'] = [
+                {'payment_method': p.get('payment_method'),
+                 'provider': {k: p.get('provider', {}).get(k) for k in ('id', 'account_id')}}
+                for p in c.get('alternative_payments', [])]
+            with self.guard:
+                self.entries[campaign_id] = (self.clock() + self.ttl, value)
+                self.entries.move_to_end(campaign_id)
+                while len(self.entries) > self.limit:
+                    self.entries.popitem(last=False)
+            return copy.deepcopy(value)
 
 
 class RoutingHints:
@@ -86,7 +134,7 @@ def enabled(value):
     return value not in (None, False, 0, '0', '')
 
 
-def resolve(api, campaign_id, sku, allowed_keys=None, gateway_hint=None):
+def resolve(api, campaign_id, sku, allowed_keys=None, gateway_hint=None, campaign_loader=None, fresh_offers=False):
     allowed = None
     if allowed_keys is not None:
         try:
@@ -94,10 +142,10 @@ def resolve(api, campaign_id, sku, allowed_keys=None, gateway_hint=None):
             if not allowed or any(len(key) != 3 or min(key) <= 0 for key in allowed):raise ValueError()
         except (ValueError, TypeError, AttributeError):
             raise CatalogError('The published payment choices are invalid') from None
-    # Fresh campaign membership is checked before reading any product. The
-    # gateway hint overlaps its read with that campaign lookup.
+    # Display/quote callers may reuse a bounded setup snapshot. Authorization
+    # and capture supply a forced-fresh loader. Products/gateway remain fresh.
     with ThreadPoolExecutor(max_workers=8) as pool:
-        campaign_future = pool.submit(api.detail, f'/api/v2/campaigns/{campaign_id}')
+        campaign_future = pool.submit(campaign_loader) if campaign_loader else pool.submit(api.detail, f'/api/v2/campaigns/{campaign_id}')
         hinted_gateway = pool.submit(api.detail, f'/api/v2/providers/payment/profiles/{gateway_hint}') if allowed is not None and gateway_hint else None
         c = campaign_future.result()
         if enabled(c.get('is_archived')) or c.get('is_active') in (False, 0, '0'):
@@ -106,7 +154,7 @@ def resolve(api, campaign_id, sku, allowed_keys=None, gateway_hint=None):
         if allowed is not None:
             offers = [o for o in offers if int(o['id']) in {key[0] for key in allowed}]
         def offer_detail(o):
-            return o if 'products' in o else api.detail('/api/v2/offers/' + str(o['id']))
+            return o if 'products' in o and not fresh_offers else api.detail('/api/v2/offers/' + str(o['id']))
         offers = list(pool.map(offer_detail, offers))
         offers = [o for o in offers if not enabled(o.get('is_archived'))]
         ids = sorted({int(p['id']) for o in offers for p in o.get('products', [])

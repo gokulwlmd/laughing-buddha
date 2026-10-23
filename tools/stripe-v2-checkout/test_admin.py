@@ -15,6 +15,7 @@ class AdminSticky(FakeSticky):
             pid=int(path.rsplit('/',1)[1])
             if pid in self.products:return copy.deepcopy(self.products[pid])
             return super().detail(path)|{'price':self.price,'category_id':113,'cost_of_goods':'0','restocking_fee':'0','max_quantity':1}
+        if path=='/api/v2/offers/706':return super().detail(path)
         if '/offers/' in path:return copy.deepcopy(self.offers[int(path.rsplit('/',1)[1])])
         if '/campaigns/' in path:
             c=super().detail(path);c['id']=int(path.rsplit('/',1)[1]);c['offers']=[c['offers'][0]]+[copy.deepcopy(self.offers[i]) for i in self.attached if i!=706];return c

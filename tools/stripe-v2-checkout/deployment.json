@@ -637,5 +637,47 @@
     "existing_checkout_and_patient_counts_preserved": true,
     "real_photo_retries_during_authorized_diagnosis": true,
     "new_payment_submission": false
+  },
+  "fortify_price_latency_release": {
+    "date": "2026-10-24",
+    "image_digest": "sha256:8eacefaa2b8f1673cde751b51a0431be740f4b40a8dc9a62beea5c38ceaa412b",
+    "status": "deployed_verified",
+    "campaign_snapshot_ttl_seconds": 120,
+    "campaign_snapshot_limit": 64,
+    "fresh_offer_product_gateway_coupon_and_total": true,
+    "forced_fresh_campaign_before_financial_writes": true,
+    "full_backend_run": {
+      "tests": 516,
+      "passed": 512,
+      "fixture_errors": 4
+    },
+    "after_fixture_correction": {
+      "tests": 34,
+      "passed": 34,
+      "includes_all_four_errors": true
+    },
+    "targeted_backend_tests_passed": 110,
+    "browser_scenarios_passed": 8,
+    "live_browser_before_ms": {
+      "final_price": 6309,
+      "coupon_price": 6845
+    },
+    "live_browser_after_ms": {
+      "final_price": 2306,
+      "coupon_price": 2331
+    },
+    "live_browser_quote_requests_after_ms": [
+      1297,
+      1438
+    ],
+    "first_uncached_configuration_after_ms": 5057,
+    "warm_setup_measurements": true,
+    "fresh_financial_fingerprint_matches": true,
+    "source_hashes_match": true,
+    "health_status": 200,
+    "existing_financial_state_counts_preserved": true,
+    "synthetic_quote_only_sessions_created": true,
+    "new_payment_or_order_submitted": false,
+    "report": "docs/CHECKOUT_PRICE_PERFORMANCE.md"
   }
 }

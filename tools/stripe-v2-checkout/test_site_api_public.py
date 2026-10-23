@@ -52,7 +52,7 @@ class PublicDemoTests(unittest.TestCase):
 
     def test_scoped_docs_real_notice_and_no_payment_admin_routes(self):
         spec=self.client.get('/sites/payment-test/openapi.json').json()
-        self.assertEqual(set(spec['paths']),{self.base+'/plans',self.base+'/therapies',self.base+'/checkout',self.base+'/sessions',self.base+'/sessions/{session_id}',*[self.base+'/sessions/{session_id}/'+action for action in ('configuration','quote','payment','resume','complete','portal','account','intake','intake/submit')]})
+        self.assertEqual(set(spec['paths']),{self.base+'/plans',self.base+'/therapies',self.base+'/checkout',self.base+'/sessions',self.base+'/sessions/{session_id}',*[self.base+'/sessions/{session_id}/'+action for action in ('configuration','quote','payment','resume','complete','portal','account','intake','intake/submit','identity','id-photo','id-photo/reuse')]})
         self.assertIn('CheckoutSession',spec['components']['securitySchemes'])
         self.assertNotIn('return_url',str(spec))
         page=self.client.get('/').text

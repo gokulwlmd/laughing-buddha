@@ -12,7 +12,7 @@ import sqlite3
 import threading
 import time
 from functools import wraps
-from catalog import CatalogError, CouponError, RoutingHints, resolve, quote
+from catalog import CatalogError, CouponError, CampaignSnapshots, RoutingHints, resolve, quote
 from prepaid import order_terms_match
 from admin import Admin, branding as brand_presentation
 from dataclasses import dataclass
@@ -241,11 +241,13 @@ def create_app(settings=None, sticky=None):
     invite = invite_path.read_text().strip()
     cached = {}  # Client secrets remain in memory, never in source, DB, or logs.
     routing_hints = RoutingHints()
+    campaign_snapshots = CampaignSnapshots(api)
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.store = store
     app.state.settings = cfg
     app.state.invite = invite
     app.state.routing_hints = routing_hints
+    app.state.campaign_snapshots = campaign_snapshots
     admin = Admin(store,cfg,api,invite,ROUTE_LOCK)
     if cfg.synthetic:
         from synthetic import seed_demo
@@ -314,14 +316,26 @@ def create_app(settings=None, sticky=None):
             raise HTTPException(409, 'This tab refers to another purchase. Reload the checkout before continuing.')
         return key, row
 
-    def catalog(req, legacy=False):
+    def catalog(req, legacy=False, preview=False):
         if req.query_params.get('link_id'):
             link, brand = admin.link_access(req)
             allowed = None if legacy else link['options']
             cache_key = (*context(req), tuple(sorted(allowed or [])))
-            c = resolve(api, *context(req), allowed_keys=allowed, gateway_hint=routing_hints.get(cache_key) if allowed else None)
+            campaign, sku = context(req)
+            def read_catalog(fresh):
+                return resolve(api, campaign, sku, allowed_keys=allowed, gateway_hint=routing_hints.get(cache_key) if allowed else None,
+                               campaign_loader=(lambda: campaign_snapshots.read(campaign, fresh=fresh)) if allowed else None,
+                               fresh_offers=bool(allowed))
+            try:
+                c = read_catalog(fresh=not preview)
+            except CatalogError:
+                if not preview or not allowed:
+                    raise
+                # A newly published choice may not exist in the short snapshot.
+                # Refresh setup once rather than making it wait for expiry.
+                c = read_catalog(fresh=True)
             routing_hints.remember(cache_key, c.get("gatewayId"))
-            # The hint only schedules fresh reads; all restrictions remain fresh.
+            # Local publication/access restrictions are checked on every request.
             return admin.filter_catalog(c,link,brand)
         return resolve(api, *context(req))
 
@@ -467,7 +481,7 @@ def create_app(settings=None, sticky=None):
     def configuration(req: Request):
         access(req)
         _, row = session(req)
-        c = catalog(req)
+        c = catalog(req, preview=True)
         ready = bool(cfg.public_url and cfg.authorization_verified and not c['blockedReason'])
         return {k: c[k] for k in ('campaignId','campaignName','sku','options','shipping','countries','currency','publishableKey')} | {
             'csrfToken': admin.checkout_csrf(admin.link(req.query_params['link_id'])[0]) if req.query_params.get('link_id') else csrf(), 'branding': c.get('branding'), 'checkoutTitle': c.get('checkoutTitle'), 'ready': ready, 'blockedReason': c['blockedReason'] or ('' if ready else 'The secure checkout connection is still being configured.'),
@@ -520,7 +534,7 @@ def create_app(settings=None, sticky=None):
         key, row = session(req)
         if row['status'] != 'new':
             raise HTTPException(409, 'An existing payment must be reconciled before changing this checkout')
-        c = catalog(req)
+        c = catalog(req, preview=not body.dollar_test)
         if body.dollar_test:
             if not dollar_test_available(admin,req,c):
                 raise HTTPException(403, '$1 testing is not enabled for this checkout')

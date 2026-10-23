@@ -2,6 +2,10 @@
 
 Laughing Buddha contains WLMD Core, a FastAPI and SQLite checkout administration application in `tools/stripe-v2-checkout`. Resume here and in [the decision record](DECISIONS.md). This handoff carries the product decisions from the earlier “Set up laughing-buddha” conversation, retrieved on 22 October 2026, without copying credentials, private invitations, payment receipts or customer records.
 
+For the latest Fortify final-price latency change, read
+[checkout price performance](CHECKOUT_PRICE_PERFORMANCE.md). Campaign setup can
+be reused briefly for quotes; financial writes still force fresh validation.
+
 ## Repository and protected live service
 
 Repository: `gokulwlmd/laughing-buddha`. The starting checkout was clean at `f109e5151b840687d9a0731d8611acf73048b979`. The Sites and Checkout Templates implementation was still unimplemented in that starting commit.

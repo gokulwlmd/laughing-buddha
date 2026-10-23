@@ -244,6 +244,10 @@ class SessionApiTests(unittest.TestCase):
         self.assertTrue(result.json()['terms_consent_required'])
         self.assertIn('No automatic renewal',result.json()['payment_terms'])
         self.fake.recurring=True
+        # This scenario changes provider setup in-place. Let the bounded setup
+        # snapshot expire before exercising the new subscription's consent.
+        snapshots=self.engine.state.campaign_snapshots
+        now=snapshots.clock();snapshots.clock=lambda:now+121
         link=self.engine.state.admin.get('link',self.link_id)
         link['options']=['706:54537:3'];self.engine.state.admin.put('link',self.link_id,link)
         self.store.update(data['session_id'],phase='new')

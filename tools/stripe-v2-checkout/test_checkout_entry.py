@@ -33,7 +33,7 @@ class EntryQuoteTests(unittest.TestCase):
         original = self.fake.detail
         barrier = threading.Barrier(2)
         def concurrent(path):
-            if any(part in path for part in ('/campaigns/', '/profiles/')):
+            if any(part in path for part in ('/products/', '/profiles/')):
                 barrier.wait(timeout=3)
             return original(path)
         self.fake.detail = concurrent
