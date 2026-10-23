@@ -38,6 +38,14 @@ if __name__ == '__main__':
             'early_request_cooldown_days': 7, 'early_reason_required': True,
         })
 
+    @app.post('/__member_identity', include_in_schema=False)
+    def enable_identity():
+        from test_wlmd_identity import FakeIdentity
+        raw=app.state.admin.get('site','site-a');raw['wlmd_site_id']='qa-wlmd'
+        app.state.admin.put('site','site-a',raw)
+        app.state.member_portal.identity_checks.provider=FakeIdentity()
+        return {'enabled': True}
+
     @app.get('/__member_qa', include_in_schema=False)
     def proof():
         counts = {}

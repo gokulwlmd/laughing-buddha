@@ -141,3 +141,50 @@ The credential and SSN contract are now verified. Portal/receipt identity gating
 account-settings status and the reusable WLMD adapter remain to be implemented;
 this test did not create a local verified fact or change FortifyHP's mapping.
 No SSN digits, patient identifiers or raw response are stored in this record.
+
+## Identity gate and Account settings — 24 October 2026
+
+Implemented the confirmed live SSN contract in `member_portal/wlmd.py`.
+FortifyHP uses its saved WLMD mapping; other mapped sites use their own mapping.
+Sites without a mapping keep their existing intake behavior. Missing credentials
+on a mapped site leave verification unavailable rather than bypassing the gate.
+
+- Account settings shows personal details, verification status/date and a
+  last-four-only form. Successful checks resume the selected intake/check-in.
+- Shared `wlmd-purchase-intake` asks inline after purchase. Existing frontends
+  loading this shared component need no per-site Lovable implementation.
+- Portal: GET `/api/v1/sites/{site}/portal/account/identity`; GET/POST
+  `/api/v1/sites/{site}/portal/orders/{order}/identity`, using patient bearer auth.
+- Checkout: GET/POST `/api/v1/sites/{site}/sessions/{session}/identity`, using
+  the order-bound receipt bearer. POST body is `{"last4":"<four digits>"}`.
+  Upstream identity credentials, WLMD mapping and order IDs come from the backend.
+- Initial and care/check-in intake reads and mutations enforce verification.
+  Existing drafts remain saved. Verification does not change clinical approval,
+  fulfillment, subscriptions or payments.
+- Store only verification status, timestamps and internal site/subject/order
+  references. Never store last-four digits, request bodies or provider messages.
+  Exact JSON `status: "success"` is required; unknown results stay unconfirmed.
+- Reuse a verified assertion within the same site and WLMD mapping. No arbitrary
+  expiry is invented because the provider has not supplied expiry semantics.
+  A changed mapping requires a new check. Server assertions can satisfy version-1
+  `identity.ssn_verified` intake questions, but never imply ID-image verification.
+- Receipt holders can only read their own order assertion. Verified receipt
+  assertions are adopted into the patient account after exact authenticated order
+  ownership is established, retaining the receipt result. A receipt alone cannot
+  retrieve another order's/account's identity status or stored answers.
+- No automatic provider retry. Durable reservations limit repeated submissions
+  to five per 15 minutes and enforce a 30-second minimum gap. Requests use a fixed
+  HTTPS origin, no redirects, bounded timeout/body and redacted errors.
+
+Automated verification uses synthetic fixtures: patient/receipt ownership,
+site/mapping isolation, trusted fact reuse, failure/timeout handling, rate limits,
+intake gates, API forwarding, no SSN persistence and desktop/mobile UI flows.
+37 browser scenarios passed. Targeted backend batches passed (64 tests, then
+2 new session contract tests, then 66 regression tests; batches overlap).
+No new live SSN submission or payment was made for this release. Crosscheck,
+ID-image and the real clinical intake/questionnaire APIs still need contracts.
+
+Release deployed and verified on the existing shared Fly app in image
+`sha256:ae2496fd8f355659e8f82809e7d15db98f5eebbc3bf550b83f13a8112c2f8675`.
+Hosted JS/CSS/backend hashes match, health is 200, unauthenticated identity
+access is 401, and existing checkout/patient counts are unchanged.

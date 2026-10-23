@@ -341,3 +341,42 @@ class AccountSessionTests(unittest.TestCase):
         self.assertEqual(invalid.status_code,422);self.assertNotIn('DO_NOT_ECHO',invalid.text)
         self.now+=86401
         self.assertEqual(self.client.get(path+'/account',headers=headers).status_code,410)
+
+class IdentitySessionTests(unittest.TestCase):
+    setUp = SessionApiTests.setUp
+    tearDown = SessionApiTests.tearDown
+    create = SessionApiTests.create
+
+    def test_identity_api_requires_receipt_and_forwards_only_last_four(self):
+        path,headers,data=self.create()
+        self.assertEqual(self.client.get(path+'/identity').status_code,401)
+        seen=[]
+        members=self.engine.state.member_portal
+        members.receipt_order=lambda row: ({'order_id':'fixture-order','site_id':'payment-test'},{'id':'receipt:fixture-order','_reuse_allowed':False})
+        members.identity_checks.status=lambda order,patient: {'status':'needed','required':True}
+        def verify(order,patient,body):
+            seen.append((order['order_id'],body.last4.get_secret_value()))
+            return {'status':'verified','required':True}
+        members.identity_checks.verify=verify
+        self.assertEqual(self.client.get(path+'/identity',headers=headers).json()['status'],'needed')
+        result=self.client.post(path+'/identity',headers=headers,json={'last4':'1234'})
+        self.assertEqual(result.status_code,200,result.text)
+        self.assertEqual(seen,[('fixture-order','1234')])
+        invalid=self.client.post(path+'/identity',headers=headers,json={'last4':'DO_NOT_ECHO','order_id':'override'})
+        self.assertEqual(invalid.status_code,422);self.assertNotIn('DO_NOT_ECHO',invalid.text)
+
+    def test_transport_preserves_only_identity_gate_contract(self):
+        from email.message import Message
+        class Response:
+            status=409;will_close=False;headers=Message()
+            def read(self): return json.dumps({'detail':{'code':'identity_verification_required','message':'ignored upstream text','private':'never forward'}}).encode()
+        class Connection:
+            def request(self,*args,**kwargs): pass
+            def getresponse(self): return Response()
+            def close(self): pass
+        transport=CheckoutTransport(PUBLIC_UPSTREAM)
+        row={'cookies':'{}','csrf':'x','attempt':'attempt','link_id':'choice-'+'a'*32}
+        with patch('demo.session_api.http.client.HTTPSConnection',return_value=Connection()):
+            with self.assertRaises(UpstreamError) as caught:
+                transport.call(row,'GET','/api/post-checkout-identity')
+        self.assertEqual(caught.exception.detail,{'code':'identity_verification_required','message':'Verify your identity to continue your intake.'})

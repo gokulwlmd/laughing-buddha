@@ -56,6 +56,18 @@ class AnswerProfile:
 
     def seed(self, db, order, patient, template):
         template, answers = annotate(template), {}
+        # A receipt may reuse its own trusted assertion without reading any
+        # account answers. Account-wide facts still require authentication.
+        for q in template['questions']:
+            if q.get('reuse_policy') == 'verified':
+                fact = self.s.identity_checks.fact(db, order, patient, q.get('reuse_key'), q.get('reuse_version', '1'))
+                if fact:
+                    try:
+                        value = clean_answers(template, {q['id']: 'verified'})[q['id']]
+                    except HTTPException:
+                        continue
+                    answers[q['id']] = value
+                    q.update(saved_value=value, saved_at=fact['verified_at'], reuse_status='verified')
         if patient.get('_reuse_allowed') is False or not db.execute(
                 'SELECT 1 FROM member_grants WHERE site_id=? AND order_id=? AND patient_id=?',
                 (order['site_id'], order['order_id'], patient['id'])).fetchone():
@@ -89,6 +101,7 @@ class AnswerProfile:
             if policy == 'verified':
                 fact = db.execute('SELECT * FROM member_verified_facts WHERE site_id=? AND patient_id=? AND fact_key=? AND version=? AND status=? AND expires_at>?',
                     (order['site_id'], patient['id'], key, version, 'verified', self.s.clock())).fetchone()
+                fact = fact or self.s.identity_checks.fact(db, order, patient, key, version)
                 if not fact:
                     continue
                 value, saved_at = 'verified', fact['verified_at']
@@ -120,6 +133,7 @@ class AnswerProfile:
             if submit and visible(q, answers or {}) and (q.get('required') or q['id'] in (answers or {})):
                 valid = db.execute('SELECT 1 FROM member_verified_facts WHERE site_id=? AND patient_id=? AND fact_key=? AND version=? AND status=? AND expires_at>?',
                     (order['site_id'], patient['id'], q.get('reuse_key'), q.get('reuse_version', '1'), 'verified', self.s.clock())).fetchone()
+                valid = valid or self.s.identity_checks.fact(db, order, patient, q.get('reuse_key'), q.get('reuse_version', '1'))
                 if not valid or (answers or {}).get(q['id']) != 'verified':
                     raise HTTPException(409, 'Complete identity verification before submitting this intake')
 

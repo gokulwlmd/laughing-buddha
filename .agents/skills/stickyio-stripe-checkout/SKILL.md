@@ -232,3 +232,19 @@ Use Therapies, then Purchase options to create a duration preset and assign matc
 Published checkouts retain approved purchase-option snapshots. Preset edits mark them for reviewed republication; disabling a preset immediately blocks its published children. Every option/SKU pair has a separate private child link, so sharing a SKU cannot mix access to payment choices. Parent membership, live duration, private invitation, available billing and server quote checks still apply. All affected open payments block edits. Existing standalone and earlier manually configured multi-SKU links remain supported without automatic data conversion. Purchase-option records participate in stale-preview fingerprints.
 
 Keep clinical eligibility, dosing, refill approval and medication benefits separate from customer plan preference. Master payment choices must be named separately from duration purchase options in the admin. Automated checks use fake services; hosted verification must not impersonate the owner or create real orders. Test coverage is in test_purchase_options.py, test_plans.py and qa/therapy.spec.cjs.
+
+## WLMD identity before intake
+
+Use the confirmed live POST `/v1/site/{wlmd_site_id}/order/{owned_order}/identity_ssncheck`
+contract in `member_portal/wlmd.py`: backend `WLMD_AUTHTOKEN`, JSON `user` is the
+calling system `laughing-buddha`, `last4` is four ASCII digits. Only explicit JSON
+`status: "success"` verifies. Do not reuse the obsolete `ssn` body or PHP route.
+Never persist/log SSN digits or provider response messages. Do not repeat a live
+identity check for QA; use the offline fixtures. Enforce site and exact order
+ownership; receipt-only access must not disclose account-wide facts. Successful
+receipt assertions can be adopted after authenticated order ownership. Cache per
+site, patient and WLMD mapping, with no invented expiry; check status locally
+before calling WLMD. Intake gates and Account settings use the shared adapter;
+checkout frontends use the shared post-checkout component and session identity
+API. Do not equate identity verification with treatment approval. Crosscheck,
+ID-image and clinical questionnaire integrations still require their contracts.

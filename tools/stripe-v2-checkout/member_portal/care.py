@@ -465,6 +465,7 @@ class CareManager:
         return response
 
     def intake(self, row, patient, task_id, create=True):
+        self.s.identity_checks.require(row, patient)
         plan = self.ensure(row)
         if not plan or plan['patient_id'] != patient['id']:
             raise HTTPException(409, 'The original paid care schedule needs verification before this intake can open')

@@ -561,5 +561,28 @@
       "raw_response_retained": false
     },
     "patient_data_transfer_scope": "Only the owner-authorized SSN verification test; no automatic portal integration"
+  },
+  "wlmd_identity_release": {
+    "date": "2026-10-24",
+    "image_digest": "sha256:ae2496fd8f355659e8f82809e7d15db98f5eebbc3bf550b83f13a8112c2f8675",
+    "status": "deployed_verified",
+    "account_settings_active": true,
+    "portal_and_receipt_intake_gate_active": true,
+    "fortifyhp_wlmd_site_id": "288",
+    "backend_test_batches_passed": [
+      64,
+      2,
+      66
+    ],
+    "backend_test_batches_overlap": true,
+    "browser_scenarios_passed": 37,
+    "health_status": 200,
+    "unauthenticated_identity_status": 401,
+    "qa_route_absent": true,
+    "source_hashes_match": true,
+    "existing_checkout_and_patient_counts_preserved": true,
+    "new_live_identity_submission": false,
+    "new_live_payment_submission": false,
+    "ssn_digits_or_provider_messages_stored": false
   }
 }

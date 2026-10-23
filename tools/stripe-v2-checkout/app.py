@@ -694,6 +694,18 @@ def create_app(settings=None, sticky=None):
     def setup_receipt_account(body: ReceiptEnrollment, req: Request):
         return members.receipt_account(member_receipt(req), body.password)
 
+    from member_portal.wlmd import IdentityInput
+
+    @app.get('/api/post-checkout-identity')
+    def receipt_identity(req: Request):
+        order, patient = members.receipt_order(member_receipt(req, mutation=False))
+        return members.identity_checks.status(order, patient)
+
+    @app.post('/api/post-checkout-identity')
+    def verify_receipt_identity(body: IdentityInput, req: Request):
+        order, patient = members.receipt_order(member_receipt(req))
+        return members.identity_checks.verify(order, patient, body)
+
     @app.get('/api/post-checkout-intake')
     def receipt_intake(req: Request):
         order, patient = members.receipt_order(member_receipt(req, mutation=False))

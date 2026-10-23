@@ -483,3 +483,26 @@ test.describe('Visible included-refill instructions',()=>{
   await proof(page,member);
  });
 });
+
+for(const width of [1440,390])test(`IDENTITY account settings and intake at ${width}px`,async({page,member},info)=>{
+  await page.setViewportSize({width,height:1000});
+  await page.route('**/api/v1/sites/site-a/portal/**',async route=>{const response=await route.fetch(),data=await response.json();if(data.site)data.site={...data.site,name:'FortifyHP',theme:'fortifyhp',color:'#A2563F'};await route.fulfill({response,json:data});});
+  await enroll(page,member);await page.request.post(member.origin+'/__member_identity');
+  await page.getByRole('button',{name:'Account settings',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Identity verification',exact:true})).toBeVisible();
+  await expect(page.getByLabel('Last 4 digits of your SSN')).toBeVisible();
+  await reflow(page,width);await page.screenshot({path:info.outputPath(`identity-account-needed-${width}.png`),fullPage:true});
+  await page.getByRole('button',{name:'Medical intake',exact:true}).click();
+  await page.getByRole('button',{name:'Start intake',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Verify your identity',exact:true})).toBeVisible();
+  await expect(page.locator('#intake-form')).toHaveCount(0);
+  await page.getByLabel('Last 4 digits of your SSN').fill('1234');
+  await page.getByRole('button',{name:'Verify & continue to intake',exact:true}).click();
+  await expect(page.locator('#intake-form')).toBeVisible();
+  await page.getByRole('button',{name:'Account settings',exact:true}).click();
+  await expect(page.getByText("You're verified. You're all set.",{exact:true})).toBeVisible();
+  await expect(page.locator('#identity-last4')).toHaveCount(0);
+  expect(await page.evaluate(()=>JSON.stringify({...localStorage,...sessionStorage}))).not.toContain('1234');
+  await reflow(page,width);await page.screenshot({path:info.outputPath(`identity-account-verified-${width}.png`),fullPage:true});
+  await proof(page,member);
+});

@@ -620,3 +620,21 @@ the shared server adapter, site/patient status persistence and intake gate/UI;
 crosscheck/ID-image and failure/expiry semantics remain separate unconfirmed
 contracts. Do not repeat the earlier malformed requests. Sanitized details are
 in WLMD_INTEGRATION.md; no request personal data or raw message was retained.
+
+## Current: WLMD identity gate and account settings — 24 October 2026
+
+The confirmed SSN adapter and intake gate are implemented for the shared app.
+Account settings has a branded verification card with status/date and a secure
+last-four input. The shared post-purchase component verifies inline and resumes
+intake. Successful verification is cached within the site and WLMD mapping;
+verified receipt assertions join the patient account only after exact order
+ownership is authenticated. Raw digits and provider messages are never saved.
+Initial/refill intakes enforce the gate; existing intake drafts, payments and
+subscriptions are preserved. Missing credentials do not bypass mapped sites.
+See WLMD_INTEGRATION.md for API routes, cache/security boundaries and QA evidence.
+The real clinical questionnaire provider remains separate and pending its API.
+
+Release deployed and verified on the existing shared Fly app in image
+`sha256:ae2496fd8f355659e8f82809e7d15db98f5eebbc3bf550b83f13a8112c2f8675`.
+Hosted JS/CSS/backend hashes match, health is 200, unauthenticated identity
+access is 401, and existing checkout/patient counts are unchanged.

@@ -941,3 +941,16 @@ body.modal-open{overflow:hidden}
 .refill-renewal p { margin-top: 12px; font-size: 17px; line-height: 1.6; }
 .refill-inclusion-note, .refill-purchase-unavailable { margin-top: 24px; font-size: 16px; line-height: 1.6; color: var(--muted); }
 .refill-option-action strong { display: block; }
+
+/* Identity and account settings: readable, compact and site branded. */
+.account-grid{display:grid;grid-template-columns:minmax(240px,.8fr) minmax(0,1.4fr);gap:24px;align-items:start}
+.account-profile,.identity-card{padding:clamp(24px,3vw,40px);max-width:850px}
+.identity-card-top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:24px}
+.identity-card-top h2{margin:4px 0;font-size:24px;line-height:1.3}
+.identity-card-top .status{margin-left:auto}.identity-card .eyebrow{margin:0;font-size:12px}
+.identity-symbol{display:grid;place-items:center;flex:none;width:56px;height:56px;border-radius:16px;background:var(--soft);color:var(--brand)}
+.identity-card p{font-size:17px;line-height:1.6}.identity-card .identity-lead{font-size:21px;font-weight:600;line-height:1.4}
+.identity-card form{margin:24px 0}.identity-card input{font-size:24px;letter-spacing:.35em;max-width:220px;min-height:56px}
+.identity-card .btn{min-height:52px}.identity-card .identity-privacy{display:flex;gap:8px;align-items:center;border-top:1px solid var(--line,#e2dfd9);padding-top:20px;margin:24px 0 0;font-size:14px;letter-spacing:0}
+.account-profile h2{font-size:24px;margin-top:0}.account-profile dt{font-size:14px;color:var(--muted,#64645f);margin-top:22px}.account-profile dd{font-size:18px;line-height:1.5;margin:4px 0;overflow-wrap:anywhere}
+@media(max-width:900px){.account-grid{grid-template-columns:1fr}.identity-card-top .status{margin-left:0}.identity-card form .btn{width:100%}}

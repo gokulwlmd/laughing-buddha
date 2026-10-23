@@ -375,6 +375,8 @@ class MemberService:
         from refill_rules import migrate_claim_window
         migrate_claim_window(self.store)
         self.answer_profile = AnswerProfile(self)
+        from .wlmd import IdentityChecks
+        self.identity_checks = IdentityChecks(self)
         self.care = CareManager(self)
         self.claims = ClaimsManager(self)
         from .renewals import RenewalsManager
@@ -901,6 +903,9 @@ class MemberService:
                 db.execute('UPDATE member_intakes SET patient_id=? WHERE site_id=? AND order_id=? AND patient_id=?',
                     (patient['id'], order['site_id'], order['order_id'], guest))
 
+        if patient.get('_reuse_allowed') is not False:
+            self.identity_checks.status(order, patient)
+
     def initial_intake(self, order, patient):
         self.adopt_receipt_intake(order, patient)
         if self.care.configured(order) and self.care.ensure(order):
@@ -961,6 +966,7 @@ class MemberService:
         return self.intake_public(row, order)
 
     def intake(self, order, patient):
+        self.identity_checks.require(order, patient)
         with self.db() as db:
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT * FROM member_intakes WHERE site_id=? AND order_id=? AND patient_id=?', (order['site_id'], order['order_id'], patient['id'])).fetchone()
@@ -1084,6 +1090,20 @@ class MemberService:
 
         def auth(site_id: str, req: Request, credentials: HTTPAuthorizationCredentials | None = Depends(bearer)):
             return self.patient(site_id, req, credentials)
+
+        from .wlmd import IdentityInput
+
+        @router.get('/account/identity')
+        def account_identity(site_id: str, patient=Depends(auth)):
+            return self.identity_checks.account(site_id, patient)
+
+        @router.get('/orders/{order_id}/identity')
+        def order_identity(site_id: str, order_id: str, patient=Depends(auth)):
+            return self.identity_checks.status(self.order_record(site_id, order_id, patient), patient)
+
+        @router.post('/orders/{order_id}/identity')
+        def verify_order_identity(site_id: str, order_id: str, body: IdentityInput, patient=Depends(auth)):
+            return self.identity_checks.verify(self.order_record(site_id, order_id, patient), patient, body)
 
         @router.get('/configuration', response_model=ConfigurationResult)
         def configuration(site_id: str):

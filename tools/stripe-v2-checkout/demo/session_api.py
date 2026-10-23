@@ -313,7 +313,7 @@ class CheckoutTransport:
 
     def call(self,row,method,path,body=None,client_ip=None):
         # Paths and link IDs come only from the server's published catalog.
-        if not re.fullmatch(r'/c/choice-[a-f0-9]{32}|/api/(?:start-checkout|config|status|quote|authorize|resume|capture|portal-enrollment|post-checkout-account|post-checkout-intake(?:/submit)?)',path):
+        if not re.fullmatch(r'/c/choice-[a-f0-9]{32}|/api/(?:start-checkout|config|status|quote|authorize|resume|capture|portal-enrollment|post-checkout-account|post-checkout-identity|post-checkout-intake(?:/submit)?)',path):
             raise ValueError('Unexpected checkout path')
         target=path
         if path.startswith('/api/'):
@@ -346,7 +346,9 @@ class CheckoutTransport:
             if not 200<=response.status<300:
                 try:
                     detail=json.loads(raw).get('detail')
-                    if not isinstance(detail,str):detail='Checkout request was rejected'
+                    if isinstance(detail,dict) and detail.get('code')=='identity_verification_required':
+                        detail={'code':'identity_verification_required','message':'Verify your identity to continue your intake.'}
+                    elif not isinstance(detail,str):detail='Checkout request was rejected'
                 except (ValueError,AttributeError):detail='Checkout request was rejected'
                 raise UpstreamError(response.status,detail)
             for value in response.headers.get_all('Set-Cookie',[]):
@@ -594,6 +596,24 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
                 return call(row, 'POST', '/api/post-checkout-account', body.model_dump(), req)
             except UpstreamError as exc:
                 raise translated(exc)
+
+    from member_portal.wlmd import IdentityInput
+
+    @router.get('/{session_id}/identity', summary='Read saved identity status for this purchase')
+    def identity_status(site_id: str, session_id: str, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
+        row = auth(site_id, session_id, req, credentials)
+        try:
+            return call(row, 'GET', '/api/post-checkout-identity', req=req)
+        except UpstreamError as exc:
+            raise translated(exc)
+
+    @router.post('/{session_id}/identity', summary='Verify identity before intake; SSN digits are not stored')
+    def identity_check(site_id: str, session_id: str, body: IdentityInput, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
+        row = auth(site_id, session_id, req, credentials)
+        try:
+            return call(row, 'POST', '/api/post-checkout-identity', {'last4': body.last4.get_secret_value()}, req)
+        except UpstreamError as exc:
+            raise translated(exc)
 
     @router.get('/{session_id}/intake', summary='Read the purchased product intake without signing in')
     def intake(site_id: str, session_id: str, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
