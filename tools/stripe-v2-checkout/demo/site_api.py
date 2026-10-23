@@ -17,7 +17,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field, ConfigDict
 from therapy_skeletons import weight_loss_skeleton
 
 HERE = Path(__file__).parent
@@ -82,6 +82,7 @@ class SiteInfo(BaseModel):
     branding: Branding
     plan_count: int
     domains: list[str]
+    portal_url: str | None = Field(None, description='Member portal sign-in page for this site, when "portal_site" is set in the registry')
 
 
 class DomainSite(BaseModel):

@@ -15,7 +15,7 @@ ORIGIN = 'https://api.example'
 SITES = {
     'payment-test': {'name': 'Master Therapy Payment Test', 'catalog': 'site-api-public-weight-loss', 'payment_test_only': True,
                      'domains': ['checkout.mastertherapy.example']},
-    'glow-health': {'name': 'Glow Health', 'catalog': 'glow-weight-loss-public', 'domains': ['checkout.glowhealth.example']},
+    'glow-health': {'name': 'Glow Health', 'catalog': 'glow-weight-loss-public', 'domains': ['checkout.glowhealth.example'], 'portal_site': 'glow-site'},
     'paused-brand': {'name': 'Paused', 'catalog': 'paused-public', 'enabled': False},
 }
 
@@ -87,6 +87,8 @@ class MultiSiteTests(unittest.TestCase):
             r = self.client.get('/api/v1/domains/' + domain)
             self.assertEqual((r.status_code, r.json()['site_id']), (200, site_id))
         self.assertEqual(self.client.get('/api/v1/domains/unknown.example').status_code, 404)
+        self.assertTrue(info['portal_url'].endswith('/portal/glow-site'))
+        self.assertIsNone(self.client.get('/api/v1/sites/payment-test').json()['portal_url'])
 
     def test_unknown_disabled_and_invalid_sites_are_404_everywhere(self):
         for site_id in ('other', 'paused-brand', 'Bad_ID', 'a'):
@@ -154,6 +156,7 @@ class RegistryTests(unittest.TestCase):
     def test_validation_fails_closed(self):
         for bad in ({}, {'Bad': {'name': 'x', 'catalog': 'c-1'}}, {'ok-id': {'name': '', 'catalog': 'c-1'}},
                     {'ok-id': {'name': 'x', 'catalog': '../etc'}}, {'ok-id': {'name': 'x', 'catalog': 'c-1', 'domains': ['not a domain']}},
+                    {'ok-id': {'name': 'x', 'catalog': 'c-1', 'portal_site': '../admin'}},
                     {'a1': {'name': 'x', 'catalog': 'c-1', 'domains': ['d.example']}, 'b1': {'name': 'y', 'catalog': 'c-2', 'domains': ['d.example']}}):
             with self.assertRaises(ValueError):
                 validate_sites(bad)

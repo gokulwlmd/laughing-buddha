@@ -43,6 +43,7 @@ another `site_id` is rejected with 401.
 | `POST /sessions/{id}/payment` | `quote_id`, `accept_terms` | Stripe `publishable_key`, `client_secret`, intent ID and verified amount |
 | Your browser confirms with Stripe.js | Secure Payment Element | An authorized PaymentIntent, normally `requires_capture` |
 | `POST /sessions/{id}/complete` | `{ "payment_intent_id": "pi_..." }` | Verified order receipt with `status: "captured"` |
+| `POST /sessions/{id}/portal` (optional) | `{}` | After capture only: `enrollment_url` to create this customer's member-portal account, plus `site_id`, `portal_site_id`, `expires_at` |
 
 All session-specific requests require:
 
@@ -63,6 +64,25 @@ or raw card details. Pricing and permitted payment choices come from approved
 site mappings and the payment engine. Plan display prices are major-unit
 strings (`"249.00"`); quote/payment `amount` values are integer minor units
 (`24900` means USD 249.00).
+
+### Member portal handoff
+
+After `/complete` returns `captured`, a frontend can offer "Create your account".
+`POST /sessions/{id}/portal` asks the payment engine for a single-use invitation
+for this exact order (bound to its customer and site, valid for one hour) and
+returns its `enrollment_url`. Open that link in the customer's browser; do not
+email, log or store it. Before capture the call returns 409. A link that is not
+on the payment engine's host, or that names a portal other than the site's
+configured `portal_site`, is rejected with 502. `GET /api/v1/sites/{site_id}`
+includes `portal_url` (the portal sign-in page) when `portal_site` is set.
+
+### $1 checkout testing
+
+When the site's owner has turned on $1 checkout testing in the admin, the
+configuration response has `dollar_test_available: true`. A quote request may
+then include `"dollar_test": true` to charge $1 for the initial payment and each
+full-term renewal (included prepaid cycles are $0; no medication is shipped).
+Without that admin setting the engine rejects the flag (403).
 
 ## Example quote
 
@@ -244,7 +264,10 @@ No code change is needed:
    ```
    `site_id` (the key): lowercase letters, digits and dashes. `payment_test_only: true`
    additionally requires the publication to be a payment-test one. `enabled: false`
-   hides a site everywhere without deleting it.
+   hides a site everywhere without deleting it. Optional `"portal_site"`: the
+   member portal's site id from the admin (its `/portal/<id>` path). When set, the
+   portal handoff only accepts invitations for that portal, and site info returns
+   its `portal_url`.
 3. Deploy the API (`flyctl deploy --config fly-demo.toml …`, see the demo README).
    To change sites without redeploying, set `SITE_API_SITES_FILE=/data/sites.json`
    and keep the file on the API's volume. Changes are picked up automatically,

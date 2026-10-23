@@ -160,8 +160,9 @@ class PaymentResult(BaseModel):
     status: str = 'awaiting_card'
 
 class PortalEnrollmentResult(BaseModel):
-    site_id: str
-    enrollment_url: str
+    site_id: str = Field(description='This Site API site id')
+    portal_site_id: str = Field(description='Member portal site id from the admin (the /portal/{id} path)')
+    enrollment_url: str = Field(description='One-time account invitation link (expires after one hour); open it in the customer browser')
     expires_at: str | None = None
 
 
@@ -538,6 +539,7 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
     @router.post('/{session_id}/portal',response_model=PortalEnrollmentResult,summary='Open the member portal for this completed checkout')
     def portal(site_id:str,session_id:str,body:Empty,req:Request,credentials:HTTPAuthorizationCredentials|None=Security(bearer)):
         row=auth(site_id,session_id,req,credentials)
+        expected=(site_check(site_id) or {}).get('portal_site')
         with store.lock(row['id']):
             try:
                 current=upstream_status(row,req)
@@ -548,7 +550,11 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
                 upstream=parse.urlsplit(getattr(transport,'upstream',PUBLIC_UPSTREAM))
                 if url.scheme!='https' or url.netloc!=upstream.netloc or not url.path.startswith('/portal/') or url.username or url.password:
                     raise UpstreamError(detail='The member portal link could not be verified')
-                return PortalEnrollmentResult.model_validate(result)
+                portal_site=result.get('site_id','')
+                # A checkout for one brand must never hand back another brand's portal.
+                if url.path.split('/')[2:3]!=[portal_site] or (expected and portal_site!=expected):
+                    raise UpstreamError(detail='The member portal link belongs to another site')
+                return PortalEnrollmentResult(site_id=site_id,portal_site_id=portal_site,enrollment_url=result['enrollment_url'],expires_at=result.get('expires_at'))
             except UpstreamError as exc:raise translated(exc)
 
     app.include_router(router)

@@ -1,5 +1,5 @@
 {
-  "_readme": "Site registry for the Site API. Each site maps to one PUBLIC plan checkout on the live app (Admin → Checkout links → brand → plan checkout, visibility public); put its id in \"catalog\". \"domains\" powers GET /api/v1/domains/{domain}. Edits are picked up automatically; an invalid edit keeps the previous registry and is reported in /health.",
+  "_readme": "Site registry for the Site API. Each site maps to one PUBLIC plan checkout on the live app (Admin \u2192 Checkout links \u2192 brand \u2192 plan checkout, visibility public); put its id in \"catalog\". \"domains\" powers GET /api/v1/domains/{domain}. Edits are picked up automatically; an invalid edit keeps the previous registry and is reported in /health. Optional \"portal_site\": the member portal site id from the admin (/portal/<id>); the portal handoff then only accepts that portal.",
   "payment-test": {
     "name": "Master Therapy Payment Test",
     "catalog": "site-api-public-weight-loss",

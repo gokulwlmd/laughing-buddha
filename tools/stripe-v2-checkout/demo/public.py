@@ -90,8 +90,11 @@ def validate_sites(raw):
             if domain in domains:
                 raise ValueError(f'Domain {domain} is assigned to both {domains[domain]} and {site_id}')
             domains[domain] = site_id
+        portal_site = entry.get('portal_site')
+        if portal_site is not None and (not isinstance(portal_site, str) or not SITE_ID_PATTERN.fullmatch(portal_site)):
+            raise ValueError(f'Site {site_id} has an invalid "portal_site" (the member portal site id from the admin)')
         sites[site_id] = {'name': name.strip(), 'catalog': catalog, 'payment_test_only': entry.get('payment_test_only') is True,
-            'domains': site_domains, 'enabled': entry.get('enabled', True) is not False}
+            'domains': site_domains, 'enabled': entry.get('enabled', True) is not False, 'portal_site': portal_site}
     if not sites:
         raise ValueError('The site registry has no sites')
     return sites
@@ -404,7 +407,8 @@ def create_public_app(origin=None, read_catalog=read_live_catalog, clock=time.ti
         """Site name, brand design from the admin (logo, colours, font, layout, support details) and how many plans are available."""
         config = site(site_id); catalog = current(site_id)[0]
         return SiteInfo(site_id=site_id,site_name=catalog.site_name,color=catalog.color,demo=catalog.demo,title=catalog.title,
-            therapy=catalog.therapy,branding=catalog.branding or Branding(),plan_count=len(catalog.plans),domains=config['domains'])
+            therapy=catalog.therapy,branding=catalog.branding or Branding(),plan_count=len(catalog.plans),domains=config['domains'],
+            portal_url=(getattr(transport,'upstream',PUBLIC_UPSTREAM)+'/portal/'+config['portal_site']) if config.get('portal_site') else None)
 
     @app.get('/api/v1/sites/{site_id}/plans',response_model=Catalog,tags=['1. Get plans'])
     def get_plans(site_id:str):

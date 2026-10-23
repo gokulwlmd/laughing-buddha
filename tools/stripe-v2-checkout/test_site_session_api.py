@@ -124,7 +124,21 @@ class SessionApiTests(unittest.TestCase):
         self.assertEqual(self.client.post(path+'/portal',json={}).status_code,401)
         response=self.client.post(path+'/portal',headers=headers,json={})
         self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual((response.json()['site_id'],response.json()['portal_site_id']),('payment-test','real-site'))
         self.assertEqual(issued,[self.store.read(data['session_id'])['attempt']])
+        # The invitation must name the portal it links to.
+        self.engine.state.member_portal.receipt_invite=lambda row:{'site_id':'other-site','enrollment_url':PUBLIC_UPSTREAM+'/portal/real-site#invite=x','expires_at':None}
+        self.assertEqual(self.client.post(path+'/portal',headers=headers,json={}).status_code,502)
+        # With "portal_site" in the registry, only that portal is accepted.
+        self.engine.state.member_portal.receipt_invite=invitation
+        pinned=create_public_app(ORIGIN,read_catalog=lambda catalog:self.catalog,session_store=self.store,transport=self.transport,
+                                 sites={'payment-test':{'name':'Payment test','catalog':PUBLISHED_PLAN,'payment_test_only':True,'portal_site':'brand-a'}})
+        with TestClient(pinned,base_url=ORIGIN) as other:
+            self.assertEqual(other.post(path+'/portal',headers=headers,json={}).status_code,502)
+        matching=create_public_app(ORIGIN,read_catalog=lambda catalog:self.catalog,session_store=self.store,transport=self.transport,
+                                   sites={'payment-test':{'name':'Payment test','catalog':PUBLISHED_PLAN,'payment_test_only':True,'portal_site':'real-site'}})
+        with TestClient(matching,base_url=ORIGIN) as other:
+            self.assertEqual(other.post(path+'/portal',headers=headers,json={}).status_code,200)
         self.engine.state.member_portal.receipt_invite=lambda row:{'site_id':'real-site','enrollment_url':'https://untrusted.example/portal/real-site','expires_at':None}
         self.assertEqual(self.client.post(path+'/portal',headers=headers,json={}).status_code,502)
         self.assertEqual(self.fake.count('/new_order'),1)
