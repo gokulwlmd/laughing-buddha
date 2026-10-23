@@ -176,6 +176,8 @@ class SubscriptionModel(BaseModel):
     status: str
     next_billing_date: str | None = None
     next_cycle_date: str | None = None
+    billing_interval_days: int | None = None
+    prepaid_renews: bool | None = None
     actions: list[str]
     address_update_available: bool = False
     shipping_address: dict | None = None
@@ -226,6 +228,8 @@ class OrdersResult(BaseModel):
 
 
 class StorePlan(BaseModel):
+    sku: str = ''
+    recurring: bool | None = None
     plan_id: str
     checkout_id: str
     therapy_id: str
@@ -784,7 +788,8 @@ class MemberService:
         if line.get('subscription_id'):
             actions = ['pause'] if line.get('billing_status') == 'active' else ['resume'] if line.get('billing_status') == 'held' else []
             subscriptions.append({'id': str(line['subscription_id']), 'product_id': str(line['product_id']), 'status': line.get('billing_status', 'unknown'),
-                                  'next_billing_date': line.get('next_billing_date'), 'next_cycle_date': line.get('next_cycle_date'), 'actions': actions,
+                                  'next_billing_date': line.get('next_billing_date'), 'next_cycle_date': line.get('next_cycle_date'), 'billing_interval_days': line.get('billing_interval_days'), 'actions': actions,
+                                  'prepaid_renews': (line.get('prepaid') or {}).get('renews'),
                                   'address_update_available': bool(raw.get('contact_id')) and line.get('billing_status') in ('active', 'held'),
                                   'shipping_address': line.get('subscription_shipping_address')})
         availability = self.refill_availability(row)
@@ -1050,6 +1055,7 @@ class MemberService:
                     rows.append({'plan_id': 'portal-choice-' + unique, 'checkout_id': plan['id'],
                         'therapy_id': plan['therapy_id'], 'therapy_name': catalog.get('therapy') or plan['therapy_id'],
                         'product_name': entry.get('name') or entry['sku'], 'plan_name': label,
+                        'sku': entry['sku'], 'recurring': recurring if isinstance(recurring, bool) else None,
                         'total': format(total, '.2f'), 'currency': currency,
                         'checkout_url': checkout_origin + '/plans/' + plan['id'] + '/choose?' + urlencode(selection),
                         'payment_test_only': bool(catalog.get('paymentTestOnly'))})

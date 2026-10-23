@@ -500,5 +500,19 @@
     "source_hashes_match": true,
     "enabled_included_policies_updated": 40,
     "pre_post_order_and_patient_counts_unchanged": true
+  },
+  "refill_clarity_release": {
+    "date": "2026-10-24",
+    "image_digest": "sha256:b37702e2aa180c31858c1d32825a88928cd6a193ca44edecc98dc5fa605b16cc",
+    "status": "deployed_and_verified",
+    "backend_tests": 67,
+    "unique_portal_browser_scenarios": 25,
+    "browser_validation": "23 full-run passes, corrected monthly fixture passed on rerun; final four refill scenarios passed",
+    "health_status": 200,
+    "unauthenticated_portal_status": 401,
+    "hosted_asset_and_backend_hashes_match": true,
+    "order_and_patient_counts_preserved": true,
+    "live_payment_or_refill_writes_performed": false,
+    "renewal_amount": "not available in current provider adapter; never inferred from initial total"
   }
 }

@@ -934,3 +934,10 @@ body.modal-open{overflow:hidden}
 .refill-locked p,.refill-locked li { font-size: 16px; line-height: 1.6; }
 .refill-locked ol { padding-left: 24px; }
 .refill-locked li+li { margin-top: 8px; }
+
+/* Keep payment renewals separate from already-paid included deliveries. */
+.refill-renewal { padding: 24px; margin-top: 24px; border-radius: 14px; background: var(--soft); }
+.refill-renewal h3 { font-size: 22px; }
+.refill-renewal p { margin-top: 12px; font-size: 17px; line-height: 1.6; }
+.refill-inclusion-note, .refill-purchase-unavailable { margin-top: 24px; font-size: 16px; line-height: 1.6; color: var(--muted); }
+.refill-option-action strong { display: block; }

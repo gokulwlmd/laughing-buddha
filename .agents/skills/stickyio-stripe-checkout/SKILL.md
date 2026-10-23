@@ -80,7 +80,11 @@ The owner's current included-claim lead time is 20 days: 70/160/250 for the
 12-month quarterly-delivery plan, 70 for six months. Preserve actual unused
 prepaid cycles, required check-ins and uncertain-write protection; do not turn a
 single-shipment plan into a free refill. Keep unavailable refill actions visible,
-gray and disabled, with their date/reason/instructions, plus paid plan options.
+gray and disabled for plans with included cycles, with their date/reason/instructions.
+Single-shipment plans instead say included refills are not part of the plan.
+For an existing subscription, early paid supply must be an explicitly one-time
+purchase with the unchanged renewal explained; never quietly add another subscription.
+Do not infer a renewal amount from the first charge or a supply duration from billing frequency.
 
 ## Working implementation
 

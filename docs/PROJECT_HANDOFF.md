@@ -516,3 +516,33 @@ fabricated.
 This release is live on the shared Fly app. Hosted code hashes and policy
 migration were verified; 473 backend tests and 10 targeted browser scenarios
 passed. Existing orders, patients, app, machine and volume were preserved.
+
+
+### Refill screen clarity — 24 October 2026
+
+The owner approved separating monthly paid renewals from prepaid included
+refills. Single-shipment plans now state that included refills are not part of
+the plan, without a misleading free-claim button. Prepaid plans retain visible,
+disabled claims, opening dates and instructions. Nonrenewing prepaid cycles do
+not imply a future paid renewal. Medication titles remove redundant duration
+and subscription suffixes.
+
+Manage subscription goes directly to existing controls. Get next supply early
+uses explicitly one-time, same-site/product plans, explains the unchanged
+subscription schedule and sends the patient to checkout to review and pay.
+It does not force-bill, reschedule a renewal, cancel, or create an extra recurring
+subscription. The store API now includes SKU and explicit recurring metadata;
+subscription responses include billing interval and prepaid renewal metadata.
+Renewal dates come from Sticky. Renewal amount is unavailable in the current
+adapter, and the UI says so rather than guessing from discounted initial totals.
+
+Validation: 67 affected backend tests; 25 unique portal browser scenarios
+passed across the full run and targeted reruns. The full run had 23 passes and
+one outdated monthly fixture failure, corrected and rerun successfully; the
+final four-case check covers monthly, paused, six-month nonrenewing prepaid,
+and twelve-month upcoming refills. Mobile and desktop screenshots inspected.
+No live payment, refill, subscription or identity writes were performed.
+
+Live release verified: health 200, unauthenticated portal 401, hosted JavaScript,
+CSS and backend hashes match. Existing checkout and patient counts are unchanged.
+Immutable image and validation details are in `tools/stripe-v2-checkout/deployment.json`.
