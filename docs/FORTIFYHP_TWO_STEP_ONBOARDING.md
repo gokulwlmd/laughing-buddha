@@ -72,5 +72,20 @@ patient's medical intake.
   before restart. No payment was retried, charged, canceled or deleted.
 - Health and onboarding contract returned 200; unauthenticated patient access
   returned 401; patient CORS returns only the registered storefront origin.
-- Storefront publication is pending final API schema compatibility and focus
-  checks. Backend template versions are strings, not only numbers.
+- Storefront release `5672784f81a20fb423d3f0344e3574a8f7adf5f9` is public.
+  150 focused frontend tests and build/type checks passed; mocked desktop/mobile
+  journeys covered enrollment, independent intakes, save/resume and submission.
+  String template versions are accepted. A small heading offset follow-up
+  `0ab915a952aa3f6025a0ee808782546916bd6de7` passed 25 relevant checks and build.
+- Public browser QA reached Details → Payment with synthetic contact data,
+  a real Stripe Elements panel and an authoritative USD 69 one-time quote.
+  The step transition took approximately 0.8 seconds in this observation.
+  No consent was accepted, no card was submitted and no order was placed.
+- Provider quote timing remains variable: sampled requests took 5.49 and
+  10.53 seconds after deployment (baseline 7.59 seconds). Warm session and
+  configuration requests took 0.53 and 0.52 seconds. This is not a guarantee
+  of end-to-end payment speed. Background preparation and early card mounting
+  reduce how much of this wait blocks the customer.
+- The medical provider remains unconnected; intake saves are real account
+  records, but clinician delivery and approval are not claimed. New postpayment
+  account/intake completion was tested offline, not with a real card charge.

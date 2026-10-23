@@ -4,7 +4,7 @@ Updated: 23 October 2026. Status: shared backend and Lovable storefront publishe
 
 ## Two-step checkout and post-payment onboarding
 
-The next checkout release uses Details → Payment, with a large payment panel
+The published checkout uses Details → Payment, with a large payment panel
 and API-driven account enrollment and saved intake forms after captured orders.
 See [the implementation and API handoff](FORTIFYHP_TWO_STEP_ONBOARDING.md) for
 current verification and publication status.
