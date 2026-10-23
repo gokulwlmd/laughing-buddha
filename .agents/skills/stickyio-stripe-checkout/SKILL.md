@@ -264,3 +264,10 @@ The shared `wlmd-id-upload` element handles upload/camera preview and saved-phot
 reuse for portal and checkout; avoid per-site Lovable changes. Preserve bounded
 body/image sizes, metadata stripping, no automatic uncertain-upload retries,
 explicit rate-limited retry, and receipt-only isolation. See WLMD_INTEGRATION.md.
+
+Take photo uses the shared in-page camera with an ID-shaped crop guide and local
+image-quality/motion heuristics. Preserve explicit review/Use photo before upload,
+Retake/manual capture/file-upload fallbacks, and stream cleanup on every exit,
+visibility change, disconnect and late permission response. Auto capture is not
+identity verification. QA must use synthetic camera streams, never real ID photos;
+see qa/id-camera.spec.cjs. Physical device camera QA remains separate.

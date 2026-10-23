@@ -511,7 +511,7 @@ for(const width of [1440,390])test(`IDPHOTO upload alternative resumes intake at
  await page.setViewportSize({width,height:1000});await enroll(page,member);await page.request.post(member.origin+'/__member_identity');
  await page.getByRole('button',{name:'Medical intake',exact:true}).click();await page.getByRole('button',{name:'Start intake',exact:true}).click();
  await expect(page.getByLabel('Upload ID',{exact:true})).toBeVisible();
- await expect(page.getByLabel('Take photo of ID',{exact:true})).toHaveAttribute('capture','environment');
+ await expect(page.getByRole('button',{name:'Take photo of ID',exact:true})).toBeVisible();
  const data=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=800;c.height=500;const x=c.getContext('2d');x.fillStyle='#e4e7e4';x.fillRect(0,0,800,500);x.fillStyle='#333';x.font='24px sans-serif';x.fillText('SYNTHETIC UI TEST - NOT AN ID',100,250);return c.toDataURL('image/png').split(',')[1];});
  await page.getByLabel('Upload ID',{exact:true}).setInputFiles({name:'synthetic.png',mimeType:'image/png',buffer:Buffer.from(data,'base64')});
  await expect(page.getByRole('img',{name:/Your selected ID photo/})).toBeVisible();

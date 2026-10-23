@@ -252,3 +252,24 @@ Hosted source hashes and private-key permissions match; health is 200 and
 unauthenticated photo access is 401. Existing checkout/patient counts remain
 unchanged. Backend batches (46, 47, 8 and 7; overlapping) and 10 targeted
 browser scenarios passed. No real ID or payment was submitted in release QA.
+
+### Guided camera capture
+
+The shared ID component opens an in-page camera with a rear-camera preference,
+ID-shaped crop guide and automatic capture after approximately two seconds of
+steady, sufficiently lit, detailed frames. Brightness, contrast and motion checks
+are local image-quality heuristics, not document recognition or identity validation.
+A manual capture button remains available. Captures require review and an explicit
+**Use photo** before the existing upload endpoint is called; **Retake** restarts the
+camera. File upload remains available when permission or hardware is unavailable.
+Camera tracks stop on capture, close, page hiding or component removal, including
+permission responses arriving after cancellation. Photos remain in memory until
+upload; existing encrypted storage and same-site/order reuse rules are unchanged.
+HTTPS and browser camera permission are required. No per-site frontend build is
+needed for the shared portal and post-checkout component.
+
+QA uses synthetic canvas camera streams in desktop/mobile Chromium viewports with
+the production-style CSP. It covers auto/manual capture, review, cropping, explicit
+upload, retake, blank/moving scenes, denied permission, cancellation, late permission,
+page hiding and component removal, plus existing portal/checkout photo flows.
+Physical iOS/Android camera hardware is not covered by these automated checks.

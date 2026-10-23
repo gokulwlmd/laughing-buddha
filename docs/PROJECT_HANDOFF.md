@@ -657,3 +657,17 @@ Hosted source hashes and private-key permissions match; health is 200 and
 unauthenticated photo access is 401. Existing checkout/patient counts remain
 unchanged. Backend batches (46, 47, 8 and 7; overlapping) and 10 targeted
 browser scenarios passed. No real ID or payment was submitted in release QA.
+
+## Guided ID camera — 24 October 2026
+
+The shared ID component now opens a real in-page camera instead of a file picker
+for Take photo. An ID-sized guide, local steady-image auto capture, manual fallback,
+and review with Use photo / Retake work in portal and post-checkout intake.
+Only explicit Use photo uploads; encrypted storage and future-order reuse are
+unchanged. See WLMD_INTEGRATION.md for camera behavior and QA limitations.
+
+Deployed and verified in image
+`sha256:68e77c5bacab823739b50573edd76e7836d99be8db80028da6b7368720a95320`.
+All 11 targeted browser scenarios pass; hosted asset hashes match, health is 200,
+and existing checkout/patient counts are unchanged. No real photo, identity check
+or payment was submitted. Physical phone-camera testing remains unverified.

@@ -609,5 +609,18 @@
     "existing_checkout_and_patient_counts_preserved": true,
     "new_live_identity_or_photo_submission": false,
     "new_live_payment_submission": false
+  },
+  "guided_id_camera_release": {
+    "date": "2026-10-24",
+    "image_digest": "sha256:68e77c5bacab823739b50573edd76e7836d99be8db80028da6b7368720a95320",
+    "status": "deployed_verified",
+    "targeted_browser_scenarios_passed": 11,
+    "synthetic_camera_streams": true,
+    "physical_mobile_camera_tested": false,
+    "health_status": 200,
+    "source_hashes_match": true,
+    "existing_checkout_and_patient_counts_preserved": true,
+    "new_live_identity_or_photo_submission": false,
+    "new_live_payment_submission": false
   }
 }
