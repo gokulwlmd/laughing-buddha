@@ -307,3 +307,18 @@ integration before release. Intake and doctor-messaging APIs remain mocked, and
 Stripe Connect v2 saved-card replacement remains unavailable until its secure
 provider contract is established. No medical approval follows from a paid order,
 a completed mock form, or a successful $0 claim.
+
+## Patient presentation and order progress (23 October 2026)
+
+The patient portal should present a simple branded care experience. Keep
+implementation details and Dry Run provenance in staff views and durable
+records, rather than repeating technical notices in patient forms and orders.
+Do not turn a saved answer, paid order or test cycle into a claim of medical
+approval, prescription, shipment or delivered care. Status timelines use actual
+recorded events; disconnected or unknown provider stages remain pending.
+
+Use larger text, clear next actions, generous control sizes and responsive
+layouts. Derive an accessible darker button/text shade for pale brand colors
+without changing the original stored brand color. Unconnected card and messaging
+actions offer the existing support contact rather than pretending to save a card
+or deliver a message.

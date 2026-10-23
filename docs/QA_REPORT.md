@@ -157,3 +157,22 @@ All 172 backend tests passed (28.959s). All 16 affected master/site browser scen
 ## Editable upfront shipments and PT-141 — 22 October 2026
 
 All 174 backend tests passed (30.915s), and all 24 affected master/prepaid/site browser scenarios passed (1.8m). New coverage changes an upfront SKU from four shipments every 90 days to three every 120, verifies review output and persistence of rebuilt prepaid cycles/product setup, then checks template summaries use the saved schedule. Backend checks cover separate renewing/non-renewing terms, malformed shipment settings, preservation of price and owner edits during migration, exact PT141 codes, and repeat imports that make no changes. These are local/fake-service tests and do not verify processor activation, medication fulfillment or future renewal execution.
+
+## Patient portal design QA — 23 October 2026
+
+All 12 distinct member browser scenarios passed: the original 11-case run plus
+affected follow-up cases and the new pale-brand contrast regression. Reviewed
+overview, orders and intake at 1440px, 720px and 390px, including enlarged text,
+no horizontal overflow, readable key labels and primary targets of at least
+48px. Four pale branding palettes retain at least 4.5:1 button text contrast.
+Address-dialog Tab/Shift-Tab, initial focus, Escape and opener restoration pass.
+
+Timeline cases cover submitted initial/refill forms, unknown payment status,
+medical attention states, and shipping evidence without inferred approval.
+Monthly plans no longer promise included prepaid refills. The existing native
+three-claim journey and staff/customer separation remain covered. Patient
+technical/testing notices are absent; staff provenance remains available.
+Screenshots were visually reviewed. These automated interactions use local
+fixtures and do not submit real patient writes or provider transactions. The
+previous 379-test backend result remains historical: this pass changes only
+browser presentation and browser checks, so it did not rerun that suite.

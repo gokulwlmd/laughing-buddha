@@ -420,3 +420,25 @@ handoff is still needed for Markrx repurchases. Card replacement, clinical APIs,
 and physical fulfillment hold/release remain the provider dependencies above.
 No customer details, passwords, private invitation links, tokens or questionnaire
 answers are recorded here.
+
+## Patient portal design pass (23 October 2026)
+
+Patient screens now use a calmer card layout, readable 17–18px text, larger
+controls, stronger contrast and responsive order timelines. Technical provider
+and testing notices remain in staff controls rather than patient intake, order
+or care screens. Submission confirms that answers are saved; it does not claim
+that a clinician has received or approved them.
+
+The timeline shows order received, health intake (or the exact refill check-in),
+medical review, prescription and shipping from recorded evidence. Unknown or
+blocked states stay pending or need attention. Monthly plans do not promise
+included prepaid shipments. Patient plan labels avoid raw SKU identifiers.
+Address dialogs now contain keyboard focus and restore the opening control.
+Light brand colors receive an accessible foreground/button variant without
+changing saved branding.
+
+All 12 member browser scenarios passed across the full and affected follow-up
+runs. Desktop, tablet and mobile screenshots were reviewed; the release record
+identifies the private preview bundle. This design pass changes no provider,
+billing, clinical, fulfillment or authentication contract. The dependencies
+recorded above still apply.

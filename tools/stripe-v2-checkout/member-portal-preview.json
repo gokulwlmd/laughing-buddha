@@ -3,8 +3,8 @@
   "status": "private_preview",
   "preview_origin": "http://127.0.0.1:8873",
   "preview_site": "site-8bb7023e-3ca",
-  "source_version": "e5e07a520a497c56",
-  "bundle_sha256": "e11f6adad3f84d45576201287bc996b4a36ac9560d2fb3776be0daef03480093",
+  "source_version": "d46ba91bd547f759",
+  "bundle_sha256": "73f5454b5baf929bb48e32d83ca97b29c2d4ec0b3fc39f53ed605b17055b62c4",
   "runtime": "Additional private process on existing Fly machine, accessed only through local fly proxy",
   "real_sticky_orders": true,
   "synthetic_orders_seeded": false,
@@ -15,14 +15,15 @@
     "backend_suite_passed": 379,
     "additional_refill_concurrency_regression_passed": true,
     "member_backend_total_passed": 85,
-    "member_browser_cases_passed": 9,
+    "member_browser_cases_passed": 12,
     "affected_checkout_browser_cases_passed": 18,
     "javascript_syntax_files_passed": 19,
     "care_and_security_final_regressions_passed": 17,
     "provider_cases_passed": 35,
     "product_intake_template_cases_passed": 2,
     "master_policy_cases_passed": 7,
-    "native_claim_manager_cases_passed": 8
+    "native_claim_manager_cases_passed": 8,
+    "design_pass_backend_rerun": false
   },
   "provider_verification": {
     "method": "read-only real order and subscription responses; isolated Dry Run price verification",
@@ -85,5 +86,17 @@
     "paid_renewal_not_triggered": true,
     "original_term_anchors_preserved": true,
     "checkout_rows_unchanged": true
+  },
+  "patient_design": {
+    "status_timeline": true,
+    "technical_notices_staff_only": true,
+    "viewports_verified": [
+      1440,
+      720,
+      390
+    ],
+    "keyboard_dialogs_verified": true,
+    "pale_brand_button_contrast_verified": true,
+    "clinical_shipping_completion_requires_recorded_evidence": true
   }
 }
