@@ -622,5 +622,20 @@
     "existing_checkout_and_patient_counts_preserved": true,
     "new_live_identity_or_photo_submission": false,
     "new_live_payment_submission": false
+  },
+  "wlmd_upload_response_fix": {
+    "date": "2026-10-24",
+    "image_digest": "sha256:5d26df6482ab1fbcf063eabda08eddf0730aad68f7ca94bba831d29ef4e5d874",
+    "status": "deployed_verified",
+    "backend_tests_passed": 18,
+    "handles_pre_intake_dictionary_attachment": true,
+    "targeted_saved_confirmation_reconciled": true,
+    "intake_identity_gate_verified": true,
+    "temporary_encrypted_diagnostic_removed": true,
+    "source_hashes_match": true,
+    "health_status": 200,
+    "existing_checkout_and_patient_counts_preserved": true,
+    "real_photo_retries_during_authorized_diagnosis": true,
+    "new_payment_submission": false
   }
 }

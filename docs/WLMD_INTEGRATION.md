@@ -273,3 +273,21 @@ the production-style CSP. It covers auto/manual capture, review, cropping, expli
 upload, retake, blank/moving scenes, denied permission, cancellation, late permission,
 page hiding and component removal, plus existing portal/checkout photo flows.
 Physical iOS/Android camera hardware is not covered by these automated checks.
+
+### Upload response compatibility correction
+
+WLMD has two successful upload forms. When its intake-side order exists,
+`data.db_id` can be a positive JSON number or ASCII decimal string. Before that
+order exists, WLMD saves the photo to S3 and the Sticky order dictionary and
+returns an empty `db_id`, with a positive integer `file_size_bytes`. The adapter
+accepts both forms, always requiring explicit success, a nonempty S3 key and the
+exact FUT:ID dictionary key. The latter reference records `db_id: null` locally;
+future-order reuse still reuploads the encrypted photo and never needs that ID.
+Missing/null IDs, malformed nonempty IDs, absent/zero file size for empty-ID
+responses, and incomplete/error responses remain unconfirmed.
+
+The original strict number-only check rejected this valid pre-intake success.
+A targeted repair can reconcile an encrypted saved success response with its exact
+original upload record, without resubmitting the photo. Do not bulk-resubmit
+uncertain uploads or treat S3 storage alone as order attachment. No private
+photo/reference or raw provider response belongs in diagnostics, fixtures or GitHub.

@@ -271,3 +271,11 @@ Retake/manual capture/file-upload fallbacks, and stream cleanup on every exit,
 visibility change, disconnect and late permission response. Auto capture is not
 identity verification. QA must use synthetic camera streams, never real ID photos;
 see qa/id-camera.spec.cjs. Physical device camera QA remains separate.
+
+WLMD upload `data.db_id` may be a positive number/decimal string, or empty before
+an intake-side order exists. For the empty-ID success form require positive integer
+file_size_bytes as well as explicit success, FUT:ID and a nonempty S3 key; store
+an optional internal ID and the encrypted dictionary reference. This is a confirmed
+order-dictionary attachment, not merely file storage. Use offline fixtures for QA.
+For a targeted repair, reconcile a saved encrypted success response to its exact
+original record rather than repeating uploads. Never bulk-retry patient uploads.

@@ -95,6 +95,47 @@ class PhotoTests(unittest.TestCase):
         self.assertEqual(json.loads(provider.parse_result(good)),{'db_id':1,'s3_key':'fixture/ID.jpg'})
         for result in [{},[],{'status':'success'},{**good,'status':'pending'},{**good,'data':{**good['data'],'orders_dictionary_key':'OTHER'}}]:self.assertIsNone(provider.parse_result(result))
 
+    def test_provider_accepts_decimal_string_upload_id_but_not_invalid_ids(self):
+        provider=UploadProvider()
+        result={'status':'success','data':{'db_id':'42','s3_key':'fixture/ID.jpg','orders_dictionary_key':'FUT:ID'}}
+        self.assertEqual(json.loads(provider.parse_result(result)),{'db_id':42,'s3_key':'fixture/ID.jpg'})
+        for invalid in [None,True,False,0,-1,1.5,'','0','-1','1.5',' 123 ','１２３','1e3','9'*21,{},[]]:
+            with self.subTest(db_id=invalid):
+                self.assertIsNone(provider.parse_result({**result,'data':{**result['data'],'db_id':invalid}}))
+
+    def test_string_id_provider_success_unblocks_intake_and_saves_reference(self):
+        self.configure()
+        provider=UploadProvider()
+        self.fake_upload.result=provider.parse_result({'status':'success','data':{'db_id':'42','s3_key':'fixture/ID.jpg','orders_dictionary_key':'FUT:ID'}})
+        self.fake_upload.result_before=self.fake_upload.result
+        self.fake_upload.result=None
+        self.assertEqual(self.client.post(self.path,headers=self.patient_headers,json={'file_contents':photo()}).status_code,409)
+        now=self.service.clock();self.service.clock=lambda:now+31
+        self.fake_upload.result=self.fake_upload.result_before
+        response=self.client.post(self.path+'/reuse',headers=self.patient_headers)
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertTrue(response.json()['order_attached'])
+        self.assertEqual(self.client.get(self.base+'/intakes/9001',headers=self.patient_headers).status_code,200)
+        self.assertEqual(len(self.fake_upload.calls),2)
+        with self.service.db() as db:
+            row=db.execute("SELECT reference FROM member_id_uploads WHERE status='uploaded'").fetchone()
+        self.assertEqual(json.loads(self.uploads.cipher.decrypt(row['reference'].encode())),{'db_id':42,'s3_key':'fixture/ID.jpg'})
+
+    def test_pre_intake_dictionary_upload_succeeds_without_internal_database_id(self):
+        self.configure()
+        provider=UploadProvider()
+        response={'status':'success','data':{'db_id':'','s3_key':'fixture/ID.jpg','orders_dictionary_key':'FUT:ID','file_size_bytes':97557}}
+        reference=provider.parse_result(response)
+        self.assertEqual(json.loads(reference),{'db_id':None,'s3_key':'fixture/ID.jpg','storage':'orders_dictionary'})
+        self.fake_upload.result=reference
+        result=self.client.post(self.path,headers=self.patient_headers,json={'file_contents':photo()})
+        self.assertEqual(result.status_code,200,result.text)
+        self.assertTrue(result.json()['order_attached'])
+        self.assertEqual(self.client.get(self.base+'/intakes/9001',headers=self.patient_headers).status_code,200)
+        for patch in [{'file_size_bytes':0},{'file_size_bytes':True},{'file_size_bytes':'97557'},{'s3_key':''},{'orders_dictionary_key':'OTHER'},{'db_id':None}]:
+            self.assertIsNone(provider.parse_result({**response,'data':{**response['data'],**patch}}))
+        self.assertIsNone(provider.parse_result({**response,'status':'error'}))
+
     def test_image_size_dimensions_and_truncation(self):
         for size in [(10,10),(6000,5000)]:
             buf=io.BytesIO();Image.new('RGB',size).save(buf,format='PNG')

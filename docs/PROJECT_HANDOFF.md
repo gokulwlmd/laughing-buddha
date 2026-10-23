@@ -671,3 +671,21 @@ Deployed and verified in image
 All 11 targeted browser scenarios pass; hosted asset hashes match, health is 200,
 and existing checkout/patient counts are unchanged. No real photo, identity check
 or payment was submitted. Physical phone-camera testing remains unverified.
+
+## WLMD upload response correction — 24 October 2026
+
+WLMD may confirm an upload to S3 and the order dictionary before an intake-side
+order exists; its internal database ID is then empty. Other successful responses
+use numeric or decimal-string IDs. The old validator incorrectly rejected these
+valid success forms. The adapter now handles both while requiring explicit
+success, FUT:ID, a nonempty storage key, and positive file size for empty-ID
+responses. Regression tests cover validation, saved-photo recovery and intake
+access. Upload success does not establish identity or clinical approval.
+
+Deployed in image
+`sha256:5d26df6482ab1fbcf063eabda08eddf0730aad68f7ca94bba831d29ef4e5d874`.
+All 18 affected backend tests pass. Live source hashes and health are verified;
+checkout/patient counts are preserved. The reported patient's exact upload record
+was reconciled from an encrypted provider success response, and its intake gate
+passes. Diagnosis included targeted retries; final reconciliation made no further
+upload. The temporary encrypted response was removed. No payment was submitted.

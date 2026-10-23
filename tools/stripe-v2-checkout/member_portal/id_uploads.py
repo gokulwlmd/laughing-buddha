@@ -3,6 +3,7 @@ import base64
 import io
 import json
 import os
+import re
 import threading
 import uuid
 import warnings
@@ -60,9 +61,22 @@ class UploadProvider:
         if not isinstance(result, dict) or result.get('status') != 'success':
             return None
         data = result.get('data')
-        if not isinstance(data, dict) or type(data.get('db_id')) is not int or data['db_id'] <= 0 or not isinstance(data.get('s3_key'), str) or not 0 < len(data['s3_key']) <= 2048 or data.get('orders_dictionary_key') != 'FUT:ID':
+        if not isinstance(data, dict):
             return None
-        return json.dumps({'db_id': data['db_id'], 's3_key': data['s3_key']})
+        # WLMD returns database IDs as either JSON numbers or decimal strings.
+        db_id = data.get('db_id')
+        if isinstance(db_id, str) and re.fullmatch(r'[0-9]{1,20}', db_id):
+            db_id = int(db_id)
+        if not isinstance(data.get('s3_key'), str) or not 0 < len(data['s3_key']) <= 2048 or data.get('orders_dictionary_key') != 'FUT:ID':
+            return None
+        # Before an intake order exists, WLMD confirms S3 + the order dictionary
+        # attachment but returns an empty internal database ID. The file remains
+        # reusable through the upload endpoint; that optional ID is not needed.
+        if db_id == '' and type(data.get('file_size_bytes')) is int and data['file_size_bytes'] > 0:
+            return json.dumps({'db_id': None, 's3_key': data['s3_key'], 'storage': 'orders_dictionary'})
+        if type(db_id) is not int or db_id <= 0:
+            return None
+        return json.dumps({'db_id': db_id, 's3_key': data['s3_key']})
 
     def upload(self, site, order, contents):
         url = 'https://api.whitelabelmd.com/v1/site/' + quote(site, safe='') + '/order/' + quote(order, safe='') + '/upload-file-s3'
