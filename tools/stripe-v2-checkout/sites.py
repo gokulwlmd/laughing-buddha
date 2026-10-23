@@ -31,11 +31,22 @@ class Site(Form):
     name: str = Field(min_length=1, max_length=100)
     brand_id: str = Field(min_length=1, max_length=61)
     campaign_id: int | None = Field(default=None, gt=0)
+    wlmd_site_id: str | None = Field(default=None, max_length=100)
     campaign_name: str = Field(default='', max_length=100)
     routing_template_id: int = Field(default=422, gt=0)
     # A new brand can be reviewed together with site setup; existing brands are immutable here.
     new_brand: dict | None = None
     remember_connection: bool = False
+
+    @field_validator('wlmd_site_id')
+    @classmethod
+    def wlmd_identifier(cls, value):
+        if value is None or not value.strip():
+            return None
+        value = value.strip()
+        if not all(c.isascii() and (c.isalnum() or c in '_-') for c in value):
+            raise ValueError('Use the site ID supplied by WLMD, without a URL or spaces')
+        return value
 
 
 class TemplateEditor(Form):
@@ -226,6 +237,11 @@ class SiteCatalog:
 
         request = Site.model_validate(payload).model_dump(mode='json')
         before = self.get('site', request['id'])
+        # A checkout edit must not erase or switch the clinical account mapping.
+        # Remapping an existing WLMD tenant requires a separate migration.
+        wlmd_site_id = request.get('wlmd_site_id') or (before or {}).get('wlmd_site_id')
+        if (before or {}).get('wlmd_site_id') and wlmd_site_id != before['wlmd_site_id']:
+            raise HTTPException(409, 'This site is already linked to WLMD. Its patient records must be migrated before changing the WLMD site ID.')
         if before and (request['brand_id'] != before['brand_id'] or request['campaign_id'] != before['campaign_id']):
             raise HTTPException(422, 'A site keeps its brand, campaign and published URLs. Create another site to use a different connection.')
         if request['campaign_id'] and any(s['id'] != request['id'] and s['brand_id'] == request['brand_id'] and s['campaign_id'] == request['campaign_id'] for s in self.records('site')):
@@ -254,6 +270,8 @@ class SiteCatalog:
         setup = {'brand_id': brand['id'], 'campaign_id': request['campaign_id'], 'name': request['campaign_name'], 'template_id': request['routing_template_id']}
         data, guards, preview, ops, local = self.prepare_setup(setup, required_skus=skus, site_brand=brand)
         site = {k: request[k] for k in ('id', 'name', 'brand_id')}
+        if wlmd_site_id:
+            site['wlmd_site_id'] = wlmd_site_id
         site['campaign_id'] = data['campaign_id']
         site['revision'] = (before or {}).get('revision', 0) + 1
         data.update(site=site, templates=templates, remember_connection=request['remember_connection'], routing_template_id=request['routing_template_id'])

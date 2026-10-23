@@ -569,3 +569,15 @@ Release verified 24 October 2026 on the existing shared Fly app: image
 were unchanged. Ten existing FortifyHP 1/3-month SKU policies were enabled.
 Read-only live recurring pricing included the continuing discount; no live
 charge, subscription advance or included-refill claim was submitted as QA.
+
+## WLMD identity/intake integration — contract pending
+
+The owner selected WLMD for identity checks, intake, order stages and later
+clinical services. Site setup now accepts a separate `wlmd_site_id`; mapping
+preservation and accidental reassignment protection are implemented locally.
+See [WLMD integration](WLMD_INTEGRATION.md) for the provided endpoint and exact
+missing contract details. No WLMD credentials were configured in the live app.
+FortifyHP's WLMD ID, base URL/authentication, sanitized result examples, `user`
+semantics and check/image flow remain requested. Identity gating is not activated
+and no live identity request or patient-data transfer was performed. Do not
+confuse this foundation with the deployed native-refill release above.

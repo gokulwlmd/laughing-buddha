@@ -74,7 +74,13 @@ site/patient/grant-scoped answers via semantic keys and versions. Stable values
 may skip re-entry; changing health details require explicit confirmation. A
 checkout receipt alone cannot unlock cross-order answer history. Trusted ID/SSN
 status comes from the backend provider adapter, never a patient answer PATCH.
-The actual verification APIs are still unconnected.
+The actual verification APIs are still unconnected. WLMD is the selected
+clinical integration; read [the WLMD contract](../../../docs/WLMD_INTEGRATION.md).
+Ask for each site's WLMD site ID, never infer it from the Sticky campaign ID.
+Reuse a trusted site/patient verification before invoking WLMD again. Keep
+provider credentials server-side and never persist SSN digits or raw ID images
+as reusable intake answers. The supplied identity-check endpoint still needs
+its base URL, authentication and response/fallback contract confirmed.
 
 The owner's current included-claim lead time is 20 days: 70/160/250 for the
 12-month quarterly-delivery plan, 70 for six months. Preserve actual unused
