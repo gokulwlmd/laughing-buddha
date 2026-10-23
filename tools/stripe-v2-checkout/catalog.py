@@ -1,6 +1,6 @@
 """Campaign-scoped catalog and authoritative Sticky quotes; never changes configuration."""
 from concurrent.futures import ThreadPoolExecutor
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import hashlib
 import json
 from prepaid import cycles_for, renewal_for
@@ -9,6 +9,39 @@ from external_fulfillment import fortifyhp_prepaid_supported
 
 class CatalogError(Exception):
     pass
+
+
+class CouponError(CatalogError):
+    pass
+
+
+def coupon_for(api, catalog, code):
+    """Read only profiles assigned to this campaign; never accept client discounts."""
+    candidates = sorted(catalog.get('couponProfiles', []), key=lambda p: str(p.get('name', '')).upper() != code.upper())
+    def find(candidate):
+        profile = api.detail('/api/v2/coupons/' + str(int(candidate['id'])))
+        codes = [p for p in profile.get('promo_codes', []) if str(p.get('code', '')).upper() == code.upper()
+                 and enabled(p.get('is_active')) and not enabled(p.get('is_deleted'))]
+        if codes and enabled(profile.get('is_active')):
+            return profile, codes[0]
+        return None
+    # Most profiles use the code as their name (including our test coupon).
+    # For custom profile names, check assigned profiles concurrently instead
+    # of adding a separate network round trip for each invalid-code candidate.
+    preferred = [p for p in candidates if str(p.get('name','')).upper() == code.upper()]
+    matches = [result for p in preferred if (result := find(p))]
+    if not matches:
+        remaining = [p for p in candidates if p not in preferred]
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            matches = [r for r in pool.map(find, remaining) if r]
+    if not matches:
+        raise CouponError('This discount code is not available for this site.')
+    profile, promo = matches[0]
+    percent = money(profile.get('discount_percent', profile.get('discount_pct', 0)))
+    if int(profile.get('type_id', 0)) != 1 or enabled(profile.get('is_bogo')) or not 0 < percent < 100:
+        raise CouponError('This discount is not supported by this checkout.')
+    return {'code': promo['code'], 'profileId': int(profile['id']), 'percent': str(percent),
+            'lifetime': enabled(profile.get('is_lifetime'))}
 
 
 def money(value):
@@ -118,11 +151,17 @@ def resolve(api, campaign_id, sku, allowed_keys=None):
         'countries': [{'code': x['iso_2'], 'name': x['name']} for x in c.get('countries', [])],
         'gatewayId': gateway_id, 'publishableKey': public if not route_error else None,
         'currency': currency, 'blockedReason': route_error,
+        'couponProfiles': [{'id':p['id'], 'name':p.get('name','')} for p in c.get('coupon_profiles', [])],
         'dollarTestSafe': all(c.get(k) in (None,0,'0',[]) for k in ('fulfillment_id','tax_provider_id','email_provider_id','membership_provider_id','postback_profiles')) and all(not enabled(p.get('is_shippable')) and not enabled(p.get('taxable',p.get('is_taxable'))) for p in matched.values())}
     # Detect changes to offers, billing terms, tax/fulfillment/routing without exposing provider secrets.
     stable_campaign = {k:c.get(k) for k in ('id','c_id','is_active','is_archived','tax_provider_id','fulfillment_id',
         'countries','shipping_profiles','offers','volume_discounts','fraud_providers','postback_profiles',
         'email_provider_id','membership_provider_id','coupon_profiles')}
+    # Another successful cart item increments usage counts. That is not a
+    # pricing change; Sticky still checks remaining uses on every quote.
+    stable_campaign['coupon_profiles'] = [{k:p.get(k) for k in ('id','type_id','discount_amount','discount_percent',
+        'discount_amt','discount_pct','is_lifetime','is_active','is_free_shipping','expires_at','limits','products')}
+        for p in c.get('coupon_profiles', [])]
     scope = {'publishedChoices':sorted(allowed),'selectedOffers':offers} if allowed is not None else {}
     result['fingerprint'] = hashlib.sha256(json.dumps({**scope, 'campaign': stable_campaign, 'products': products, 'gateway': {
         'id': gateway_id, 'public': public, 'currency': currency, 'error': route_error}}, sort_keys=True).encode()).hexdigest()
@@ -130,7 +169,7 @@ def resolve(api, campaign_id, sku, allowed_keys=None):
     return result
 
 
-def quote(api, catalog, selection, shipping_id, contact):
+def quote(api, catalog, selection, shipping_id, contact, coupon_code=''):
     if catalog['blockedReason']:
         raise CatalogError(catalog['blockedReason'])
     option = next((o for o in catalog['options'] if o['key'] == selection), None)
@@ -138,6 +177,9 @@ def quote(api, catalog, selection, shipping_id, contact):
         raise CatalogError('Select a billing option from this campaign and SKU')
     if option['blockedReason']:
         raise CatalogError(option['blockedReason'])
+    coupon = coupon_for(api, catalog, coupon_code) if coupon_code else None
+    if coupon and option.get('dollarTest'):
+        raise CouponError('Discount codes cannot be combined with $1 testing.')
     if contact['country'] not in {c['code'] for c in catalog['countries']}:
         raise CatalogError('This country is not enabled for this campaign')
     if shipping_id not in {s['id'] for s in catalog['shipping']}:
@@ -150,8 +192,18 @@ def quote(api, catalog, selection, shipping_id, contact):
         'location': {'country': contact['country'], 'postal_code': contact['postal_code'], 'state': contact['region']}}
     if shipping_id is not None:
         body['shipping_id'] = shipping_id
+    if coupon:
+        body['promo'] = {'code': coupon['code'], 'email': contact['email']}
     data = api.call('POST', '/api/v2/order_total/calculate', body).get('data', {})
     total = money(data.get('total'))
+    discount = Decimal('0')
+    if coupon:
+        applied = [d for d in data.get('discounts', []) if d.get('type') == 'promo' and str(d.get('code','')).upper() == coupon['code'].upper()]
+        if len(applied) != 1 or applied[0].get('valid') not in (True, 1, '1'):
+            raise CouponError('This discount code is invalid, expired or has reached its usage limit.')
+        discount = money(applied[0].get('total'))
+        if discount <= 0:
+            raise CouponError('This discount does not apply to the selected plan.')
     if option.get('dollarTest') and total != Decimal('1.00'):
         raise CatalogError('Sticky did not confirm the $1 test total; no payment submitted')
     lines = data.get('line_items', [])
@@ -159,9 +211,12 @@ def quote(api, catalog, selection, shipping_id, contact):
         raise CatalogError('Sticky did not return a supported positive single-product total')
     if option.get('prepaidCycles'):
         prepaid=lines[0].get('prepaid') or {}
-        if not enabled(lines[0].get('is_prepaid')) or str(prepaid.get('term'))!=str(option['prepaidCycles']) or money(prepaid.get('total'))!=money(option['upfrontPrice']) or total!=money(option['upfrontPrice']):
+        if not enabled(lines[0].get('is_prepaid')) or str(prepaid.get('term'))!=str(option['prepaidCycles']) or money(prepaid.get('total'))!=money(option['upfrontPrice']) or total+discount!=money(option['upfrontPrice']):
             raise CatalogError('Sticky prepaid total or shipment count did not match; no payment submitted')
     return {'amount': int(total * 100), 'total': str(total), 'currency': catalog['currency'],
         'selection': selection, 'shippingId': shipping_id, 'option': option,
         'campaignId': catalog['campaignId'], 'sku': catalog['sku'], 'gatewayId': catalog['gatewayId'],
-        'fingerprint': catalog['fingerprint'], 'catalogVersion':catalog.get('catalogVersion',1)}
+        'fingerprint': catalog['fingerprint'], 'catalogVersion':catalog.get('catalogVersion',1),
+        **({'coupon':coupon, 'discountAmount':int(discount*100), 'subtotalAmount':int((total+discount)*100),
+            'renewalPrice':str((money(option.get('upfrontPrice',option['basePrice'])) *
+                (1-Decimal(coupon['percent'])/100 if coupon['lifetime'] else 1)).quantize(Decimal('.01'),rounding=ROUND_HALF_UP))} if coupon else {})}

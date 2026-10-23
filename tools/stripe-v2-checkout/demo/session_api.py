@@ -68,6 +68,7 @@ class QuoteBody(StrictBody):
     contact: Contact
     shipping_id: int | None = Field(default=None,gt=0)
     dollar_test: bool = False
+    coupon_code: str = Field(default='', max_length=30, pattern=r'^[A-Za-z0-9_% .-]*$')
 
 class PaymentBody(StrictBody):
     model_config=ConfigDict(extra='forbid',json_schema_extra={'example':{'quote_id':'COPY_QUOTE_ID','accept_terms':False}})
@@ -151,6 +152,10 @@ class QuoteResult(BaseModel):
     currency: str
     payment_terms: str
     terms_consent_required: bool
+    coupon_code: str | None = None
+    discount_amount: int = 0
+    subtotal_amount: int | None = None
+    discount_applies_to_renewals: bool = False
 
 class PaymentResult(BaseModel):
     payment_intent_id: str
@@ -360,9 +365,10 @@ class CheckoutTransport:
 
 def terms(q):
     o=q['option'];total=f"{q['amount']/100:.2f} {q['currency'].upper()}"
+    renewal=f"{q.get('renewalPrice',o.get('upfrontPrice',o.get('basePrice',q['amount']/100)))} {q['currency'].upper()}"
     if o.get('prepaidCycles'):
-        return f"Pay {total} upfront. {o['prepaidCycles']} prepaid cycles, {o['days']} days apart. "+(f"Full plan renews every {o['renewalDays']} days." if o.get('renewal') else 'No automatic renewal.')
-    return f"Pay {total} today. "+(f"Renews every {o['days']} days." if o['recurring'] else 'One-time payment. No automatic renewal.')
+        return f"Pay {total} upfront. {o['prepaidCycles']} deliveries, {o['days']} days apart. "+(f"Renews at {renewal} every {o['renewalDays']} days until cancelled." if o.get('renewal') else 'No automatic renewal.')
+    return f"Pay {total} today. "+(f"Renews at {renewal} every {o['days']} days until cancelled." if o['recurring'] else 'One-time payment. No automatic renewal.')
 
 
 def install_session_api(app,site_check,catalog_loader,store,transport,origin,allowed_origins=(),clock=time.monotonic,portal_site_for=None,
@@ -471,11 +477,13 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
             contact=body.contact.model_dump()
             if contact['country']=='US' and contact['region'] not in US_REGIONS:
                 raise HTTPException(422,'Use the two-letter US state code')
-            try:value=call(row,'POST','/api/quote',{'contact':contact,'selection':row['selection'],'shipping_id':body.shipping_id,**({'dollar_test':True} if body.dollar_test else {})},req)
+            try:value=call(row,'POST','/api/quote',{'contact':contact,'selection':row['selection'],'shipping_id':body.shipping_id,**({'dollar_test':True} if body.dollar_test else {}),**({'coupon_code':body.coupon_code} if body.coupon_code else {})},req)
             except UpstreamError as exc:raise translated(exc)
             store.update(row['id'],quote_id=value['id'],phase='quoted')
             o=value['option'];consent=bool(o['recurring'])
-            return QuoteResult(quote_id=value['id'],amount=value['amount'],currency=value['currency'],payment_terms=terms(value),terms_consent_required=consent)
+            return QuoteResult(quote_id=value['id'],amount=value['amount'],currency=value['currency'],payment_terms=terms(value),terms_consent_required=consent,
+                coupon_code=value.get('coupon',{}).get('code'),discount_amount=value.get('discountAmount',0),
+                subtotal_amount=value.get('subtotalAmount',value['amount']),discount_applies_to_renewals=value.get('coupon',{}).get('lifetime',False))
 
     @router.post('/{session_id}/payment',response_model=PaymentResult,summary='Prepare the Stripe Payment Element for this reviewed quote')
     def payment(site_id:str,session_id:str,body:PaymentBody,req:Request,credentials:HTTPAuthorizationCredentials|None=Security(bearer)):

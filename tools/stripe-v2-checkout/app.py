@@ -12,7 +12,7 @@ import sqlite3
 import threading
 import time
 from functools import wraps
-from catalog import CatalogError, resolve, quote
+from catalog import CatalogError, CouponError, resolve, quote
 from prepaid import order_terms_match
 from admin import Admin, branding as brand_presentation
 from dataclasses import dataclass
@@ -135,6 +135,7 @@ class QuoteRequest(BaseModel):
     selection: str = Field(max_length=80)
     shipping_id: int | None = Field(default=None, gt=0)
     dollar_test: bool = False
+    coupon_code: str = Field(default='', max_length=30, pattern=r'^[A-Za-z0-9_% .-]*$')
 
 
 class AuthorizeRequest(BaseModel):
@@ -507,7 +508,6 @@ def create_app(settings=None, sticky=None):
         return response
 
     @app.post('/api/quote')
-    @serialized
     def calculate(body: QuoteRequest, req: Request):
         access(req, True)
         key, row = session(req)
@@ -518,11 +518,18 @@ def create_app(settings=None, sticky=None):
             if not dollar_test_available(admin,req,c):
                 raise HTTPException(403, '$1 testing is not enabled for this checkout')
             c = test_catalog(c)
-        q = quote(api, c, body.selection, body.shipping_id, body.contact.model_dump())
+        try:
+            q = quote(api, c, body.selection, body.shipping_id, body.contact.model_dump(), body.coupon_code.strip())
+        except CouponError as exc:
+            raise HTTPException(422, str(exc)) from None
         q.update({'id': secrets.token_urlsafe(24), 'expires': time.time()+600})
-        if not store.claim('new','new',key,quote=json.dumps(q),contact=json.dumps(body.contact.model_dump())):
-            raise HTTPException(409, 'Checkout state changed')
-        return {k:q[k] for k in ('id','amount','currency','option','total')}
+        # Read-only Sticky calculations can overlap across cart items. Keep
+        # the final quote/contact write mutually exclusive with authorization
+        # so a concurrent quote cannot change contact beneath an active intent.
+        with ROUTE_LOCK:
+            if not store.claim('new','new',key,quote=json.dumps(q),contact=json.dumps(body.contact.model_dump())):
+                raise HTTPException(409, 'Checkout state changed')
+        return {k:q[k] for k in ('id','amount','currency','option','total','coupon','discountAmount','subtotalAmount','renewalPrice') if k in q}
 
     @app.post('/api/authorize')
     @serialized
@@ -546,8 +553,8 @@ def create_app(settings=None, sticky=None):
             if not dollar_test_available(admin,req,c):
                 raise HTTPException(409, '$1 testing was disabled. Review a fresh total before paying.')
             c = test_catalog(c)
-        current = quote(api,c,q['selection'],q['shippingId'],contact)
-        if any(current[k] != q[k] for k in ('amount','currency','fingerprint','option')):
+        current = quote(api,c,q['selection'],q['shippingId'],contact,q.get('coupon',{}).get('code',''))
+        if any(current.get(k) != q.get(k) for k in ('amount','currency','fingerprint','option','coupon','renewalPrice')):
             raise HTTPException(409, 'Campaign configuration or price changed. Review a fresh quote.')
         if not store.claim('new', 'authorization_pending', key, quote=json.dumps(q | {'consented_at':time.time(),'recurring_consent':body.recurring_consent})):
             raise HTTPException(409, 'A payment attempt already exists')
@@ -592,8 +599,8 @@ def create_app(settings=None, sticky=None):
             raise HTTPException(409, 'No capturable payment is available. Check its status before retrying.')
         c = catalog(req, legacy=q.get('catalogVersion',1)!=2)
         if q.get('option',{}).get('dollarTest'):c = test_catalog(c)
-        current = quote(api,c,q['selection'],q['shippingId'],json.loads(row['contact'])) if not c['blockedReason'] else None
-        if not current or any(current[k] != q[k] for k in ('fingerprint','amount','currency','option')):
+        current = quote(api,c,q['selection'],q['shippingId'],json.loads(row['contact']),q.get('coupon',{}).get('code','')) if not c['blockedReason'] else None
+        if not current or any(current.get(k) != q.get(k) for k in ('fingerprint','amount','currency','option','coupon','renewalPrice')):
             raise HTTPException(409, 'Campaign configuration or price changed; reconcile this authorization before capture')
         if not store.claim('awaiting_card', 'capture_pending', key):
             raise HTTPException(409, 'Capture is already in progress')
@@ -609,6 +616,8 @@ def create_app(settings=None, sticky=None):
             payload['offers'][0].update(price=option['testUnitPrice'],preserve_price=1)
         if q['shippingId'] is not None:
             payload['shippingId'] = q['shippingId']
+        if q.get('coupon'):
+            payload['promoCode'] = q['coupon']['code']
         # Only the explicitly enabled, server-calculated $1 test path overrides
         # price. It preserves that same price for subscription renewals.
         obj = api.call('POST','/api/v1/new_order',payload)
@@ -631,6 +640,15 @@ def create_app(settings=None, sticky=None):
             str(products[0].get('is_recurring')) == ('1' if option['recurring'] else '0'))
         if option.get('prepaidCycles'):valid=valid and order_terms_match(products[0],option['prepaidCycles'],option.get('renewal',False)) if valid else False
         renews_payment = option.get('renewal', False) if option.get('prepaidCycles') else option['recurring']
+        if valid and q.get('coupon'):
+            try:
+                # Sticky retains the coupon separately from the subscription's
+                # base product price. Verify that the captured order owns the
+                # exact validated lifetime/initial-only coupon and discount.
+                valid = (str(order.get('coupon_id')) == str(q['coupon']['profileId']) and
+                    Decimal(str(order.get('coupon_discount_amount'))) == Decimal(q['discountAmount']) / 100)
+            except Exception:
+                valid = False
         if valid and option.get('dollarTest') and renews_payment:
             # A correct initial total alone does not prove that the subscription
             # retained the agreed testing price. Sticky reports the full prepaid
