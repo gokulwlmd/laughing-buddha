@@ -380,3 +380,28 @@ class IdentitySessionTests(unittest.TestCase):
             with self.assertRaises(UpstreamError) as caught:
                 transport.call(row,'GET','/api/post-checkout-identity')
         self.assertEqual(caught.exception.detail,{'code':'identity_verification_required','message':'Verify your identity to continue your intake.'})
+
+class IDPhotoSessionTests(unittest.TestCase):
+    setUp = SessionApiTests.setUp
+    tearDown = SessionApiTests.tearDown
+    create = SessionApiTests.create
+
+    def test_photo_and_reuse_are_receipt_owned_and_never_accept_provider_fields(self):
+        path,headers,data=self.create()
+        self.assertEqual(self.client.get(path+'/id-photo').status_code,401)
+        seen=[];members=self.engine.state.member_portal
+        members.receipt_order=lambda row: ({'order_id':'fixture-order','site_id':'payment-test'},{'id':'receipt:fixture-order','_reuse_allowed':False})
+        members.id_uploads.status=lambda order,patient: {'status':'needed','available':True,'order_attached':False}
+        def upload(order,patient,body=None):
+            seen.append((order['order_id'],body.file_contents.get_secret_value() if body else None))
+            return {'status':'uploaded','order_attached':True}
+        members.id_uploads.upload=upload
+        self.assertEqual(self.client.get(path+'/id-photo',headers=headers).status_code,200)
+        # Exceeds the ordinary 16 KB checkout body limit. Only ID routes allow it.
+        contents='A'*24000
+        self.assertEqual(self.client.post(path+'/id-photo',headers=headers,json={'file_contents':contents}).status_code,200)
+        self.assertEqual(self.client.post(path+'/id-photo/reuse',headers=headers,json={}).status_code,200)
+        self.assertEqual(seen,[('fixture-order',contents),('fixture-order',None)])
+        invalid=self.client.post(path+'/id-photo',headers=headers,json={'file_contents':'PRIVATE','site_id':'override'})
+        self.assertEqual(invalid.status_code,422);self.assertNotIn('PRIVATE',invalid.text)
+        self.assertEqual(self.client.post(path.replace('payment-test','unknown-site')+'/id-photo/reuse',headers=headers,json={}).status_code,404)

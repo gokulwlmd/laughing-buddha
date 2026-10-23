@@ -357,7 +357,8 @@ def create_app(settings=None, sticky=None):
 
     @app.middleware('http')
     async def headers(req, call_next):
-        if req.headers.get('content-length', '0').isdigit() and int(req.headers.get('content-length', '0')) > 16384:
+        from member_portal.upload_limits import is_id_upload
+        if not is_id_upload(req.url.path) and req.headers.get('content-length', '0').isdigit() and int(req.headers.get('content-length', '0')) > 16384:
             return JSONResponse({'detail': 'Request too large'}, status_code=413)
         response = await call_next(req)
         response.headers['Cache-Control'] = 'no-store'
@@ -693,6 +694,25 @@ def create_app(settings=None, sticky=None):
     @app.post('/api/post-checkout-account')
     def setup_receipt_account(body: ReceiptEnrollment, req: Request):
         return members.receipt_account(member_receipt(req), body.password)
+
+    from member_portal.upload_limits import IDUploadBodyLimit
+    from member_portal.id_uploads import IDPhotoInput
+    app.add_middleware(IDUploadBodyLimit)
+
+    @app.get('/api/post-checkout-id-photo')
+    def receipt_id_photo(req: Request):
+        order, patient = members.receipt_order(member_receipt(req, mutation=False))
+        return members.id_uploads.status(order, patient)
+
+    @app.post('/api/post-checkout-id-photo')
+    def upload_receipt_id_photo(body: IDPhotoInput, req: Request):
+        order, patient = members.receipt_order(member_receipt(req))
+        return members.id_uploads.upload(order, patient, body)
+
+    @app.post('/api/post-checkout-id-photo/reuse')
+    def reuse_receipt_id_photo(req: Request):
+        order, patient = members.receipt_order(member_receipt(req))
+        return members.id_uploads.upload(order, patient)
 
     from member_portal.wlmd import IdentityInput
 

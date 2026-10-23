@@ -377,6 +377,8 @@ class MemberService:
         self.answer_profile = AnswerProfile(self)
         from .wlmd import IdentityChecks
         self.identity_checks = IdentityChecks(self)
+        from .id_uploads import IDUploads
+        self.id_uploads = IDUploads(self)
         self.care = CareManager(self)
         self.claims = ClaimsManager(self)
         from .renewals import RenewalsManager
@@ -905,6 +907,7 @@ class MemberService:
 
         if patient.get('_reuse_allowed') is not False:
             self.identity_checks.status(order, patient)
+            self.id_uploads.status(order, patient)
 
     def initial_intake(self, order, patient):
         self.adopt_receipt_intake(order, patient)
@@ -1104,6 +1107,20 @@ class MemberService:
         @router.post('/orders/{order_id}/identity')
         def verify_order_identity(site_id: str, order_id: str, body: IdentityInput, patient=Depends(auth)):
             return self.identity_checks.verify(self.order_record(site_id, order_id, patient), patient, body)
+
+        from .id_uploads import IDPhotoInput
+
+        @router.get('/orders/{order_id}/id-photo')
+        def id_photo_status(site_id: str, order_id: str, patient=Depends(auth)):
+            return self.id_uploads.status(self.order_record(site_id, order_id, patient), patient)
+
+        @router.post('/orders/{order_id}/id-photo')
+        def id_photo_upload(site_id: str, order_id: str, body: IDPhotoInput, patient=Depends(auth)):
+            return self.id_uploads.upload(self.order_record(site_id, order_id, patient), patient, body)
+
+        @router.post('/orders/{order_id}/id-photo/reuse')
+        def id_photo_reuse(site_id: str, order_id: str, patient=Depends(auth)):
+            return self.id_uploads.upload(self.order_record(site_id, order_id, patient), patient)
 
         @router.get('/configuration', response_model=ConfigurationResult)
         def configuration(site_id: str):
@@ -1615,9 +1632,9 @@ class MemberService:
 
         @app.get('/portal-assets/{name}', include_in_schema=False)
         def asset(name: str):
-            if name not in ('post-checkout.js', 'portal.js', 'portal.css', 'red-hat-display-latin-v1.woff2', 'red-hat-display-OFL.txt'):
+            if name not in ('post-checkout.js', 'id-upload.js', 'portal.js', 'portal.css', 'red-hat-display-latin-v1.woff2', 'red-hat-display-OFL.txt'):
                 raise HTTPException(404, 'Asset not found')
-            return FileResponse(HERE / 'web' / name)
+            return FileResponse(HERE / 'web' / name, headers={'Access-Control-Allow-Origin': '*'} if name == 'id-upload.js' else None)
 
         @app.get('/portal-assets/fortifyhp/{name}', include_in_schema=False)
         def fortify_asset(name: str):

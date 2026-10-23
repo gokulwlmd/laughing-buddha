@@ -248,3 +248,19 @@ before calling WLMD. Intake gates and Account settings use the shared adapter;
 checkout frontends use the shared post-checkout component and session identity
 API. Do not equate identity verification with treatment approval. Crosscheck,
 ID-image and clinical questionnaire integrations still require their contracts.
+
+### ID photo alternative
+
+Owner confirmed SSN OR saved ID photo permits intake. The confirmed WLMD upload
+endpoint is POST `/v1/site/{wlmd_site_id}/order/{owned_order}/upload-file-s3` with
+backend authtoken and `user`, `upload_name: ID`, `file_name`, `file_ext`, base64
+`file_contents`. Require explicit success and validated `data.db_id`, `s3_key`,
+`orders_dictionary_key: FUT:ID`. Upload success is NOT identity verification or
+clinical approval. Reuse requires reuploading the saved photo for the new order;
+keep normalized photo/provider reference encrypted, with a private volume key,
+and enforce authenticated same-site/order grants. Never copy an ID, raw response,
+S3 URL/key or encryption key into GitHub/chat. No real ID upload in automated QA.
+The shared `wlmd-id-upload` element handles upload/camera preview and saved-photo
+reuse for portal and checkout; avoid per-site Lovable changes. Preserve bounded
+body/image sizes, metadata stripping, no automatic uncertain-upload retries,
+explicit rate-limited retry, and receipt-only isolation. See WLMD_INTEGRATION.md.

@@ -44,6 +44,8 @@ if __name__ == '__main__':
         raw=app.state.admin.get('site','site-a');raw['wlmd_site_id']='qa-wlmd'
         app.state.admin.put('site','site-a',raw)
         app.state.member_portal.identity_checks.provider=FakeIdentity()
+        from test_id_uploads import FakeUpload
+        app.state.member_portal.id_uploads.provider=FakeUpload()
         return {'enabled': True}
 
     @app.get('/__member_qa', include_in_schema=False)

@@ -233,6 +233,9 @@ def create_public_app(origin=None, read_catalog=read_live_catalog, clock=time.ti
             raise ValueError('SITE_API_ALLOWED_ORIGINS must contain HTTPS origins or *')
     app.add_middleware(CORSMiddleware,allow_origins=[origin,*allowed_origins],allow_methods=['GET','POST','PATCH'],allow_headers=['Authorization','Content-Type'],expose_headers=['Server-Timing'])
 
+    from member_portal.upload_limits import IDUploadBodyLimit
+    app.add_middleware(IDUploadBodyLimit)
+
     @app.exception_handler(RequestValidationError)
     async def invalid_request(req,exc):
         return JSONResponse({'detail':'Invalid checkout request. Use the documented fields; do not send card details.'},status_code=422)

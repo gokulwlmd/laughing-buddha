@@ -584,5 +584,30 @@
     "new_live_identity_submission": false,
     "new_live_payment_submission": false,
     "ssn_digits_or_provider_messages_stored": false
+  },
+  "wlmd_id_photo_release": {
+    "date": "2026-10-24",
+    "image_digest": "sha256:88be27833d80fe84e8f1bc5390b4089aa92a0d999e637d746fdb871b5b58f380",
+    "status": "deployed_verified",
+    "intake_rule": "SSN verified OR ID photo uploaded for this order",
+    "encrypted_photo_reuse": true,
+    "new_order_reupload": true,
+    "backend_test_batches_passed": [
+      46,
+      47,
+      8,
+      7
+    ],
+    "backend_test_batches_overlap": true,
+    "targeted_browser_scenarios_passed": 10,
+    "browser_tests_use_synthetic_photos": true,
+    "physical_mobile_camera_tested": false,
+    "health_status": 200,
+    "unauthenticated_photo_status": 401,
+    "source_hashes_match": true,
+    "private_key_permissions_verified": true,
+    "existing_checkout_and_patient_counts_preserved": true,
+    "new_live_identity_or_photo_submission": false,
+    "new_live_payment_submission": false
   }
 }

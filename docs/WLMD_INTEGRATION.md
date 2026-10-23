@@ -188,3 +188,67 @@ Release deployed and verified on the existing shared Fly app in image
 `sha256:ae2496fd8f355659e8f82809e7d15db98f5eebbc3bf550b83f13a8112c2f8675`.
 Hosted JS/CSS/backend hashes match, health is 200, unauthenticated identity
 access is 401, and existing checkout/patient counts are unchanged.
+
+## ID photo alternative and reuse — 24 October 2026
+
+The owner confirmed **either SSN verification or a successfully saved ID photo**
+allows intake. An uploaded document is labelled “ID photo saved”/“Uploaded”; it
+must not be represented as a provider-verified identity or medical approval.
+
+Confirmed request: POST `/v1/site/{wlmd_site_id}/order/{owned_order}/upload-file-s3`
+using the existing backend `authtoken`. JSON fields: `user: laughing-buddha`,
+`upload_name: ID`, `file_name: ID.jpg`, `file_ext: jpg`, `file_contents` containing
+plain base64. Success requires successful HTTP, JSON `status: success`, a
+positive integer `data.db_id`, nonempty `data.s3_key`, and
+`data.orders_dictionary_key: FUT:ID`. Ignore response messages; never expose S3
+URLs/keys to the frontend. No real customer URL or response is saved here.
+
+WLMD requires the same upload endpoint with the NEW order ID for future orders.
+Therefore the backend retains an encrypted, normalized photo and encrypted
+provider reference. It reuploads that photo only for an owned order in the same
+site/WLMD mapping. A receipt is restricted to its own order; after authenticated
+order ownership, its saved photo can join the patient account. Guest receipts
+cannot pull other orders’ photos by email or patient ID. When opening a later
+intake, the shared component automatically attaches an authenticated account’s
+saved photo. Account settings also supports “Use saved ID for this order.”
+
+API routes (patient bearer or order-bound receipt bearer respectively):
+- GET/POST `/api/v1/sites/{site}/portal/orders/{order}/id-photo`
+- POST `/api/v1/sites/{site}/portal/orders/{order}/id-photo/reuse`
+- GET/POST `/api/v1/sites/{site}/sessions/{session}/id-photo`
+- POST `/api/v1/sites/{site}/sessions/{session}/id-photo/reuse`
+POST photo accepts only `file_contents`. Reuse accepts no caller-selected
+provider fields, destination, filename, site mapping or order overrides.
+
+`member_portal/web/id-upload.js` is a reusable component shared by Account
+settings and the post-purchase intake component. It supports file selection,
+mobile `capture=environment`, local preview, a separate upload action, progress
+text, and removal of the preview after submission. A mobile browser may choose
+the camera or a file picker; physical-camera operation was not exercised in QA.
+No photo is written to browser storage. Client conversion bounds image size;
+server Pillow decoding validates JPEG/PNG/WebP, caps bytes/pixels and removes
+EXIF/GPS metadata by re-encoding. Only exact photo routes accept larger request
+bodies; bounded ASGI handling also covers chunked bodies. Ordinary payment body
+limits are preserved. See [Pillow image documentation](https://pillow.readthedocs.io/en/stable/reference/Image.html).
+
+The SQLite `member_id_uploads` table contains encrypted photo/reference values.
+The private volume file `member-id-uploads.key` must be backed up with the DB;
+never commit it, return it through an API or copy it to frontend hosting. Existing
+backup/retention procedures must account for stored identity documents. There is
+no public photo retrieval URL. Unknown results stay unconfirmed and never open
+intake. No automatic provider retry follows a timeout; an explicit retry may use
+the encrypted photo after a 30-second gap, bounded to five attempts/15 minutes.
+No payments, subscriptions or pharmacy instructions are changed by this flow.
+
+QA uses generated synthetic images and an offline WLMD contract fixture, not real
+IDs. Covered: SSN-or-ID intake gating, encrypted storage/metadata removal,
+receipt-to-account adoption, cross-site/patient isolation, reupload to the new
+order, strict response parsing, malformed/oversized/chunked bodies, authenticated
+API forwarding, desktop/mobile preview, automatic saved-photo reuse and retry.
+
+ID-photo release deployed and verified on the shared Fly app in image
+`sha256:88be27833d80fe84e8f1bc5390b4089aa92a0d999e637d746fdb871b5b58f380`.
+Hosted source hashes and private-key permissions match; health is 200 and
+unauthenticated photo access is 401. Existing checkout/patient counts remain
+unchanged. Backend batches (46, 47, 8 and 7; overlapping) and 10 targeted
+browser scenarios passed. No real ID or payment was submitted in release QA.

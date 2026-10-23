@@ -86,6 +86,8 @@ class IdentityChecks:
     def require(self, order, patient):
         result = self.status(order, patient)
         if result['required'] and result['status'] != 'verified':
+            if self.s.id_uploads.status(order, patient)['order_attached']:
+                return
             raise HTTPException(409, {'code': 'identity_verification_required', 'message': 'Verify your identity to continue your intake.', 'identity': result})
 
     def verify(self, order, patient, body):
@@ -127,8 +129,8 @@ class IdentityChecks:
         chosen = None
         for row in orders:
             order = self.s.order_record(site_id, row['order_id'], patient)
-            result = {**self.status(order, patient), 'order_id': row['order_id']}
+            result = {**self.status(order, patient), 'order_id': row['order_id'], 'id_photo': self.s.id_uploads.status(order, patient)}
             chosen = chosen or result
-            if result['status'] == 'verified':
+            if result['status'] == 'verified' or result['id_photo']['saved']:
                 return result
         return chosen or {'required': bool(self.mapping(site_id)), 'status': 'no_order', 'available': False, 'verified_at': None, 'order_id': None}

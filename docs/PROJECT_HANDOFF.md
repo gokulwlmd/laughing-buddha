@@ -638,3 +638,22 @@ Release deployed and verified on the existing shared Fly app in image
 `sha256:ae2496fd8f355659e8f82809e7d15db98f5eebbc3bf550b83f13a8112c2f8675`.
 Hosted JS/CSS/backend hashes match, health is 200, unauthenticated identity
 access is 401, and existing checkout/patient counts are unchanged.
+
+## Latest: ID photo as an alternative to SSN — 24 October 2026
+
+Owner supplied the WLMD upload success contract and confirmed either SSN OR ID
+photo is sufficient before intake. Upload/take-photo with preview is shared by
+Account settings and post-checkout intake. A successful upload is shown as an ID
+photo on file, never as provider-verified identity. Encrypted photos and upload
+references are kept on the shared backend so future owned orders can use the same
+WLMD upload endpoint with the new order ID. Signed-in patients’ next intakes reuse
+the saved photo automatically; receipt-only access cannot read another order’s ID.
+Keep the private `member-id-uploads.key` with database backups and out of GitHub.
+See WLMD_INTEGRATION.md for endpoint contracts, access boundaries and QA scope.
+
+ID-photo release deployed and verified on the shared Fly app in image
+`sha256:88be27833d80fe84e8f1bc5390b4089aa92a0d999e637d746fdb871b5b58f380`.
+Hosted source hashes and private-key permissions match; health is 200 and
+unauthenticated photo access is 401. Existing checkout/patient counts remain
+unchanged. Backend batches (46, 47, 8 and 7; overlapping) and 10 targeted
+browser scenarios passed. No real ID or payment was submitted in release QA.

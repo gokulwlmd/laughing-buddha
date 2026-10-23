@@ -313,7 +313,7 @@ class CheckoutTransport:
 
     def call(self,row,method,path,body=None,client_ip=None):
         # Paths and link IDs come only from the server's published catalog.
-        if not re.fullmatch(r'/c/choice-[a-f0-9]{32}|/api/(?:start-checkout|config|status|quote|authorize|resume|capture|portal-enrollment|post-checkout-account|post-checkout-identity|post-checkout-intake(?:/submit)?)',path):
+        if not re.fullmatch(r'/c/choice-[a-f0-9]{32}|/api/(?:start-checkout|config|status|quote|authorize|resume|capture|portal-enrollment|post-checkout-account|post-checkout-identity|post-checkout-id-photo(?:/reuse)?|post-checkout-intake(?:/submit)?)',path):
             raise ValueError('Unexpected checkout path')
         target=path
         if path.startswith('/api/'):
@@ -596,6 +596,32 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
                 return call(row, 'POST', '/api/post-checkout-account', body.model_dump(), req)
             except UpstreamError as exc:
                 raise translated(exc)
+
+    from member_portal.id_uploads import IDPhotoInput
+
+    @router.get('/{session_id}/id-photo', summary='Read the saved ID photo status')
+    def id_photo_status(site_id: str, session_id: str, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
+        row = auth(site_id, session_id, req, credentials)
+        try:
+            return call(row, 'GET', '/api/post-checkout-id-photo', req=req)
+        except UpstreamError as exc:
+            raise translated(exc)
+
+    @router.post('/{session_id}/id-photo', summary='Upload an ID photo as an alternative to SSN verification')
+    def id_photo_upload(site_id: str, session_id: str, body: IDPhotoInput, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
+        row = auth(site_id, session_id, req, credentials)
+        try:
+            return call(row, 'POST', '/api/post-checkout-id-photo', {'file_contents': body.file_contents.get_secret_value()}, req)
+        except UpstreamError as exc:
+            raise translated(exc)
+
+    @router.post('/{session_id}/id-photo/reuse', summary='Attach the saved ID photo to this purchased order')
+    def id_photo_reuse(site_id: str, session_id: str, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
+        row = auth(site_id, session_id, req, credentials)
+        try:
+            return call(row, 'POST', '/api/post-checkout-id-photo/reuse', {}, req)
+        except UpstreamError as exc:
+            raise translated(exc)
 
     from member_portal.wlmd import IdentityInput
 

@@ -506,3 +506,22 @@ for(const width of [1440,390])test(`IDENTITY account settings and intake at ${wi
   await reflow(page,width);await page.screenshot({path:info.outputPath(`identity-account-verified-${width}.png`),fullPage:true});
   await proof(page,member);
 });
+
+for(const width of [1440,390])test(`IDPHOTO upload alternative resumes intake at ${width}px`,async({page,member},info)=>{
+ await page.setViewportSize({width,height:1000});await enroll(page,member);await page.request.post(member.origin+'/__member_identity');
+ await page.getByRole('button',{name:'Medical intake',exact:true}).click();await page.getByRole('button',{name:'Start intake',exact:true}).click();
+ await expect(page.getByLabel('Upload ID',{exact:true})).toBeVisible();
+ await expect(page.getByLabel('Take photo of ID',{exact:true})).toHaveAttribute('capture','environment');
+ const data=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=800;c.height=500;const x=c.getContext('2d');x.fillStyle='#e4e7e4';x.fillRect(0,0,800,500);x.fillStyle='#333';x.font='24px sans-serif';x.fillText('SYNTHETIC UI TEST - NOT AN ID',100,250);return c.toDataURL('image/png').split(',')[1];});
+ await page.getByLabel('Upload ID',{exact:true}).setInputFiles({name:'synthetic.png',mimeType:'image/png',buffer:Buffer.from(data,'base64')});
+ await expect(page.getByRole('img',{name:/Your selected ID photo/})).toBeVisible();
+ await page.screenshot({path:info.outputPath('id-photo-preview-'+width+'.png'),fullPage:true});
+ await page.getByRole('button',{name:'Upload this photo',exact:true}).click();
+ await expect(page.locator('#intake-form')).toBeVisible();
+ await page.getByRole('button',{name:'Account settings',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Your ID photo is saved'})).toBeVisible();
+ await expect(page.getByText('Your ID photo is on file.',{exact:true})).toBeVisible();
+ await expect(page.locator('#identity-last4')).toHaveCount(0);
+ expect(await page.evaluate(()=>JSON.stringify({...localStorage,...sessionStorage}))).not.toContain('data:image');
+ await reflow(page,width);await page.screenshot({path:info.outputPath('id-photo-saved-'+width+'.png'),fullPage:true});await proof(page,member);
+});
