@@ -87,3 +87,19 @@ configuration tests: 31 backend and one browser scenario passed. Hosted source
 hashes match, health is 200 and existing checkout/patient counts are preserved.
 No identity request or patient-data transfer was performed. Identity gating
 is still inactive pending the confirmed route/body/result contract.
+
+## Authorized live routing test — 24 October 2026
+
+The owner supplied a specific site/order and SSN last four for one integration
+test; those identifiers and digits are deliberately omitted here. Requests used
+the configured live origin and encrypted authtoken. The Postman-shaped path
+returned HTTP 200 with a non-JSON body. The PHP-shaped identity-check path
+returned HTTP 200 with `status: error` and nested error code `404`. A subsequent
+OPTIONS diagnostic located the not-found exception in `RoutingMiddleware.php`,
+consistent with an unresolved route rather than an SSN mismatch.
+
+No successful verification was observed and no local patient was marked
+verified. HTTP 200 alone must never be used as the success rule. The complete
+resolved Postman `api_url` (including any base path) has been requested. Do not
+retry an identity write automatically or copy request data/raw responses into
+logs or fixtures. No raw response, SSN digits or personal data was saved.

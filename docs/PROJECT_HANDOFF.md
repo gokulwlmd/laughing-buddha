@@ -596,3 +596,9 @@ No identity request or patient-data transfer was performed. The Postman route
 route `/v1/site/{site}/identity-check/{order}`. Current route/body and response
 semantics still require confirmation. Credentials are configured, not yet
 authenticated against the identity endpoint. Shared intake remains unchanged.
+
+WLMD authorized test update: the supplied identity routes did not produce a
+verification result on the configured live origin. One returned non-JSON; the
+PHP-shaped route returned an error 404 from RoutingMiddleware.php. No patient
+was marked verified. Await the full resolved Postman api_url/base path before
+another identity request. See WLMD_INTEGRATION.md; test personal data is omitted.
