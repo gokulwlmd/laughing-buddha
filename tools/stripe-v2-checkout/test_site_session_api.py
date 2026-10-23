@@ -318,3 +318,26 @@ class TransportTests(unittest.TestCase):
         self.assertEqual(broken.headers['Origin'],PUBLIC_UPSTREAM)
         self.assertNotIn('Fly-Client-IP',broken.headers)
         self.assertNotIn('Authorization',broken.headers)
+
+class AccountSessionTests(unittest.TestCase):
+    setUp = SessionApiTests.setUp
+    tearDown = SessionApiTests.tearDown
+    create = SessionApiTests.create
+    def test_account_requires_checkout_bearer_and_forwards_only_password(self):
+        path,headers,data=self.create()
+        self.assertEqual(self.client.get(path+'/account').status_code,401)
+        self.assertEqual(self.client.get(path.replace('payment-test','unknown-site')+'/account',headers=headers).status_code,404)
+        seen=[]
+        def account(row,password=None):
+            seen.append((row['id'],password))
+            return {'state':'set_password' if password is None else 'ready','provider':'sticky','site_id':'payment-test','portal_url':PUBLIC_UPSTREAM+'/portal/payment-test'}
+        self.engine.state.member_portal.receipt_account=account
+        self.assertEqual(self.client.get(path+'/account',headers=headers).json()['state'],'set_password')
+        result=self.client.post(path+'/account',headers=headers,json={'password':'synthetic-pass-123!'})
+        self.assertEqual(result.status_code,200,result.text)
+        self.assertEqual(seen[-1][1],'synthetic-pass-123!')
+        self.assertEqual(seen[0][0],seen[1][0])
+        invalid=self.client.post(path+'/account',headers=headers,json={'password':'DO_NOT_ECHO','customer_id':'override'})
+        self.assertEqual(invalid.status_code,422);self.assertNotIn('DO_NOT_ECHO',invalid.text)
+        self.now+=86401
+        self.assertEqual(self.client.get(path+'/account',headers=headers).status_code,410)

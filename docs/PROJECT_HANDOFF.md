@@ -485,3 +485,13 @@ processes stayed running and healthy. Public checkout/database untouched.
 No real provider transaction was performed for this design change. User chose
 automated checks rather than signing into the real-data portal for inspection.
 Read PORTAL_DESIGN_REFRESH.md and member-portal-preview.json for exact scope.
+
+
+## Sticky-owned member passwords (24 October 2026)
+
+The owner selected Sticky as the sole live membership/password provider, with
+password setup immediately after a verified purchase and no membership email
+request. See [the contract, migration and boundaries](STICKY_MEMBER_PASSWORDS.md).
+The shared post-checkout component carries the form across sites. Existing
+Sticky passwords are never overwritten by a new receipt. Site-scoped patient
+records, order grants and clinical drafts stay in this application.

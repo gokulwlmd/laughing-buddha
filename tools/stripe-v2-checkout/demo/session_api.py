@@ -24,6 +24,7 @@ from urllib import parse
 import weakref
 
 from patient_demo.app import IntakePatch, IntakeSubmit
+from member_portal.app import ReceiptEnrollment
 from fastapi import APIRouter, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -312,7 +313,7 @@ class CheckoutTransport:
 
     def call(self,row,method,path,body=None,client_ip=None):
         # Paths and link IDs come only from the server's published catalog.
-        if not re.fullmatch(r'/c/choice-[a-f0-9]{32}|/api/(?:start-checkout|config|status|quote|authorize|resume|capture|portal-enrollment|post-checkout-intake(?:/submit)?)',path):
+        if not re.fullmatch(r'/c/choice-[a-f0-9]{32}|/api/(?:start-checkout|config|status|quote|authorize|resume|capture|portal-enrollment|post-checkout-account|post-checkout-intake(?:/submit)?)',path):
             raise ValueError('Unexpected checkout path')
         target=path
         if path.startswith('/api/'):
@@ -576,6 +577,23 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
                     raise UpstreamError(detail='The member portal does not belong to this site')
                 return PortalEnrollmentResult.model_validate(result)
             except UpstreamError as exc:raise translated(exc)
+
+    @router.get('/{session_id}/account', summary='Read Sticky password setup availability after purchase')
+    def account(site_id: str, session_id: str, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
+        row = auth(site_id, session_id, req, credentials)
+        try:
+            return call(row, 'GET', '/api/post-checkout-account', req=req)
+        except UpstreamError as exc:
+            raise translated(exc)
+
+    @router.post('/{session_id}/account', summary='Set a Sticky member password for this verified purchase')
+    def setup_account(site_id: str, session_id: str, body: ReceiptEnrollment, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
+        row = auth(site_id, session_id, req, credentials)
+        with store.lock(row['id']):
+            try:
+                return call(row, 'POST', '/api/post-checkout-account', body.model_dump(), req)
+            except UpstreamError as exc:
+                raise translated(exc)
 
     @router.get('/{session_id}/intake', summary='Read the purchased product intake without signing in')
     def intake(site_id: str, session_id: str, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):

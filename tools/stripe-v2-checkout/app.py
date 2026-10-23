@@ -684,6 +684,16 @@ def create_app(settings=None, sticky=None):
         return members.receipt_invite(member_receipt(req))
     from patient_demo.app import IntakePatch, IntakeSubmit
 
+    from member_portal.app import ReceiptEnrollment
+
+    @app.get('/api/post-checkout-account')
+    def receipt_account(req: Request):
+        return members.receipt_account(member_receipt(req, mutation=False))
+
+    @app.post('/api/post-checkout-account')
+    def setup_receipt_account(body: ReceiptEnrollment, req: Request):
+        return members.receipt_account(member_receipt(req), body.password)
+
     @app.get('/api/post-checkout-intake')
     def receipt_intake(req: Request):
         order, patient = members.receipt_order(member_receipt(req, mutation=False))

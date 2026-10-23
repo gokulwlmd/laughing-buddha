@@ -1,5 +1,9 @@
 # Shared post-checkout intake
 
+Updated decision: [Sticky member passwords after purchase](STICKY_MEMBER_PASSWORDS.md).
+The shared component now also offers immediate Sticky password setup; returning
+members keep their existing password. Intake remains available independently.
+
 Decision recorded 2026-10-24: show the intake on the purchasing site without asking the patient to log in there. Account setup/sign-in belongs in the separate branded member portal. Unfinished intake must resume there. All sites use the same hosted component and backend contract; questionnaires are not copied into 200 storefronts.
 
 ## Storefront integration

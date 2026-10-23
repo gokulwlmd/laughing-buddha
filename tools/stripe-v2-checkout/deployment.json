@@ -469,5 +469,20 @@
     "live_catalog_seeded": false,
     "payment_writes": 0,
     "sticky_config_writes": 0
+  },
+  "sticky_membership_release": {
+    "date": "2026-10-24",
+    "image_digest": "sha256:49141eafb45624363fc2d84f53090c5b81522545f60ff3b77b276e5291a7bc01",
+    "implementation_commit_local": "7c9508e",
+    "backend_tests": 466,
+    "browser_checks": 4,
+    "identity_provider": "sticky",
+    "health_status": 200,
+    "source_hashes_verified": true,
+    "checkout_counts_unchanged": true,
+    "existing_patient_count_unchanged": true,
+    "live_customer_passwords_changed_by_verification": false,
+    "live_payment_submitted": false,
+    "reference": "docs/STICKY_MEMBER_PASSWORDS.md"
   }
 }

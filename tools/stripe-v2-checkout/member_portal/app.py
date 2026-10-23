@@ -9,11 +9,13 @@ from decimal import Decimal
 import hashlib
 import hmac
 import json
+import os
 from pathlib import Path
 import re
 import secrets
 import sqlite3
 import time
+import threading
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -61,16 +63,19 @@ class Form(BaseModel):
 
 
 class Login(Form):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=False)
     email: str = Field(min_length=5, max_length=254)
     password: str = Field(min_length=1, max_length=256)
 
 
 class Enrollment(Form):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=False)
     invite_token: str = Field(min_length=20, max_length=200)
     password: str = Field(min_length=12, max_length=256)
 
 
 class ReceiptEnrollment(Form):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=False)
     password: str = Field(min_length=12, max_length=256)
 
 
@@ -266,7 +271,7 @@ class MessageDraft(BaseModel):
 
 
 class MessageDraftSave(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=False)
     body: str = Field(max_length=2000)
     revision: StrictInt = Field(ge=0)
 
@@ -305,6 +310,7 @@ def install(app, admin, store, cfg, receipt_access=None, clock=time.time, provid
 
 
 class MemberService:
+    identity_init_lock = threading.Lock()
     def __init__(self, admin, store, cfg, clock, provider):
         self.admin, self.store, self.cfg, self.clock, self.provider = admin, store, cfg, clock, provider
         with self.db() as db:
@@ -370,6 +376,48 @@ class MemberService:
         db.row_factory = sqlite3.Row
         return db
 
+    @property
+    def identity(self):
+        if os.environ.get('MEMBER_IDENTITY_PROVIDER') != 'sticky':
+            return None
+        with self.identity_init_lock:
+            if not hasattr(self, '_sticky_identity'):
+                from .identity import StickyIdentity
+                self._sticky_identity = StickyIdentity(self)
+        return self._sticky_identity
+
+    def authenticate_password(self, site_id, email, password):
+        email = email.strip().lower()
+        identity = digest(site_id + ':' + email)
+        with self.db() as db:
+            db.execute('DELETE FROM member_auth_failures WHERE created<?', (self.clock() - 900,))
+            failures = db.execute('SELECT COUNT(*) FROM member_auth_failures WHERE site_id=? AND identity_hash=?', (site_id, identity)).fetchone()[0]
+        if failures >= 10:
+            raise HTTPException(429, 'Too many sign-in attempts. Please try again later.')
+        try:
+            return self.identity.login(email, password)
+        except HTTPException as exc:
+            if exc.status_code == 401:
+                with self.db() as db:
+                    db.execute('INSERT INTO member_auth_failures VALUES(?,?,?)', (site_id, identity, self.clock()))
+            raise
+
+    def receipt_account(self, row, password=None):
+        if not self.identity:
+            raise HTTPException(503, 'Sticky member accounts are not enabled yet.')
+        order, _ = self.receipt_order(row)
+        email = json.loads(order['payload'])['customer']['email'].strip().lower()
+        site_id = order['site_id']
+        result = {'site_id': site_id, 'provider': 'sticky', 'password_min_length': 12,
+                  'portal_url': self.cfg.public_url + '/portal/' + site_id}
+        if password is None:
+            result['state'] = self.identity.setup_state(email, site_id, order['order_id'])
+            return result
+        # Existing identity is never overwritten. The provider only uses the
+        # temporary secret it created for this exact receipt, or authenticates.
+        self.enroll(site_id, order, password, 'checkout_receipt')
+        return result | {'state': 'ready'}
+
     def site(self, site_id):
         site = self.admin.get('site', site_id)
         if not site:
@@ -409,17 +457,23 @@ class MemberService:
                              (digest(credentials.credentials), site_id, self.clock())).fetchone()
         if not row:
             raise HTTPException(401, 'Your portal session expired. Please sign in again.')
+        if self.identity:
+            self.identity.check_session(digest(credentials.credentials))
         return dict(row)
 
     def patient_public(self, patient):
         return {key: patient[key] for key in ('id', 'name', 'email')}
 
-    def session(self, patient):
+    def session(self, patient, member=None):
         token = secrets.token_urlsafe(32)
         expires = self.clock() + SESSION_SECONDS
         with self.db() as db:
             db.execute('DELETE FROM member_sessions WHERE expires<=?', (self.clock(),))
             db.execute('INSERT INTO member_sessions VALUES(?,?,?,?)', (digest(token), patient['site_id'], patient['id'], expires))
+        if self.identity:
+            if member is None:
+                raise HTTPException(401, 'Please sign in with your Sticky member password.')
+            expires = min(expires, self.identity.save_session(digest(token), member))
         return {'access_token': token, 'expires_at': stamp(expires), 'patient': self.patient_public(patient), 'site': self.site(patient['site_id'])[1]}
 
     def captured(self, site_id, order_id=None):
@@ -759,6 +813,8 @@ class MemberService:
         email = contact['email'].strip().lower()
         if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email):
             raise HTTPException(409, 'The order email needs review before account creation')
+        if self.identity:
+            return self.enroll_sticky(site_id, order, email, password, source, invite_token)
         salt = secrets.token_hex(16)
         password_value = password_hash(password, salt)
         patient_id = identifier('patient')
@@ -781,6 +837,43 @@ class MemberService:
         self.adopt_receipt_intake(order, patient)
         self.sync_children(order)
         return self.session(patient)
+
+    def enroll_sticky(self, site_id, order, email, password, source, invite_token):
+        with self.identity.lock_for(email):
+            with self.db() as db:
+                if invite_token:
+                    invite = db.execute('SELECT * FROM member_invites WHERE token_hash=? AND site_id=? AND order_id=? AND expires>?',
+                        (digest(invite_token), site_id, order['order_id'], self.clock())).fetchone()
+                    if not invite or invite['used'] is not None:
+                        raise HTTPException(410, 'This enrollment invitation expired or was already used')
+            state = self.identity.setup_state(email, site_id, order['order_id'])
+            if state == 'sign_in':
+                member = self.authenticate_password(site_id, email, password)
+            else:
+                member = self.identity.setup(email, password, site_id, order['order_id'], order['customer_id'])
+            with self.db() as db:
+                db.execute('BEGIN IMMEDIATE')
+                patient = db.execute('SELECT * FROM member_patients WHERE site_id=? AND email=?', (site_id, email)).fetchone()
+                if not patient:
+                    if db.execute('SELECT 1 FROM member_patients WHERE site_id=? AND customer_id=?', (site_id, order['customer_id'])).fetchone():
+                        raise HTTPException(409, 'This order identity needs review before linking an account.')
+                    patient_id = identifier('patient')
+                    contact = json.loads(order['payload'])['customer']
+                    db.execute('INSERT INTO member_patients VALUES(?,?,?,?,?,?,?,?,?)',
+                        (patient_id, site_id, order['customer_id'], contact.get('name') or 'Patient', email, '', '', 'sticky', self.clock()))
+                else:
+                    patient_id = patient['id']
+                grant = db.execute('SELECT patient_id FROM member_grants WHERE site_id=? AND order_id=?', (site_id, order['order_id'])).fetchone()
+                if grant and grant['patient_id'] != patient_id:
+                    raise HTTPException(409, 'This order belongs to a different patient account.')
+                db.execute('UPDATE member_patients SET salt=?,password_hash=?,identity_source=? WHERE id=?', ('', '', 'sticky', patient_id))
+                db.execute('INSERT OR IGNORE INTO member_grants VALUES(?,?,?,?,?)', (site_id, order['order_id'], patient_id, self.clock(), source))
+                if invite_token:
+                    db.execute('UPDATE member_invites SET used=? WHERE token_hash=?', (self.clock(), digest(invite_token)))
+                patient = dict(db.execute('SELECT * FROM member_patients WHERE id=?', (patient_id,)).fetchone())
+            self.adopt_receipt_intake(order, patient)
+            self.sync_children(order)
+            return self.session(patient, member)
 
     def adopt_receipt_intake(self, order, patient):
         guest = 'receipt:' + order['order_id']
@@ -989,7 +1082,8 @@ class MemberService:
         def onboarding(site_id: str):
             self.site(site_id)
             base = '/api/v1/sites/' + site_id + '/portal'
-            return {'version': 1, 'site_id': site_id, 'password_min_length': 12,
+            return {'version': 2, 'site_id': site_id, 'password_min_length': 12,
+                'identity_provider': 'sticky' if self.identity else 'local',
                 'enroll_path': base + '/auth/enroll', 'login_path': base + '/auth/login',
                 'claim_path': base + '/auth/claim', 'me_path': base + '/me',
                 'intake_path': base + '/intakes/{order_id}',
@@ -1007,7 +1101,12 @@ class MemberService:
                 failures = db.execute('SELECT COUNT(*) FROM member_auth_failures WHERE site_id=? AND identity_hash=?', (site_id, identity)).fetchone()[0]
                 if failures >= 10:
                     raise HTTPException(429, 'Too many sign-in attempts. Please try again later.')
-                patient = db.execute('SELECT * FROM member_patients WHERE site_id=? AND email=?', (site_id, body.email.lower())).fetchone()
+                patient = db.execute('SELECT * FROM member_patients WHERE site_id=? AND email=?', (site_id, body.email.strip().lower())).fetchone()
+            if self.identity:
+                member = self.authenticate_password(site_id, body.email, body.password)
+                if not patient:
+                    raise HTTPException(401, 'Open your completed purchase’s portal link to connect your account to this site.')
+                return self.session(dict(patient), member)
             candidate = password_hash(body.password, patient['salt'] if patient else '00' * 16)
             if not patient or not hmac.compare_digest(candidate, patient['password_hash']):
                 with self.db() as db:
@@ -1017,6 +1116,9 @@ class MemberService:
 
         @router.post('/auth/logout')
         def logout(site_id: str, patient=Depends(auth), credentials: HTTPAuthorizationCredentials | None = Depends(bearer)):
+            if self.identity:
+                self.identity.logout(digest(credentials.credentials))
+                return {'signed_out': True}
             with self.db() as db:
                 db.execute('DELETE FROM member_sessions WHERE token_hash=?', (digest(credentials.credentials),))
             return {'signed_out': True}

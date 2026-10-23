@@ -12,6 +12,7 @@ kill_timeout = "10s"
   CHECKOUT_AUTHORIZATION_VERIFIED = "1"
   SITE_API_MANIFEST = "/data/site-api-publications.json"
   SITE_API_ALLOWED_ORIGINS = "*"
+  MEMBER_IDENTITY_PROVIDER = "sticky"
 
 [[mounts]]
   source = "checkout_data"
