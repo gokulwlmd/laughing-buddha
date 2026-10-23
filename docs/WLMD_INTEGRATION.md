@@ -17,8 +17,8 @@ resolved before activating WLMD services; never infer one from a Sticky campaign
 The application's existing `member_verified_facts` table and `AnswerProfile`
 adapter already support trusted ID and SSN verification assertions scoped to a
 site and patient. They do not currently call WLMD. Their status comes from a
-trusted backend adapter, never from patient answer updates. No live identity
-gate or WLMD credential transport is enabled by this change. The owner confirmed the live origin `https://api.whitelabelmd.com`
+trusted backend adapter, never from patient answer updates. No live intake identity gate is enabled yet. The authorized SSN test below
+verified the WLMD credential and request contract. The owner confirmed the live origin `https://api.whitelabelmd.com`
 and FortifyHP WLMD site ID `288`. The header is `authtoken` with the
 value `key=secret`; the complete value belongs only in the encrypted Fly
 secret `WLMD_AUTHTOKEN`. `WLMD_API_URL` selects the backend origin.
@@ -37,10 +37,9 @@ Known body fields:
 
 The later Postman screenshot shows a different route:
 `POST /v1/site/{site_id}/order/{order_id}/identity_ssncheck`.
-The correct identity route still needs confirmation. The provided examples
-also use different body shapes (`ssn` versus `last4` and demographics). Success
-status values, pending/failed outcomes, expiry, response reference, user mapping
-and ID-image transport remain unconfirmed. Do not guess these, treat HTTP 200 as identity success,
+The SSN route is now confirmed by the successful test below. It takes
+`last4` and a system/caller identifier in `user`. The generic identity-check
+route and the crosscheck/ID-image contracts remain unconfirmed. Do not guess these, treat HTTP 200 as identity success,
 or send real patient data to a guessed endpoint.
 
 ## Agreed intake behavior to connect after contract confirmation
@@ -71,11 +70,9 @@ New site onboarding must request the WLMD site ID explicitly.
 
 ## Information still required
 
-- Which of the two provided identity routes/body formats is current.
-- Sanitized successful, failed and pending response examples, including the
-  meaning of `user`, verification reference and any expiry/revocation semantics.
-- Which check runs first, fallback sequence, which results satisfy the intake
-  requirement, and how `id-image` receives its image.
+- Failure/pending response semantics and any expiry/revocation semantics.
+- Crosscheck/ID-image request contracts and any required fallback sequence.
+  The successful SSN contract below is confirmed.
 
 Until supplied, preserve the existing live intake behavior. Do not claim the
 identity service is connected or mark a patient verified with mock responses.
@@ -115,3 +112,32 @@ is settled; the SSN handler/request contract is now the blocker. The observed
 POST used the `ssn` body field; the earlier example also used `last4` plus `user`,
 whose required meaning remains unspecified. No patient was marked verified and
 no success rule was inferred. Do not repeat the SSN submission for diagnostics.
+
+## Confirmed SSN success contract — 24 October 2026
+
+The owner corrected the request field to `last4` and clarified that `user`
+identifies our calling system, not the patient. The explicitly authorized test
+then returned HTTP 200, Content-Type application/json, and an object containing
+`status: "success"`. Elapsed time was approximately 6 seconds. The response also
+contained a message, which was not retained because it may include personal data.
+
+Confirmed request:
+
+- Origin: `https://api.whitelabelmd.com`.
+- Method/path: `POST /v1/site/{wlmd_site_id}/order/{owned_order_id}/identity_ssncheck`.
+- Header: `authtoken: <key>=<secret>`, sourced from `WLMD_AUTHTOKEN` on the backend.
+- JSON: `{"user":"laughing-buddha","last4":"<four digits>"}`.
+- The system identifier `laughing-buddha` was accepted in this authorized test.
+
+Success requires a successful HTTP response, a JSON object and the explicit
+string `status == "success"`. HTTP 200 alone, HTML/PHP errors, malformed JSON,
+missing/unknown status, timeout or `status: "error"` must never mark an account
+verified. Do not derive verification from the message or apply this rule to
+other WLMD methods without their contracts. No incorrect SSN was submitted as
+a negative live test. The owner authorized this specific successful test;
+repeat verification writes are not needed for QA.
+
+The credential and SSN contract are now verified. Portal/receipt identity gating,
+account-settings status and the reusable WLMD adapter remain to be implemented;
+this test did not create a local verified fact or change FortifyHP's mapping.
+No SSN digits, patient identifiers or raw response are stored in this record.

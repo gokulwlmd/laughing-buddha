@@ -539,13 +539,27 @@
     "wlmd_origin": "https://api.whitelabelmd.com",
     "fortifyhp_wlmd_site_id": "288",
     "backend_credential_configured": true,
-    "credential_authentication_verified": false,
+    "credential_authentication_verified": true,
     "identity_checks_active": false,
     "site_backend_tests": 31,
     "site_browser_scenarios": 1,
     "health_status": 200,
     "source_hashes_match": true,
     "existing_checkout_and_patient_counts_preserved": true,
-    "patient_data_sent_to_wlmd": false
+    "patient_data_sent_to_wlmd": true,
+    "authorized_ssn_contract_test": {
+      "date": "2026-10-24",
+      "route": "/v1/site/{site_id}/order/{order_id}/identity_ssncheck",
+      "http_status": 200,
+      "json_status": "success",
+      "body_fields": [
+        "user",
+        "last4"
+      ],
+      "user_semantics": "calling system",
+      "local_verified_fact_written": false,
+      "raw_response_retained": false
+    },
+    "patient_data_transfer_scope": "Only the owner-authorized SSN verification test; no automatic portal integration"
   }
 }

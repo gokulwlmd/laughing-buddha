@@ -79,8 +79,12 @@ clinical integration; read [the WLMD contract](../../../docs/WLMD_INTEGRATION.md
 Ask for each site's WLMD site ID, never infer it from the Sticky campaign ID.
 Reuse a trusted site/patient verification before invoking WLMD again. Keep
 provider credentials server-side and never persist SSN digits or raw ID images
-as reusable intake answers. The supplied identity-check endpoint still needs
-its base URL, authentication and response/fallback contract confirmed.
+as reusable intake answers. The live SSN contract is confirmed: POST `/v1/site/{site}/order/{order}/identity_ssncheck`,
+JSON `last4` plus `user` identifying the calling system, and the encrypted
+`authtoken` header. Require the explicit JSON string `status: "success"`;
+HTTP 200/PHP errors are not verification. Do not send `ssn` to this route.
+The shared intake gate and account status still need implementation; other
+identity methods, failure/expiry and fallback contracts remain unconfirmed.
 
 The owner's current included-claim lead time is 20 days: 70/160/250 for the
 12-month quarterly-delivery plan, 70 for six months. Preserve actual unused

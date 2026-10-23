@@ -609,3 +609,14 @@ result. OPTIONS independently raises a routing error and is not evidence that
 the POST route is missing. Resolve the handler/body contract (`ssn` versus
 `last4`/`user`) with the WLMD developer; do not keep asking for the hostname.
 No verified fact was saved. Sanitized evidence is in WLMD_INTEGRATION.md.
+
+WLMD blocker resolved for SSN: owner clarified `last4` (not `ssn`) and that
+`user` identifies our system. Authorized live POST to the Postman-shaped
+identity_ssncheck route with system identifier `laughing-buddha` returned JSON
+`status: "success"` in about 6 seconds. Credential authentication and this SSN
+contract are now verified. Use the explicit JSON success string, never HTTP 200
+alone. No local verified fact was created by the standalone test. Next work is
+the shared server adapter, site/patient status persistence and intake gate/UI;
+crosscheck/ID-image and failure/expiry semantics remain separate unconfirmed
+contracts. Do not repeat the earlier malformed requests. Sanitized details are
+in WLMD_INTEGRATION.md; no request personal data or raw message was retained.
