@@ -28,6 +28,54 @@ async function reflow(page,width){expect(await page.evaluate(()=>document.docume
 async function orders(page){await page.getByRole('button',{name:'Orders & plans',exact:true}).click();await expect(page.locator('.full-order')).toContainText('9001');}
 async function proof(page,member){const result=await(await page.request.get(member.origin+'/__member_qa')).json();expect(result.calls['POST /api/v1/new_order']||0).toBe(0);expect(result.calls['POST /api/v1/authorize_payment']||0).toBe(0);expect(result.calls['POST /api/v1/order_force_bill']||0).toBe(0);return result;}
 
+test('MEMBER-18 FortifyHP theme retains all patient routes and resets for another site',async({page,member},testInfo)=>{
+  await page.route('**/api/v1/sites/site-a/portal/**',async route=>{
+    const response=await route.fetch(),data=await response.json();if(data.site)data.site={...data.site,name:'FortifyHP',theme:'fortifyhp',color:'#A2563F'};
+    await route.fulfill({response,json:data});
+  });
+  await page.goto(member.origin+'/portal/site-a');
+  await expect(page.locator('body')).toHaveAttribute('data-portal-theme','fortifyhp');
+  await expect(page.getByRole('img',{name:'FortifyHP',exact:true})).toBeVisible();
+  expect(await page.locator('body').evaluate(node=>getComputedStyle(node).backgroundColor)).toBe('rgb(244, 241, 236)');
+  await readable(page);await page.screenshot({path:testInfo.outputPath('fortifyhp-sign-in.png'),fullPage:true});
+  await enroll(page,member);
+  await expect(page.locator('body')).toHaveAttribute('data-portal-theme','fortifyhp');
+  await expect(page.getByRole('img',{name:'FortifyHP',exact:true})).toBeVisible();
+  for(const width of [1440,720,390]){
+    await page.setViewportSize({width,height:1000});
+    for(const name of ['Overview','Orders & plans','Refills','Medical intake','Messages','Notifications']){
+      await page.getByRole('button',{name,exact:true}).click();
+      await expect(page.getByRole('button',{name,exact:true})).toHaveAttribute('aria-current','page');
+      await expect(page.locator('body')).toHaveAttribute('data-portal-theme','fortifyhp');
+      await expect(page.locator('.loading-card')).toHaveCount(0);await reflow(page,width);await readable(page);
+    }
+    await page.getByRole('button',{name:'Overview',exact:true}).click();
+    await page.screenshot({path:testInfo.outputPath(`fortifyhp-home-${width}.png`),fullPage:true});
+  }
+  await page.getByRole('button',{name:'Orders & plans',exact:true}).click();
+  for(const name of ['Pause subscription','Update delivery address','Future delivery address','Update payment card'])await expect(page.getByRole('button',{name,exact:true})).toBeVisible();
+  await page.goto(member.origin+'/portal/site-b');
+  await expect(page.locator('body')).toHaveAttribute('data-portal-theme','default');
+  await expect(page.getByRole('heading',{name:'Welcome back.',exact:true})).toBeVisible();
+  await expect(page.locator('body')).not.toContainText('9001');await proof(page,member);
+});
+
+test('MEMBER-19 staff can edit site-only refill rules without exposing settings to patients',async({page,member})=>{
+  await ownerLogin(page,member);await page.getByRole('button',{name:'Refill settings',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Refill settings',exact:true})).toBeVisible();
+  await expect(page.locator('#site-rule-sku')).toHaveValue('SEMA-1M-SUB');
+  await page.getByLabel('Minimum days before refill access',{exact:true}).fill('30');
+  await page.getByRole('button',{name:'Save site refill settings',exact:true}).click();
+  await expect(page.locator('.notice.success')).toContainText('saved for this site');
+  await page.reload();await page.getByRole('button',{name:'Refill settings',exact:true}).click();
+  await expect(page.getByLabel('Minimum days before refill access',{exact:true})).toHaveValue('30');
+  await page.locator('#site-select').selectOption('site-b');
+  await expect(page.getByRole('heading',{name:'No products assigned yet',exact:true})).toBeVisible();
+  await page.goto(member.origin+'/portal/site-a');
+  await expect(page.getByRole('button',{name:'Refill settings',exact:true})).toHaveCount(0);
+  await proof(page,member);
+});
+
 test('MEMBER-01 actual-order sync, invitation enrollment and site isolation without fabricated orders',async({page,member})=>{
   const requests=[];page.on('request',request=>requests.push(request.url()));await enroll(page,member);await orders(page);
   await expect(page.locator('.full-order')).toContainText('$1.00');await expect(page.locator('#site-select')).toHaveCount(0);await expect(page.locator('.persona-switch')).toHaveCount(0);expect(requests.some(url=>url.includes('/api/demo/workspaces'))).toBe(false);

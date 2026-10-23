@@ -8,6 +8,7 @@ import hmac
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 import http.client
+import ipaddress
 from http.cookies import SimpleCookie
 from html.parser import HTMLParser
 import json
@@ -251,12 +252,17 @@ class CheckoutTransport:
     A failed request is never retried, including on a previously healthy socket.
     Financial callers therefore retain their existing uncertain-result handling.
     """
-    def __init__(self,upstream=PUBLIC_UPSTREAM,*,max_connections=8,idle_timeout=4.0,timeout=90.0):
-        if upstream != PUBLIC_UPSTREAM:
+    def __init__(self,upstream=PUBLIC_UPSTREAM,*,max_connections=8,idle_timeout=4.0,timeout=90.0,
+                 approved_origins=(PUBLIC_UPSTREAM,),loopback_port=None):
+        parsed=parse.urlsplit(upstream)
+        if upstream not in approved_origins or parsed.scheme!='https' or not parsed.hostname or parsed.username or parsed.password or parsed.path or parsed.query or parsed.fragment:
             raise ValueError('Unexpected checkout upstream')
+        if loopback_port is not None and (type(loopback_port) is not int or not 1<=loopback_port<=65535):
+            raise ValueError('Invalid local checkout port')
         if max_connections<1 or idle_timeout<=0 or timeout<=0:
             raise ValueError('Invalid checkout connection pool settings')
         self.upstream=upstream
+        self._loopback_port=loopback_port
         self._host=parse.urlsplit(upstream).hostname
         self._context=ssl.create_default_context()
         self._max_connections=max_connections;self._idle_timeout=idle_timeout;self._timeout=timeout
@@ -275,7 +281,9 @@ class CheckoutTransport:
                 if self._count<self._max_connections:
                     # Construction does not perform network I/O. The first request
                     # connects using the system trust store and hostname checking.
-                    connection=http.client.HTTPSConnection(self._host,timeout=self._timeout,context=self._context)
+                    connection=(http.client.HTTPConnection('127.0.0.1',self._loopback_port,timeout=self._timeout)
+                        if self._loopback_port is not None else
+                        http.client.HTTPSConnection(self._host,timeout=self._timeout,context=self._context))
                     self._count+=1
                     return connection
                 remaining=deadline-time.monotonic()
@@ -298,7 +306,7 @@ class CheckoutTransport:
 
     def call(self,row,method,path,body=None,client_ip=None):
         # Paths and link IDs come only from the server's published catalog.
-        if not re.fullmatch(r'/c/choice-[a-f0-9]{32}|/api/(?:start-checkout|config|status|quote|authorize|resume|capture)',path):
+        if not re.fullmatch(r'/c/choice-[a-f0-9]{32}|/api/(?:start-checkout|config|status|quote|authorize|resume|capture|portal-enrollment)',path):
             raise ValueError('Unexpected checkout path')
         target=path
         if path.startswith('/api/'):
@@ -306,13 +314,18 @@ class CheckoutTransport:
         cookies=json.loads(row['cookies'])
         if any(not (k=='__Host-checkout-browser' or re.fullmatch(r'purchase_[a-f0-9]{20}',k)) for k in cookies):
             raise ValueError('Unexpected upstream cookie')
-        headers={'Accept':'application/json','Host':parse.urlsplit(PUBLIC_UPSTREAM).netloc,
+        headers={'Accept':'application/json','Host':parse.urlsplit(self.upstream).netloc,
             'Cookie':'; '.join(k+'='+v for k,v in cookies.items())}
         if row['attempt']:headers['X-Checkout-Attempt']=row['attempt']
         if method=='POST':
-            headers.update({'Content-Type':'application/json','Origin':PUBLIC_UPSTREAM,'X-CSRF-Token':row['csrf']})
+            headers.update({'Content-Type':'application/json','Origin':self.upstream,'X-CSRF-Token':row['csrf']})
         # Do not forward/spoof a customer IP through the public Fly proxy.
         # The unchanged engine attributes these calls to this API service.
+        # A dedicated same-process loopback connection never traverses that
+        # proxy: retain its already edge-supplied address for the engine.
+        if self._loopback_port is not None and client_ip:
+            try:headers['Fly-Client-IP']=str(ipaddress.ip_address(client_ip))
+            except ValueError:pass
         encoded=json.dumps(body).encode() if body is not None else None
         connection=None;reusable=False
         try:
@@ -352,7 +365,8 @@ def terms(q):
     return f"Pay {total} today. "+(f"Renews every {o['days']} days." if o['recurring'] else 'One-time payment. No automatic renewal.')
 
 
-def install_session_api(app,site_check,catalog_loader,store,transport,origin,allowed_origins=(),clock=time.monotonic):
+def install_session_api(app,site_check,catalog_loader,store,transport,origin,allowed_origins=(),clock=time.monotonic,portal_site_for=None,
+                        checkout_origin=PUBLIC_UPSTREAM):
     router=APIRouter(prefix='/api/v1/sites/{site_id}/sessions',tags=['On-page checkout API'])
     bearer=HTTPBearer(auto_error=False,scheme_name='CheckoutSession',description='Paste the session_token from POST sessions. This is scoped to one customer checkout, not an account key.')
     display_configuration=DisplayConfigurationCache(clock=clock)
@@ -405,11 +419,11 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
     def create(site_id:str,body:CreateSession,req:Request):
         """Returns a session ID/token, not a hosted checkout URL. Save these before sending quote/payment requests. No charge or payment authorization is created."""
         ready();site_check(site_id);origin_check(req)
-        _,routes=catalog_loader()
+        _,routes=catalog_loader(site_id)
         target=routes.get(body.plan_id)
         if not target:raise HTTPException(404,'Plan not found')
         url=parse.urlsplit(target);selection=parse.parse_qs(url.query).get('selection',[])
-        if url.scheme+'://'+url.netloc!=PUBLIC_UPSTREAM or not re.fullmatch(r'/c/choice-[a-f0-9]{32}',url.path) or len(selection)!=1:
+        if url.scheme+'://'+url.netloc!=checkout_origin or not re.fullmatch(r'/c/choice-[a-f0-9]{32}',url.path) or len(selection)!=1:
             raise HTTPException(503,'Published checkout mapping needs review')
         row,token=store.create(site_id,body.plan_id,url.path.split('/')[-1],selection[0])
         try:
@@ -545,9 +559,12 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
                     raise HTTPException(409,'Complete the checkout before creating a member account')
                 result=call(row,'POST','/api/portal-enrollment',{},req)
                 url=parse.urlsplit(result.get('enrollment_url',''))
-                upstream=parse.urlsplit(getattr(transport,'upstream',PUBLIC_UPSTREAM))
+                upstream=parse.urlsplit(checkout_origin)
                 if url.scheme!='https' or url.netloc!=upstream.netloc or not url.path.startswith('/portal/') or url.username or url.password:
                     raise UpstreamError(detail='The member portal link could not be verified')
+                expected_site=portal_site_for(site_id) if portal_site_for else None
+                if expected_site and (result.get('site_id')!=expected_site or url.path!='/portal/'+expected_site):
+                    raise UpstreamError(detail='The member portal does not belong to this site')
                 return PortalEnrollmentResult.model_validate(result)
             except UpstreamError as exc:raise translated(exc)
 

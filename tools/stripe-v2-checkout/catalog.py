@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 from prepaid import cycles_for, renewal_for
+from external_fulfillment import fortifyhp_prepaid_supported
 
 
 class CatalogError(Exception):
@@ -70,7 +71,7 @@ def resolve(api, campaign_id, sku, allowed_keys=None):
                 reason = 'This offer needs a prepaid, series, seasonal or trial selection that this checkout does not yet support.'
             if any(enabled(product.get(k)) for k in ('is_bundle', 'is_variant_enabled')):
                 reason = 'This product needs bundle or variant selections that this checkout does not yet support.'
-            if prepaid_cycles and (enabled(product.get('is_shippable')) or enabled(product.get('taxable',product.get('is_taxable')))):
+            if prepaid_cycles and (enabled(product.get('is_shippable')) or enabled(product.get('taxable',product.get('is_taxable')))) and not fortifyhp_prepaid_supported(c, product, o):
                 reason='Prepaid medication fulfillment and taxes require a verified release workflow. This version supports non-shippable test products only.'
             for m in o.get('offer_billing_models') or o.get('billing_models', []):
                 if enabled(m.get('is_archived')):

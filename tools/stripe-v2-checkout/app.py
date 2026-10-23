@@ -658,6 +658,9 @@ def create_app(settings=None, sticky=None):
     @app.post('/api/portal-enrollment')
     def portal_enrollment(body: CaptureRequest, req: Request):
         return members.receipt_invite(member_receipt(req))
+    if os.environ.get('SITE_API_MANIFEST'):
+        from demo.runtime import install_site_api
+        install_site_api(app)
     app.mount('/assets', StaticFiles(directory=HERE / 'web'), name='assets')
     return app
 

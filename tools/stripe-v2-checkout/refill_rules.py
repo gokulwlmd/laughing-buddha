@@ -35,6 +35,10 @@ class SaveRefillRules(RefillRules):
     expected_revision: int = Field(ge=0, strict=True)
 
 
+def site_rule_key(site_id, sku):
+    return site_id + ':' + sku
+
+
 def policy(admin, sku):
     saved = admin.get('refill_policy', sku)
     return dict(RefillRules().model_dump(), sku=sku, revision=0) | (saved or {})

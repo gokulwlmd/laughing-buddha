@@ -43,6 +43,34 @@ def row(cookie=''):
 
 
 class CheckoutConnectionPoolTests(unittest.TestCase):
+    def test_dedicated_origin_and_loopback_are_explicit_server_configuration(self):
+        origin='https://fortifyhp-0f89b1bb.fly.dev'
+        with self.assertRaises(ValueError):CheckoutTransport(origin)
+        with self.assertRaises(ValueError):CheckoutTransport(origin,approved_origins=(origin,),loopback_port='8080')
+        connection=Connection([Response()])
+        with patch('demo.session_api.http.client.HTTPConnection',return_value=connection) as local, \
+                patch('demo.session_api.http.client.HTTPSConnection') as remote:
+            transport=CheckoutTransport(origin,approved_origins=(origin,),loopback_port=8080)
+            transport.call(row(),'POST','/api/quote',{},client_ip='203.0.113.42')
+            self.assertEqual(local.call_args.args,('127.0.0.1',8080))
+            self.assertEqual(connection.requests[0][3]['Origin'],origin)
+            self.assertEqual(connection.requests[0][3]['Host'],'fortifyhp-0f89b1bb.fly.dev')
+            self.assertEqual(connection.requests[0][3]['Fly-Client-IP'],'203.0.113.42')
+            self.assertFalse(remote.called)
+            transport.close()
+
+    def test_portal_enrollment_uses_the_existing_attempt_and_fixed_upstream(self):
+        connection=Connection([Response(b'{"site_id":"fortifyhp"}')])
+        with patch('demo.session_api.http.client.HTTPSConnection',return_value=connection):
+            transport=CheckoutTransport()
+            data,_=transport.call(row('customer'),'POST','/api/portal-enrollment',{})
+            self.assertEqual(data,{'site_id':'fortifyhp'})
+            sent=connection.requests[0]
+            self.assertEqual(sent[1],'/api/portal-enrollment?link_id=choice-'+'a'*32)
+            self.assertEqual(sent[3]['X-Checkout-Attempt'],'synthetic-attempt')
+            self.assertEqual(sent[3]['Cookie'],'__Host-checkout-browser=customer')
+            transport.close()
+
     def test_connection_reused_without_cookie_or_identity_leakage(self):
         connection=Connection([
             Response(cookies=['__Host-checkout-browser=first; Secure',

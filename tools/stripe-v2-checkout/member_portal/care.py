@@ -147,7 +147,7 @@ class CareManager:
 
     def configured(self, row):
         # Existing plans keep their mapping if the master policy is later edited.
-        return bool(self.saved_plan(row) or self.s.rule(row['sku']).get('intake_template_id'))
+        return bool(self.saved_plan(row) or self.s.rule(row['sku'], row['site_id']).get('intake_template_id'))
 
     def grant(self, row):
         with self.s.db() as db:
@@ -163,13 +163,13 @@ class CareManager:
 
     def settings(self, row):
         saved = self.saved_plan(row)
-        return json.loads(saved['snapshot'])['rule'] if saved else self.s.rule(row['sku'])
+        return json.loads(saved['snapshot'])['rule'] if saved else self.s.rule(row['sku'], row['site_id'])
 
     def ensure(self, row):
         previous = self.saved_plan(row)
         if previous:
             return previous
-        snap, raw, rule = json.loads(row['snapshot']), json.loads(row['payload']), self.s.rule(row['sku'])
+        snap, raw, rule = json.loads(row['snapshot']), json.loads(row['payload']), self.s.rule(row['sku'], row['site_id'])
         if not rule.get('intake_template_id'):
             return None
         if not snap.get('schedule_verified'):
@@ -270,7 +270,7 @@ class CareManager:
         checkpoints = [t for t in tasks if t['refill_checkpoint']]
         active = [t for t in checkpoints if self.s.date(t['request_opens_at']) <= today]
         early_task = (active[-1] if active else checkpoints[0]) if checkpoints else None
-        live_rule = self.s.rule(row['sku'])
+        live_rule = self.s.rule(row['sku'], row['site_id'])
         if early_task and rule.get('allow_early_requests') and live_rule.get('allow_early_requests') and not expired:
             early_start = start + timedelta(days=int(rule.get('early_request_minimum_days', 0)))
             if today >= early_start:
@@ -282,7 +282,7 @@ class CareManager:
         return tasks
 
     def native_claims_enabled(self, row):
-        return bool(self.s.rule(row['sku']).get('included_refills_enabled'))
+        return bool(self.s.rule(row['sku'], row['site_id']).get('included_refills_enabled'))
 
     def claim_context(self, row, task_id):
         """Local scope and original-term evidence only; no provider side effect.
@@ -306,7 +306,7 @@ class CareManager:
             raise HTTPException(409, 'This checkpoint does not match an included shipment in the purchased term')
         start = self.s.date(data['start_date'])
         due = start + timedelta(days=task['day_offset'])
-        window = int(self.s.rule(row['sku']).get('claim_window_days', 10))
+        window = int(self.s.rule(row['sku'], row['site_id']).get('claim_window_days', 10))
         with self.s.db() as db:
             initial = db.execute("SELECT status,simulated FROM member_care_intakes WHERE plan_id=? AND task_id='initial'", (plan['id'],)).fetchone()
             checks = db.execute('SELECT task_id,status,simulated,claim_id,claim_order_id FROM member_claim_intakes WHERE plan_id=?', (plan['id'],)).fetchall()
@@ -317,7 +317,7 @@ class CareManager:
             complete = next((record for record in checks if record['task_id'] == preceding['id'] and record['status'] == 'submitted'), None)
             earlier.append({'task_id': preceding['id'], 'complete': bool(complete), 'simulated': bool(complete and complete['simulated'])})
         return {'plan': plan, 'task': task, 'snapshot': snapshot, 'target_cycle': task['day_offset'] // interval + 1,
-            'start_date': start.isoformat(), 'due_date': due.isoformat(), 'opens_at': max(start + timedelta(days=int(self.s.rule(row['sku']).get('minimum_days', 0))), due - timedelta(days=window)).isoformat(),
+            'start_date': start.isoformat(), 'due_date': due.isoformat(), 'opens_at': max(start + timedelta(days=int(self.s.rule(row['sku'], row['site_id']).get('minimum_days', 0))), due - timedelta(days=window)).isoformat(),
             'initial_complete': bool(initial and initial['status'] == 'submitted'), 'initial_simulated': bool(initial and initial['simulated']),
             'earlier_claim_checkins': earlier, 'included_claims_enabled': self.native_claims_enabled(row),
             'effective_date': self.simulation(row)['effective_date']}
@@ -384,7 +384,7 @@ class CareManager:
             raise HTTPException(404, 'Care checkpoint not found in this order')
         result.update(task_id=task['id'], next_date=task['due_date'], _plan_id=plan['id'],
             _cycle_key=f'care:{plan["id"]}:{task["id"]}', _simulated=self.simulation(row)['enabled'])
-        current_rule = self.s.rule(row['sku'])
+        current_rule = self.s.rule(row['sku'], row['site_id'])
         if self.native_claims_enabled(row):
             return result | {'reason': 'Use the included shipment claim when it becomes available, or choose a new paid plan from the store.'}
         if not rule.get('enabled') or not current_rule.get('enabled'):

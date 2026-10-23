@@ -9,6 +9,7 @@ import json
 import secrets
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
+from external_fulfillment import fortifyhp_order_scope
 from .provider import ProviderError, ProviderRejected, ProviderUncertain
 from .care import stamp
 
@@ -62,7 +63,7 @@ class ClaimsManager:
         return dict(row) if row else None
 
     def task_state(self, row, plan, task):
-        rule = self.s.rule(row['sku'])
+        rule = self.s.rule(row['sku'], row['site_id'])
         result = {'available': False, 'status': 'unavailable', 'order_id': None, 'claim_id': None,
                   'created_at': None, 'opens_at': None, 'amount': '0.00', 'reason': '', 'simulated': False}
         if not rule.get('included_refills_enabled') or task['kind'] == 'initial':
@@ -107,8 +108,10 @@ class ClaimsManager:
         payment_test_only = bool(raw.get('test_order') or json.loads(parent['snapshot']).get('payment_test_only'))
         if payment_test_only and not rule.get('test_requests_enabled'):
             return result | {'reason': 'Claims are not enabled for this test order.'}
-        if line.get('is_shippable') is not False:
-            return result | {'reason': 'Please contact support to arrange this refill while fulfillment setup is completed.'}
+        external = (line.get('is_shippable') is True and raw.get('test_order') is False
+                    and fortifyhp_order_scope(raw.get('campaign_id'), raw.get('gateway_id'), line.get('sku')))
+        if line.get('is_shippable') is not False and not external:
+            return result | {'reason': 'Please contact support to arrange this refill.'}
         today = self.s.date(self.s.care.simulation(row)['effective_date'])
         if today >= start + timedelta(days=data['coverage_days']):
             return result | {'reason': 'This prepaid term has ended. Choose your next plan.'}

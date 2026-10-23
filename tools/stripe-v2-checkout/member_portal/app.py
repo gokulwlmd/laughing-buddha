@@ -29,6 +29,7 @@ from .provider import StickyOrderProvider, ProviderError, ProviderUncertain, Pro
 from .care import CareManager, CarePlan
 from .claims import ClaimsManager
 from .notifications import NotificationsResult, order_notifications
+from refill_rules import RefillRules, SaveRefillRules, site_rule_key
 
 HERE = Path(__file__).parent
 SESSION_SECONDS = 86400
@@ -132,6 +133,7 @@ class SiteModel(BaseModel):
     color: str
     logo_url: str = ''
     support_email: str = ''
+    theme: str = 'default'
 
 
 class TherapyModel(BaseModel):
@@ -373,8 +375,14 @@ class MemberService:
         if not site:
             raise HTTPException(404, 'Site not found')
         brand = self.admin.get('brand', site['brand_id']) or {}
+        # Named themes are presentation only. Site/order ownership still uses
+        # the saved site ID; a brand name or incoming host never grants access.
+        theme = site.get('portal_theme', 'fortifyhp' if site_id == 'fortifyhp' else 'default')
+        if theme not in ('default', 'fortifyhp'):
+            theme = 'default'
         return site, {'id': site_id, 'name': site['name'], 'color': brand.get('color', '#245844'),
-                      'logo_url': brand.get('logo_url', ''), 'support_email': brand.get('support_email', '')}
+                      'logo_url': brand.get('logo_url') or ('/portal-assets/fortifyhp/logo.png' if theme == 'fortifyhp' else ''), 'support_email': brand.get('support_email', ''),
+                      'theme': theme}
 
     def origin(self, req):
         if req.headers.get('origin') not in (None, self.cfg.public_url):
@@ -585,9 +593,32 @@ class MemberService:
             raise HTTPException(404, 'Order not found in this account')
         return dict(row)
 
-    def rule(self, sku):
+    def rule(self, sku, site_id=None):
+        if site_id:
+            saved = self.admin.get('site_refill_policy', site_rule_key(site_id, sku))
+            if saved and saved.get('site_id') == site_id and saved.get('sku') == sku:
+                return saved
         return self.admin.get('refill_policy', sku) or {'enabled': False, 'minimum_days': 0, 'request_window_days': 14,
                                                      'check_in_required': True, 'review_required': True, 'test_requests_enabled': False, 'revision': 0}
+
+    def site_rule_products(self, site_id):
+        site, _ = self.site(site_id)
+        products = {}
+        for plan in self.admin.records('plan_checkout'):
+            if (plan.get('site_id') != site_id or plan.get('brand_id') != site['brand_id']
+                    or plan.get('campaign_id') != site['campaign_id']):
+                continue
+            for master in (plan.get('template_snapshot') or {}).get('masters', []):
+                if master.get('sku'):
+                    products[master['sku']] = master
+        return products
+
+    def site_rule_public(self, site_id, sku, product):
+        saved = self.admin.get('site_refill_policy', site_rule_key(site_id, sku))
+        rule = self.rule(sku, site_id)
+        result = RefillRules.model_validate({key: value for key, value in rule.items() if key in RefillRules.model_fields}).model_dump()
+        return dict(result, sku=sku, site_id=site_id, name=product.get('name') or sku,
+                    revision=saved['revision'] if saved else 0, source='site' if saved else 'master')
 
     @staticmethod
     def date(value):
@@ -608,7 +639,7 @@ class MemberService:
         return self.legacy_refill_availability(row)
 
     def legacy_refill_availability(self, row):
-        raw, snapshot, rule = json.loads(row['payload']), json.loads(row['snapshot']), self.rule(row['sku'])
+        raw, snapshot, rule = json.loads(row['payload']), json.loads(row['snapshot']), self.rule(row['sku'], row['site_id'])
         line = raw['products'][0]
         test_only = bool(snapshot.get('payment_test_only') or raw.get('test_order'))
         result = {'eligible': False, 'reason': 'Refill requests are not enabled for this SKU.', 'next_date': None, 'test_only': test_only}
@@ -1209,7 +1240,7 @@ class MemberService:
                     raise HTTPException(409, availability.get('early_reason') or availability['reason'])
             elif not availability['eligible']:
                 raise HTTPException(409, availability['reason'])
-            rule = self.care.settings(order) if self.care.configured(order) else self.rule(body.sku)
+            rule = self.care.settings(order) if self.care.configured(order) else self.rule(body.sku, site_id)
             if body.kind == 'early' and rule.get('early_reason_required', True) and not body.reason.strip():
                 raise HTTPException(422, 'Tell the review team why you are requesting an early refill')
             with self.db() as db:
@@ -1236,6 +1267,40 @@ class MemberService:
                     db.execute('INSERT INTO member_refill_tasks VALUES(?,?,?,?)', (key, availability['_plan_id'], body.task_id, int(availability.get('_simulated', False))))
                 row = db.execute('SELECT * FROM member_refills WHERE id=?', (key,)).fetchone()
             return {'request': self.refill_public(row)}
+
+        @owner.get('/refill-rules')
+        def site_refill_rules(site_id: str, req: Request):
+            self.admin.authenticated(req)
+            return {'site_id': site_id, 'rules': [self.site_rule_public(site_id, sku, product)
+                    for sku, product in sorted(self.site_rule_products(site_id).items())]}
+
+        @owner.put('/refill-rules/{sku}')
+        def save_site_refill_rules(site_id: str, sku: str, body: SaveRefillRules, req: Request):
+            self.admin.authenticated(req, True)
+            products = self.site_rule_products(site_id)
+            if sku not in products:
+                raise HTTPException(404, 'This product is not assigned to the selected site')
+            from .intake_templates import binding_for_sku
+            binding = binding_for_sku(sku)
+            if body.intake_template_id and (not binding or binding['template_id'] != body.intake_template_id):
+                raise HTTPException(422, 'Choose the intake assigned to this product')
+            if body.check_in_days and not body.intake_template_id:
+                raise HTTPException(422, 'Choose a product intake before scheduling check-ins')
+            setup = products[sku].get('product_setup') or {}
+            if body.included_refills_enabled and (not body.initial_intake_required or not body.check_in_required
+                    or not body.intake_template_id or not body.check_in_days
+                    or body.check_in_days != (setup.get('shipment_days') or [])[1:]):
+                raise HTTPException(422, 'Included refills require an initial intake and check-ins matching this product’s included shipment days')
+            key = site_rule_key(site_id, sku)
+            with self.db() as db:
+                db.execute('BEGIN IMMEDIATE')
+                row = db.execute("SELECT data FROM admin_config WHERE kind='site_refill_policy' AND id=?", (key,)).fetchone()
+                previous = json.loads(row[0]) if row else {'revision': 0}
+                if previous['revision'] != body.expected_revision:
+                    raise HTTPException(409, 'These site refill settings changed. Reload before saving.')
+                value = dict(body.model_dump(exclude={'expected_revision'}), site_id=site_id, sku=sku, revision=previous['revision'] + 1)
+                db.execute("INSERT INTO admin_config(kind,id,data) VALUES('site_refill_policy',?,?) ON CONFLICT(kind,id) DO UPDATE SET data=excluded.data", (key, json.dumps(value)))
+            return self.site_rule_public(site_id, sku, products[sku])
 
         @owner.get('/overview')
         def overview(site_id: str, req: Request, therapy_id: str | None = None):
@@ -1341,6 +1406,13 @@ class MemberService:
             if name not in ('portal.js', 'portal.css', 'red-hat-display-latin-v1.woff2', 'red-hat-display-OFL.txt'):
                 raise HTTPException(404, 'Asset not found')
             return FileResponse(HERE / 'web' / name)
+
+        @app.get('/portal-assets/fortifyhp/{name}', include_in_schema=False)
+        def fortify_asset(name: str):
+            if name not in ('logo.png', 'code-pro.ttf'):
+                raise HTTPException(404, 'Asset not found')
+            return FileResponse(HERE / 'web' / 'fortifyhp' / name,
+                                media_type='image/png' if name == 'logo.png' else 'font/ttf')
 
         @app.get('/portal/{site_id}/openapi.json', include_in_schema=False)
         def schema(site_id: str):
