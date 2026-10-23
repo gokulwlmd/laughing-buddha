@@ -103,3 +103,15 @@ verified. HTTP 200 alone must never be used as the success rule. The complete
 resolved Postman `api_url` (including any base path) has been requested. Do not
 retry an identity write automatically or copy request data/raw responses into
 logs or fixtures. No raw response, SSN digits or personal data was saved.
+
+Follow-up: the owner confirmed the resolved origin is exactly
+`https://api.whitelabelmd.com`. A targeted POST to the Postman SSN route with
+the supplied SSN field returned HTTP 200 / text/html containing a fatal PHP
+`TypeError`; it was not a web page or JSON verification result. Sanitized stack
+metadata referenced Identity.php and controller/routing files. No embedded JSON
+result was present. An OPTIONS diagnostic returns a routing fatal error, so
+OPTIONS must not be used to infer that this POST route is absent. The hostname
+is settled; the SSN handler/request contract is now the blocker. The observed
+POST used the `ssn` body field; the earlier example also used `last4` plus `user`,
+whose required meaning remains unspecified. No patient was marked verified and
+no success rule was inferred. Do not repeat the SSN submission for diagnostics.

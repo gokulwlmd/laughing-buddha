@@ -602,3 +602,10 @@ verification result on the configured live origin. One returned non-JSON; the
 PHP-shaped route returned an error 404 from RoutingMiddleware.php. No patient
 was marked verified. Await the full resolved Postman api_url/base path before
 another identity request. See WLMD_INTEGRATION.md; test personal data is omitted.
+
+WLMD correction: live hostname is confirmed. The Postman-shaped POST SSN
+route returns a PHP TypeError (HTTP 200, not JSON), rather than a verification
+result. OPTIONS independently raises a routing error and is not evidence that
+the POST route is missing. Resolve the handler/body contract (`ssn` versus
+`last4`/`user`) with the WLMD developer; do not keep asking for the hostname.
+No verified fact was saved. Sanitized evidence is in WLMD_INTEGRATION.md.
