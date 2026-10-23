@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt
 from patient_demo.app import clean_answers, visible, IntakePatch, IntakeSubmit, IntakeResponse, MessageBody
 from patient_demo.provider import get_template, THERAPIES as QUESTION_THERAPIES
 from .provider import StickyOrderProvider, ProviderError, ProviderUncertain, ProviderRejected
+from .care import CareManager, CarePlan
 
 HERE = Path(__file__).parent
 SESSION_SECONDS = 86400
@@ -87,6 +88,7 @@ class ActionBody(Form):
 
 
 class RefillBody(ActionBody):
+    task_id: str | None = Field(default=None, max_length=80, pattern=r'^[a-z0-9-]+$')
     kind: str = Field(default='scheduled', pattern=r'^(scheduled|early)$')
     reason: str = Field(default='', max_length=1000)
     order_id: str = Field(min_length=1, max_length=40, pattern=r'^\d+$')
@@ -169,6 +171,7 @@ class SubscriptionModel(BaseModel):
 
 
 class RefillAvailability(BaseModel):
+    task_id: str | None = None
     eligible: bool
     reason: str
     next_date: str | None = None
@@ -180,6 +183,7 @@ class RefillAvailability(BaseModel):
 
 
 class OrderModel(BaseModel):
+    care_plan: CarePlan | None = None
     id: str
     number: str
     site_id: str
@@ -208,6 +212,7 @@ class OrdersResult(BaseModel):
 
 
 class MemberIntakeResponse(IntakeResponse):
+    task_id: str | None = None
     provider_connected: bool = False
 
 
@@ -226,6 +231,8 @@ class MessagesResult(BaseModel):
 
 
 class RefillModel(BaseModel):
+    task_id: str | None = None
+    simulated: bool = False
     id: str
     order_id: str
     sku: str
@@ -305,6 +312,8 @@ class MemberService:
                 db.execute("ALTER TABLE member_refills ADD COLUMN kind TEXT NOT NULL DEFAULT 'scheduled'")
             if 'reason' not in existing_columns:
                 db.execute("ALTER TABLE member_refills ADD COLUMN reason TEXT NOT NULL DEFAULT ''")
+
+        self.care = CareManager(self)
 
     def db(self):
         db = self.store.db()
@@ -543,7 +552,14 @@ class MemberService:
                 pass
         return None
 
-    def refill_availability(self, row):
+    def refill_availability(self, row, task_id=None):
+        if self.care.configured(row):
+            return self.care.availability(row, task_id)
+        if task_id is not None:
+            raise HTTPException(404, 'This order does not have that care checkpoint')
+        return self.legacy_refill_availability(row)
+
+    def legacy_refill_availability(self, row):
         raw, snapshot, rule = json.loads(row['payload']), json.loads(row['snapshot']), self.rule(row['sku'])
         line = raw['products'][0]
         test_only = bool(snapshot.get('payment_test_only') or raw.get('test_order'))
@@ -595,7 +611,7 @@ class MemberService:
         result['_cycle_key'] = f'{snapshot.get("root_order_id", row["order_id"])}:{line.get("subscription_id") or line["product_id"]}:{snapshot.get("term_order_id", row["order_id"])}:{cycle}:{due.isoformat()}'
         early_date = created + timedelta(days=int(rule.get('early_request_minimum_days', 0)))
         with self.db() as db:
-            last_early = db.execute("SELECT MAX(r.created) FROM member_refills r JOIN member_grants g ON g.site_id=r.site_id AND g.patient_id=r.patient_id WHERE g.site_id=? AND g.order_id=? AND r.sku=? AND r.kind='early'", (row['site_id'], row['order_id'], row['sku'])).fetchone()[0]
+            last_early = self.care.last_early(db, row, self.care.grant(row))
         if last_early is not None:
             early_date = max(early_date, datetime.fromtimestamp(last_early, timezone.utc).date() + timedelta(days=int(rule.get('early_request_cooldown_days', 7))))
         result['early_next_date'] = early_date.isoformat()
@@ -624,8 +640,11 @@ class MemberService:
                                   'address_update_available': bool(raw.get('contact_id')) and line.get('billing_status') in ('active', 'held'),
                                   'shipping_address': line.get('subscription_shipping_address')})
         availability = self.refill_availability(row)
-        availability.pop('_cycle_key', None)
-        return {'id': row['order_id'], 'number': row['order_id'], 'site_id': row['site_id'], 'therapy_id': row['therapy_id'],
+        availability = {key: value for key, value in availability.items() if not key.startswith('_')}
+        care_plan = self.care.public(row)
+        if care_plan and care_plan['tasks']:
+            intake = {'status': care_plan['tasks'][0]['intake_status']}
+        return {'care_plan': care_plan, 'id': row['order_id'], 'number': row['order_id'], 'site_id': row['site_id'], 'therapy_id': row['therapy_id'],
                 'therapy_name': snapshot.get('therapy_name', row['therapy_id']), 'product_name': snapshot.get('product_name', row['sku']),
                 'sku': row['sku'], 'plan_name': snapshot.get('quote_option', {}).get('label') or row['sku'], 'total': str(raw['total']),
                 'currency': raw.get('currency'), 'payment_status': raw.get('payment_status', 'unknown'), 'intake_status': intake['status'] if intake else 'not_started',
@@ -699,7 +718,9 @@ class MemberService:
         return [{'id': r['id'], 'sender': r['sender'], 'body': r['body'], 'created_at': stamp(r['created']), 'client_message_id': r['client_message_id'], 'automated': r['sender'] == 'system'} for r in rows]
 
     def refill_public(self, row):
-        return {'id': row['id'], 'order_id': row['order_id'], 'sku': row['sku'], 'status': row['status'], 'revision': row['revision'],
+        with self.db() as db:
+            task = db.execute('SELECT task_id,simulated FROM member_refill_tasks WHERE refill_id=?', (row['id'],)).fetchone()
+        return {'task_id': task['task_id'] if task else None, 'simulated': bool(task['simulated']) if task else False, 'id': row['id'], 'order_id': row['order_id'], 'sku': row['sku'], 'status': row['status'], 'revision': row['revision'],
                 'created_at': stamp(row['created']), 'updated_at': stamp(row['updated']), 'test_only': bool(row['test_only']),
                 'rule_revision': json.loads(row['rule']).get('revision', 0), 'kind': row['kind'], 'reason': row['reason'], 'clinical_approval': False, 'fulfillment_created': False}
 
@@ -930,10 +951,15 @@ class MemberService:
         @router.get('/intakes/{order_id}', response_model=MemberIntakeResponse)
         def get_intake(site_id: str, order_id: str, patient=Depends(auth)):
             order = self.order_record(site_id, order_id, patient)
+            if self.care.configured(order):
+                _, _, record = self.care.intake(order, patient, 'initial')
+                return self.care.intake_public(order, record)
             return self.intake_public(self.intake(order, patient), order)
 
         def modify_intake(site_id, order_id, body, patient, submit=False):
             order = self.order_record(site_id, order_id, patient)
+            if self.care.configured(order):
+                return self.care.modify(order, patient, 'initial', body, submit)
             self.intake(order, patient)
             with self.db() as db:
                 db.execute('BEGIN IMMEDIATE')
@@ -1006,26 +1032,28 @@ class MemberService:
             with self.db() as db:
                 prior = db.execute('SELECT * FROM member_refills WHERE site_id=? AND patient_id=? AND client_request_id=?', (site_id, patient['id'], body.client_request_id)).fetchone()
             if prior:
-                if (prior['order_id'], prior['sku'], prior['kind'], prior['reason']) != (body.order_id, body.sku, body.kind, body.reason.strip()):
+                if (prior['order_id'], prior['sku'], prior['kind'], prior['reason']) != (body.order_id, body.sku, body.kind, body.reason.strip()) or self.refill_public(prior).get('task_id') != body.task_id:
                     raise HTTPException(409, 'This request ID was already used for another refill')
                 return {'request': self.refill_public(prior)}
             order = self.sync(site_id, body.order_id)
             if order['sku'] != body.sku:
                 raise HTTPException(404, 'This SKU is not in your order')
-            availability = self.refill_availability(order)
+            availability = self.refill_availability(order, body.task_id) if body.task_id else self.refill_availability(order)
+            if self.care.configured(order) and body.task_id is None:
+                raise HTTPException(422, 'Choose the care checkpoint for this refill request')
             if body.kind == 'early':
                 if not availability.get('early_allowed'):
                     raise HTTPException(409, availability.get('early_reason') or availability['reason'])
             elif not availability['eligible']:
                 raise HTTPException(409, availability['reason'])
-            rule = self.rule(body.sku)
+            rule = self.care.settings(order) if self.care.configured(order) else self.rule(body.sku)
             if body.kind == 'early' and rule.get('early_reason_required', True) and not body.reason.strip():
                 raise HTTPException(422, 'Tell the review team why you are requesting an early refill')
             with self.db() as db:
                 db.execute('BEGIN IMMEDIATE')
                 prior = db.execute('SELECT * FROM member_refills WHERE site_id=? AND patient_id=? AND client_request_id=?', (site_id, patient['id'], body.client_request_id)).fetchone()
                 if prior:
-                    if (prior['order_id'], prior['sku'], prior['kind'], prior['reason']) != (body.order_id, body.sku, body.kind, body.reason.strip()):
+                    if (prior['order_id'], prior['sku'], prior['kind'], prior['reason']) != (body.order_id, body.sku, body.kind, body.reason.strip()) or self.refill_public(prior).get('task_id') != body.task_id:
                         raise HTTPException(409, 'This request ID was already used for another refill')
                     return {'request': self.refill_public(prior)}
                 existing = db.execute("SELECT * FROM member_refills WHERE site_id=? AND patient_id=? AND sku=? AND cycle_key=? AND status NOT IN ('declined')", (site_id, patient['id'], body.sku, availability['_cycle_key'])).fetchone()
@@ -1035,12 +1063,14 @@ class MemberService:
                 # patient/SKU cooldown under this write lock so parallel requests
                 # against different orders cannot each consume the same window.
                 if body.kind == 'early':
-                    latest = db.execute("SELECT MAX(created) FROM member_refills WHERE site_id=? AND patient_id=? AND sku=? AND kind='early'", (site_id, patient['id'], body.sku)).fetchone()[0]
-                    if latest is not None and self.clock() < latest + int(rule.get('early_request_cooldown_days', 7)) * 86400:
+                    latest = self.care.last_early(db, order, patient['id'])
+                    if latest is not None and self.care.clock(order) < latest + int(rule.get('early_request_cooldown_days', 7)) * 86400:
                         raise HTTPException(409, 'The waiting period after your previous early refill request has not ended.')
-                key, now = identifier('refill'), self.clock()
-                status = 'awaiting_review' if body.kind == 'early' else 'check_in_required' if rule.get('check_in_required', True) else 'requested'
+                key, now = identifier('refill'), self.care.clock(order)
+                status = 'awaiting_review' if body.kind == 'early' or availability.get('_plan_id') else 'check_in_required' if rule.get('check_in_required', True) else 'requested'
                 db.execute('INSERT INTO member_refills VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (key, site_id, patient['id'], body.order_id, body.sku, availability['_cycle_key'], status, 0, encoded(rule), int(availability['test_only']), now, now, '', body.client_request_id, body.kind, body.reason.strip()))
+                if availability.get('_plan_id'):
+                    db.execute('INSERT INTO member_refill_tasks VALUES(?,?,?,?)', (key, availability['_plan_id'], body.task_id, int(availability.get('_simulated', False))))
                 row = db.execute('SELECT * FROM member_refills WHERE id=?', (key,)).fetchone()
             return {'request': self.refill_public(row)}
 
@@ -1063,6 +1093,29 @@ class MemberService:
                 summaries.append({'id': row['id'], 'order_id': row['order_id'], 'patient_name': row['name'], 'therapy_id': order['therapy_id'],
                                   'therapy_name': order['therapy_name'], 'status': row['status'], 'answered': sum(answers.get(q['id']) not in (None, '', []) for q in questions),
                                   'total': len(questions), 'updated_at': stamp(row['updated'])})
+            with self.db() as db:
+                care_rows = db.execute('''SELECT i.*,c.site_id,c.root_order_id,c.term_order_id,c.patient_id,
+                    c.snapshot AS care_snapshot,p.name FROM member_care_intakes i
+                    JOIN member_care_plans c ON c.id=i.plan_id
+                    JOIN member_patients p ON p.id=c.patient_id AND p.site_id=c.site_id WHERE c.site_id=?''', (site_id,)).fetchall()
+                scoped_orders = db.execute('SELECT order_id,snapshot FROM member_orders WHERE site_id=?', (site_id,)).fetchall()
+            care_ids = {row['id'] for row in care_rows}
+            summaries = [summary for summary in summaries if summary['id'] not in care_ids]
+            for row in care_rows:
+                matches = [o['order_id'] for o in scoped_orders if o['order_id'] in order_ids
+                    and json.loads(o['snapshot']).get('root_order_id') == row['root_order_id']
+                    and json.loads(o['snapshot']).get('term_order_id') == row['term_order_id']]
+                if not matches:
+                    continue
+                order_id = max(matches, key=int)
+                order = next(o for o in orders if o['id'] == order_id)
+                answers = json.loads(row['answers'])
+                questions = [q for q in json.loads(row['template'])['questions'] if visible(q, answers)]
+                task_label = 'Initial health intake' if row['task_id'] == 'initial' else 'Day ' + row['task_id'].removeprefix('checkin-') + ' check-in'
+                summaries.append({'id': row['id'], 'order_id': order_id, 'patient_name': row['name'],
+                    'therapy_id': order['therapy_id'], 'therapy_name': order['therapy_name'], 'task_id': row['task_id'], 'task_label': task_label,
+                    'status': row['status'], 'answered': sum(answers.get(q['id']) not in (None, '', []) for q in questions),
+                    'total': len(questions), 'updated_at': stamp(row['updated']), 'simulated': bool(row['simulated'])})
             requests = [self.refill_public(r) for r in refills if r['order_id'] in order_ids]
             return {'site': site, 'orders': orders, 'intakes': summaries, 'refills': requests, 'leads': [],
                     'summaries': {'orders': len(orders), 'intake_drafts': sum(i['status'] == 'draft' for i in summaries), 'intakes_submitted': sum(i['status'] == 'submitted' for i in summaries), 'refill_requests': len(requests)}}
@@ -1104,6 +1157,7 @@ class MemberService:
             self.admin.authenticated(req)
             return {'sites': [{k: site.get(k) for k in ('id', 'name', 'brand_id', 'campaign_id')} for site in self.admin.records('site')]}
 
+        self.care.attach(router, owner, auth)
         app.include_router(router)
         app.include_router(owner)
 

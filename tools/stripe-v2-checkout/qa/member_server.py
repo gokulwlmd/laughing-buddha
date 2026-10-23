@@ -13,25 +13,30 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, required=True)
     parser.add_argument('--state-dir', type=Path, required=True)
+    parser.add_argument('--care-plan', action='store_true')
     args = parser.parse_args()
     if not 1024 <= args.port <= 65535:
         parser.error('Use an unprivileged port')
     app, fake, attempt = build_member_fixture(args.state_dir, origin=f'http://127.0.0.1:{args.port}')
     # This fixture is the sole source of order data. No network-capable Sticky
     # client is used. A shippable offline product exercises eligible UI actions.
-    fake.order['shippable'] = '1'
-    fake.order['products'][0]['is_shippable'] = '1'
-    admin = app.state.admin
-    plan = deepcopy(admin.get('plan_checkout', 'plan-a'))
-    plan['payment_test_only'] = False
-    admin.put('plan_checkout', 'plan-a', plan)
-    admin.put('refill_policy', 'SEMA-1M-SUB', {
-        'enabled': True, 'minimum_days': 0, 'request_window_days': 14,
-        'check_in_required': False, 'review_required': True,
-        'test_requests_enabled': False, 'revision': 1,
-        'allow_early_requests': True, 'early_request_minimum_days': 0,
-        'early_request_cooldown_days': 7, 'early_reason_required': True,
-    })
+    if args.care_plan:
+        from test_member_care import configure_care_fixture
+        configure_care_fixture(app, fake, months=12)
+    else:
+        fake.order['shippable'] = '1'
+        fake.order['products'][0]['is_shippable'] = '1'
+        admin = app.state.admin
+        plan = deepcopy(admin.get('plan_checkout', 'plan-a'))
+        plan['payment_test_only'] = False
+        admin.put('plan_checkout', 'plan-a', plan)
+        admin.put('refill_policy', 'SEMA-1M-SUB', {
+            'enabled': True, 'minimum_days': 0, 'request_window_days': 14,
+            'check_in_required': False, 'review_required': True,
+            'test_requests_enabled': False, 'revision': 1,
+            'allow_early_requests': True, 'early_request_minimum_days': 0,
+            'early_request_cooldown_days': 7, 'early_reason_required': True,
+        })
 
     @app.get('/__member_qa', include_in_schema=False)
     def proof():

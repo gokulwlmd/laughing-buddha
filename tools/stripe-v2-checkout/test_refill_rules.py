@@ -34,3 +34,28 @@ class RefillPolicyTests(unittest.TestCase):
         self.assertEqual(outsider.get('/api/admin/master-refill-rules/SEMA-12M').status_code,401)
         self.assertEqual(self.client.put('/api/admin/master-refill-rules/SEMA-12M',json={'expected_revision':0}).status_code,403)
         self.assertEqual(self.client.get('/api/admin/master-refill-rules/UNKNOWN').status_code,404)
+
+    def test_product_intake_and_independent_check_in_schedule_saved(self):
+        result=self.save(intake_template_id='weight-loss',check_in_days=[90,180,270])
+        self.assertEqual(result.status_code,200)
+        self.assertEqual(result.json()['check_in_days'],[90,180,270])
+        self.assertTrue(result.json()['initial_intake_required'])
+        self.assertEqual(self.admin.get('master','SEMA-12M'),self.master)
+        self.assertEqual(self.fake.calls,[])
+
+    def test_wrong_product_or_invalid_check_in_days_rejected(self):
+        self.assertEqual(self.save(intake_template_id='metformin').status_code,422)
+        self.assertEqual(self.save(check_in_days=[90]).status_code,422)
+        for days in ([90,90],[180,90],[0],[731],[True],['90'],[90.5]):
+            with self.subTest(days=days):
+                self.assertEqual(self.save(intake_template_id='weight-loss',check_in_days=days).status_code,422)
+        self.assertIsNone(self.admin.get('refill_policy','SEMA-12M'))
+
+    def test_older_saved_policy_gets_new_defaults_without_rewrite(self):
+        old={'sku':'SEMA-12M','revision':7,'enabled':True,'minimum_days':14}
+        self.admin.put('refill_policy','SEMA-12M',old)
+        result=self.client.get('/api/admin/master-refill-rules/SEMA-12M').json()
+        self.assertEqual(result['revision'],7)
+        self.assertEqual(result['intake_template_id'],'')
+        self.assertEqual(result['check_in_days'],[])
+        self.assertEqual(self.admin.get('refill_policy','SEMA-12M'),old)

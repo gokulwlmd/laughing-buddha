@@ -2,7 +2,7 @@
 from typing import Literal
 
 from fastapi import HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 
 
 class RefillRules(BaseModel):
@@ -17,6 +17,16 @@ class RefillRules(BaseModel):
     early_request_minimum_days: int = Field(default=0, ge=0, le=730, strict=True)
     early_request_cooldown_days: int = Field(default=7, ge=1, le=90, strict=True)
     early_reason_required: Literal[True] = True
+    intake_template_id: Literal['', 'weight-loss', 'sermorelin', 'metformin', 'pt-141'] = ''
+    initial_intake_required: bool = True
+    check_in_days: list[StrictInt] = Field(default_factory=list, max_length=24)
+
+    @field_validator('check_in_days')
+    @classmethod
+    def valid_check_in_days(cls, value):
+        if value != sorted(set(value)) or any(day < 1 or day > 730 for day in value):
+            raise ValueError('Use distinct check-in days in increasing order, from 1 to 730')
+        return value
 
 
 class SaveRefillRules(RefillRules):
@@ -25,7 +35,7 @@ class SaveRefillRules(RefillRules):
 
 def policy(admin, sku):
     saved = admin.get('refill_policy', sku)
-    return saved or dict(RefillRules().model_dump(), sku=sku, revision=0)
+    return dict(RefillRules().model_dump(), sku=sku, revision=0) | (saved or {})
 
 
 def install_refill_admin(app, admin):
@@ -41,6 +51,12 @@ def install_refill_admin(app, admin):
         admin.authenticated(req, True)
         if not admin.get('master', sku):
             raise HTTPException(404, 'Master SKU not found')
+        from member_portal.intake_templates import binding_for_sku
+        binding = binding_for_sku(sku)
+        if body.intake_template_id and (not binding or binding['template_id'] != body.intake_template_id):
+            raise HTTPException(422, 'Choose the mock intake assigned to this product')
+        if body.check_in_days and not body.intake_template_id:
+            raise HTTPException(422, 'Choose a product intake before scheduling check-ins')
         # A policy edit must not invalidate a verified payment mapping, overwrite
         # brand pricing, or silently edit a previously submitted refill request.
         import json

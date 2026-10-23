@@ -328,3 +328,34 @@ Customer experience: send patients to `/portal/{site_id}`. The separate
 contains order import and checkout testing. It is not the patient experience.
 An existing owner cookie never signs someone into a patient account or grants
 patient order access. Admin has an explicit link to open the customer portal.
+
+## Latest: SKU intakes and quarterly care journey (23 October 2026)
+
+Forty existing master SKUs now have explicit product intake assignments across
+Semaglutide, Tirzepatide, Sermorelin, Metformin and PT-141. The master editor's
+member-portal settings expose intake selection, purchase-intake requirement and
+check-in day offsets. These settings do not change Sticky prices or billing.
+Twelve-month terms use days 0/90/180/270; six-month terms use 0/90; one- and
+three-month terms use the purchase intake. See DECISIONS.md and the member README.
+
+Each verified paid term keeps its own questions and care schedule. Every step
+has a separate autosaved draft and immutable submission. The matching current
+check-in and earlier required steps must be completed before a refill review
+request. Site, patient, task and term boundaries are enforced. Staff summaries
+include the individual checkpoint labels. Medical provider APIs remain mocked.
+
+The owner's existing markrx Sticky Dry Run order completed the full requested
+test: four mock intakes and three simulated refill requests awaiting review.
+Partial drafts resumed, submissions remained immutable, and retries did not
+duplicate requests. Original Sticky order, subscription dates and billing state
+were verified unchanged. No additional order, real charge or shipment occurred.
+The care-only test clock is restricted to a verified non-shippable Dry Run order,
+expires after 24 hours, and retains simulation provenance. It does not advance
+Sticky. Never use simulated answers to qualify a live medication request.
+
+Private preview updated; the original public checkout worker was preserved.
+Verification: 352 backend tests, followed by all 17 final care/security cases;
+8 portal browser scenarios, 23 provider cases, 6 master-policy cases, 2 template
+cases and the repaired master-editor browser regression passed. Check
+member-portal-preview.json for the exact running source bundle. Customer data,
+test answers, passwords and private account links are excluded from this handoff.

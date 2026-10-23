@@ -247,3 +247,26 @@ The available Sticky docs do not establish that replacement contract; leave it
 unavailable until supplied. Intake and doctor messaging remain the explicitly
 requested mock adapters. See the member portal README for exact delivered and
 pending boundaries.
+
+## SKU-bound care checkpoints (23 October 2026)
+
+The owner requested product-relevant mock intake forms and plan-based refill
+options, with one intake at purchase and three check-ins at days 90, 180 and 270
+for a 360-day / 12-month term. Six-month terms use purchase plus day 90;
+one- and three-month terms use the purchase intake. Configure these explicitly
+per master SKU, independently of its billing configuration.
+
+The four template families are weight management (SEMA and TIRZ), Sermorelin,
+Metformin and PT-141. Bind exact known SKUs, including one-time and subscription
+variants; do not guess a questionnaire from an arbitrary SKU or therapy name.
+Each checkpoint owns a separate draft and immutable submitted answers. A paid
+term snapshots its questions and schedule; later master edits apply to new care
+plans. Required previous checkpoints must be completed before requesting the
+current refill. Requests still require review and do not approve medication.
+
+End-to-end testing uses an existing real Sticky Dry Run order. An owner-only,
+time-limited care clock can simulate days within its verified paid term, only
+for a non-shippable Dry Run order. It never advances Sticky billing, creates a
+charge, changes subscription dates or releases fulfillment. Mock submissions
+and simulated requests retain test provenance. Approved clinical questions,
+medical review and the eventual Sticky handoff remain external API work.

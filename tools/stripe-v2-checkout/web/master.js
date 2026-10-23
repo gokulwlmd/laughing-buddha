@@ -119,15 +119,20 @@ async function loadRefillRules(sku){
  const generation=++refillLoadGeneration;
  let panel=$('master-refill-panel');
  if(!panel){panel=element('details');panel.id='master-refill-panel';$('master-form').after(panel);}
- panel.replaceChildren(element('summary','Member portal · refill requests'));
+ panel.replaceChildren(element('summary','Member portal · intakes and refills'));
  if(!(state.masters||[]).some(m=>m.sku===sku)){panel.append(element('p','Save this SKU first to configure its refill requests.','hint'));return;}
  panel.append(element('p','Loading refill settings…','hint'));
  try{
   const rules=await api('master-refill-rules/'+encodeURIComponent(sku));if(generation!==refillLoadGeneration)return;
-  panel.replaceChildren(element('summary','Member portal · refill requests'));
+  panel.replaceChildren(element('summary','Member portal · intakes and refills'));
   const form=element('form');form.id='master-refill-form';
   form.append(element('p','These settings apply only to '+sku+'. A request goes to review; it does not charge a card or release medication.','hint'));
-  for(const [key,label] of [['enabled','Allow refill requests'],['allow_early_requests','Allow early-refill requests for review'],['check_in_required','Require a refill check-in'],['test_requests_enabled','Allow test requests on payment-test products (no medication shipment)']]){
+  const templateLabel=element('label','Product intake'),template=element('select');template.name='intake_template_id';
+  for(const [value,label] of [['','Not connected'],['weight-loss','Weight management · Semaglutide / Tirzepatide'],['sermorelin','Sermorelin'],['metformin','Metformin'],['pt-141','PT-141']]){const option=element('option',label);option.value=value;template.append(option);}
+  template.value=rules.intake_template_id||'';templateLabel.append(template);form.append(templateLabel);
+  const scheduleLabel=element('label','Check-in days after purchase'),schedule=element('input');schedule.name='check_in_days';schedule.placeholder='90, 180, 270';schedule.value=(rules.check_in_days||[]).join(', ');scheduleLabel.append(schedule);form.append(scheduleLabel);
+  form.append(element('p','For a 12-month plan, use 90, 180, 270. Each check-in has its own saved answers. These are mock forms until your medical intake API is connected. Saved changes apply to new care plans; existing plans keep their recorded schedule.','hint'));
+  for(const [key,label] of [['initial_intake_required','Require an intake at purchase'],['enabled','Allow refill requests'],['allow_early_requests','Allow early-refill requests for review'],['check_in_required','Require a refill check-in'],['test_requests_enabled','Allow test requests on payment-test products (no medication shipment)']]){
    const row=element('label',undefined,'checkbox'),input=element('input');input.type='checkbox';input.name=key;input.checked=rules[key];row.append(input,element('span',label));form.append(row);
   }
   for(const [key,label,max] of [['minimum_days','Minimum days after purchase before a request',730],['early_request_minimum_days','Minimum days after purchase for an early request',730],['early_request_cooldown_days','Days between early-refill requests',90],['request_window_days','Open requests this many days before the next included shipment',90]]){
@@ -138,7 +143,9 @@ async function loadRefillRules(sku){
   form.addEventListener('submit',async event=>{
    event.preventDefault();button.disabled=true;
    try{
-    const body={expected_revision:rules.revision,review_required:true,early_reason_required:true};for(const key of ['enabled','check_in_required','test_requests_enabled','allow_early_requests'])body[key]=form.elements[key].checked;for(const key of ['minimum_days','request_window_days','early_request_minimum_days','early_request_cooldown_days'])body[key]=Number(form.elements[key].value);
+    const offsets=schedule.value.trim()?schedule.value.split(',').map(value=>Number(value.trim())):[];
+    if(offsets.some((day,index)=>!Number.isInteger(day)||day<1||day>730||(index>0&&day<=offsets[index-1])))throw Error('Enter distinct check-in days in increasing order, such as 90, 180, 270.');
+    const body={expected_revision:rules.revision,review_required:true,early_reason_required:true,intake_template_id:template.value,check_in_days:offsets};for(const key of ['enabled','check_in_required','test_requests_enabled','allow_early_requests','initial_intake_required'])body[key]=form.elements[key].checked;for(const key of ['minimum_days','request_window_days','early_request_minimum_days','early_request_cooldown_days'])body[key]=Number(form.elements[key].value);
     const response=await fetch('/api/admin/master-refill-rules/'+encodeURIComponent(sku),{method:'PUT',headers:{'Content-Type':'application/json','X-CSRF-Token':auth.csrfToken||''},body:JSON.stringify(body)});
     const value=await response.json();if(!response.ok)throw Error(typeof value.detail==='string'?value.detail:'Could not save refill settings.');
     rules.revision=value.revision;message('Refill settings saved for '+sku+'.');

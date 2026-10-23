@@ -2,9 +2,9 @@
   "date": "2026-10-23",
   "status": "private_preview",
   "preview_origin": "http://127.0.0.1:8873",
-  "preview_site": "master-therapy-test-422",
-  "source_version": "b78f6d5734ebe1db",
-  "bundle_sha256": "e0cd0d20762858440c1c4a95cd027acd522593e67b4c7cfb9000762459b1a96d",
+  "preview_site": "site-8bb7023e-3ca",
+  "source_version": "d5e4c30a573a9518",
+  "bundle_sha256": "4d41cc71f92614b8c7b2d0c8241fd2f5b963e55eb56749d7ca9f1ae48e4e08ef",
   "runtime": "Additional private process on existing Fly machine, accessed only through local fly proxy",
   "real_sticky_orders": true,
   "synthetic_orders_seeded": false,
@@ -12,12 +12,16 @@
   "existing_payment_rows_unchanged": true,
   "public_checkout_release_pending": true,
   "tests": {
-    "backend_suite_passed": 327,
+    "backend_suite_passed": 352,
     "additional_refill_concurrency_regression_passed": true,
     "member_backend_total_passed": 20,
-    "member_browser_cases_passed": 7,
+    "member_browser_cases_passed": 8,
     "affected_checkout_browser_cases_passed": 18,
-    "javascript_syntax_files_passed": 19
+    "javascript_syntax_files_passed": 19,
+    "care_and_security_final_regressions_passed": 17,
+    "provider_cases_passed": 23,
+    "product_intake_template_cases_passed": 2,
+    "master_policy_cases_passed": 6
   },
   "provider_verification": {
     "method": "read-only real order and subscription responses; isolated Dry Run price verification",
@@ -41,5 +45,27 @@
   ],
   "customer_entry": "/portal/site-8bb7023e-3ca",
   "staff_controls_separate": true,
-  "preview_checkout_testing_disabled_until_public_release": true
+  "preview_checkout_testing_disabled_until_public_release": true,
+  "care_journey": {
+    "configured_master_skus": 40,
+    "template_families": 4,
+    "care_days_12_months": [
+      0,
+      90,
+      180,
+      270
+    ],
+    "care_days_6_months": [
+      0,
+      90
+    ],
+    "actual_sticky_dry_run_order_used": true,
+    "mock_intakes_submitted": 4,
+    "simulated_refill_review_requests": 3,
+    "partial_draft_resume_verified": true,
+    "immutable_submissions_verified": true,
+    "request_idempotency_verified": true,
+    "sticky_order_and_billing_unchanged": true,
+    "medical_provider_connected": false
+  }
 }

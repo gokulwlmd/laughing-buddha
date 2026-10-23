@@ -10,7 +10,7 @@ changes prescriptions, or releases fulfillment. Explicit hold/reset and verified
 shipping-address updates are supported. Sticky's `start` operation can
 immediately bill and is excluded.
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 import re
 import time
@@ -233,6 +233,10 @@ class StickyOrderProvider:
             cycle_date = schedule_date(product.get('recurring_date'))
             prepaid = prepaid_terms(product)
             model_id, interval_days = billing_model_terms(product)
+            offer = product.get('offer')
+            if offer is not None and not isinstance(offer, dict):
+                raise ProviderError('Sticky returned an invalid order offer')
+            offer_id = identifier((offer or {}).get('id'), 'offer ID', optional=True)
             if held is True:
                 billing = 'held'
             elif recurring is True:
@@ -253,6 +257,7 @@ class StickyOrderProvider:
                 'billing_status': billing, 'next_billing_date': bill_date, 'next_cycle_date': cycle_date,
                 'quantity': quantity, 'prepaid': prepaid, 'is_shippable': flag(product.get('is_shippable')),
                 'billing_model_id': model_id, 'billing_interval_days': interval_days,
+                'offer_id': offer_id,
                 'stop_after_next_cycle': flag(product.get('is_terminal'))})
         order_status = str(raw.get('order_status', ''))
         payment = {'1': 'initiated', '2': 'paid', '6': 'void_or_refunded', '7': 'declined',
@@ -446,3 +451,70 @@ class StickyOrderProvider:
                                 expected_customer_id=identifier(expected_customer_id))
         _, _, address = self._owned_subscription(order, subscription_id)
         return address
+
+    def verify_care_schedule(self, order_id, *, expected_campaign, expected_customer_id,
+                             shipment_interval_days, shipment_count, term_days):
+        """Verify an imported original prepaid term, using reads only.
+
+        Current model/offer metadata alone is insufficient: the original paid
+        order must itself record the prepaid count, first cycle, exact IDs and
+        a first scheduled cycle consistent with the original purchase date.
+        Ambiguous historical or already-advanced records need staff review.
+        """
+        if (any(type(n) is not int for n in (shipment_interval_days, shipment_count, term_days))
+                or not 1 <= shipment_interval_days <= 730 or not 2 <= shipment_count <= 36
+                or term_days != shipment_interval_days * shipment_count):
+            raise ProviderRejected('Use a complete fixed prepaid shipment schedule')
+        order = self.read_order(order_id, expected_campaign=identifier(expected_campaign),
+                                expected_customer_id=identifier(expected_customer_id))
+        if (order['payment_status'] != 'paid' or Decimal(order['total']) <= 0 or len(order['products']) != 1
+                or order['parent_id'] not in (None, order['id']) or order['child_ids']
+                or order['ancestor_id'] not in (None, order['id'])):
+            raise ProviderRejected('Verify the original paid term before assigning its care schedule')
+        product = order['products'][0]
+        prepaid = product['prepaid']
+        if (not prepaid or prepaid['current_cycle'] != 1 or prepaid['total_cycles'] != shipment_count
+                or not product['offer_id'] or not product['billing_model_id'] or not product['subscription_id']
+                or product['billing_status'] != 'active' or not product['next_cycle_date']):
+            raise ProviderRejected('The original order does not establish the requested prepaid schedule')
+        created = None
+        for fmt in ('%Y-%m-%d %H:%M:%S', '%m/%d/%Y %H:%M:%S', '%Y-%m-%d', '%m/%d/%Y'):
+            try:
+                created = datetime.strptime(order['created_at'] or '', fmt).date()
+                break
+            except ValueError:
+                pass
+        if created is None or product['next_cycle_date'] != (created + timedelta(days=shipment_interval_days)).isoformat():
+            raise ProviderRejected('The original purchase and next cycle do not confirm this interval')
+        raw = self._call_read('GET', '/api/v2/billing_models/' + product['billing_model_id'])
+        model = raw.get('data')
+        if (raw.get('status') != 'SUCCESS' or not isinstance(model, dict)
+                or identifier(model.get('id'), 'billing model ID') != product['billing_model_id']):
+            raise ProviderError('Sticky could not verify the purchased billing model')
+        _, days = billing_model_terms({'billing_model': model})
+        if (days != shipment_interval_days or model.get('expire_cycles') not in (None, 0, '0')
+                or model.get('buffer_days') not in (None, 0, '0') or flag(model.get('is_archived')) is True):
+            raise ProviderRejected('The purchased model does not confirm the requested fixed interval')
+        raw = self._call_read('GET', '/api/v2/offers/' + product['offer_id'])
+        offer = raw.get('data')
+        if (raw.get('status') != 'SUCCESS' or not isinstance(offer, dict)
+                or identifier(offer.get('id'), 'offer ID') != product['offer_id']):
+            raise ProviderError('Sticky could not verify the purchased offer')
+        from prepaid import cycles_for, renewal_for
+        try:
+            offer_cycles, offer_renews = cycles_for(offer), renewal_for(offer)
+        except (ValueError, TypeError, KeyError, InvalidOperation):
+            raise ProviderRejected('The purchased offer needs schedule review') from None
+        models = offer.get('offer_billing_models') or offer.get('billing_models') or []
+        products = offer.get('products') or []
+        if (offer_cycles != shipment_count or offer_renews != prepaid['renews']
+                or flag(offer.get('is_archived')) is True
+                or not any(isinstance(p, dict) and str(p.get('id')) == product['product_id'] for p in products)
+                or not any(isinstance(m, dict) and str(m.get('id')) == product['billing_model_id'] for m in models)):
+            raise ProviderRejected('The purchased offer no longer confirms the original entitlement')
+        return {'product_id': product['product_id'], 'offer_id': product['offer_id'],
+            'billing_model_id': product['billing_model_id'], 'subscription_id': product['subscription_id'],
+            'shipment_interval_days': shipment_interval_days, 'shipment_count': shipment_count,
+            'term_days': term_days, 'term_started_at': order['created_at'], 'term_order_id': order['id'],
+            'prepaid_renews': prepaid['renews'], 'upfront_total': order['total'], 'currency': order['currency'],
+            'evidence_source': 'original_order_prepaid_and_cycle_date_verified_against_purchased_offer_model'}

@@ -4,6 +4,7 @@ import json
 import unittest
 
 from member_portal.provider import StickyOrderProvider, ProviderError, ProviderRejected, ProviderUncertain
+from prepaid import configuration
 
 
 def order_fixture():
@@ -33,6 +34,9 @@ class FakeSticky:
         self.subscription = {'id': 'synthetic-subscription-1', 'contact_id': '8101', 'product': {'id': '7001'},
             'status': 'active', 'shipping': {'first_name': 'Sample', 'last_name': 'Member', 'address': '1 Sample St',
                 'address2': '', 'city': 'Tampa', 'state': 'FL', 'zip': '33601', 'country_iso2': 'US'}}
+        self.billing_model = {'id': 4, 'type': {'id': 1}, 'days': 90, 'is_archived': 0, 'expire_cycles': 0, 'buffer_days': 0}
+        self.offer = {'id': 7002, 'products': [{'id': 7001}], 'billing_models': [{'id': 4}],
+            'is_archived': 0, **configuration(4, True)}
 
     def call(self, method, path, body=None):
         self.calls.append((method, path, deepcopy(body)))
@@ -43,6 +47,10 @@ class FakeSticky:
             return {'response_code': '100', 'data': {'9001': value}} if self.wrapper else value
         if path == '/api/v2/providers/payment/profiles/254':
             return {'status': 'SUCCESS', 'data': {'currency': {'code': 'USD'}, 'fields': {'secret': 'DO-NOT-RETURN'}}}
+        if path == '/api/v2/billing_models/4':
+            return {'status': 'SUCCESS', 'data': deepcopy(self.billing_model)}
+        if path == '/api/v2/offers/7002':
+            return {'status': 'SUCCESS', 'data': deepcopy(self.offer)}
         if path == '/api/v1/subscription_order_update':
             if self.write_error:
                 raise TimeoutError('secret upstream detail')
@@ -108,6 +116,60 @@ class MemberProviderTests(unittest.TestCase):
         self.api.order['products'][0]['recurring_date'] = 'Not Shipped'
         with self.assertRaises(ProviderError):
             self.provider.read_order('9001')
+
+    def care_fixture(self):
+        self.api.order['time_stamp'] = '2026-10-22 19:04:34'
+        self.api.order['products'][0].update(billing_model={'id': '4', 'name': '90 days'},
+            offer={'id': '7002'}, recurring_date='2027-01-20',
+            prepaid=[{'current_cycle': '1', 'total_cycles': '4', 'is_renew': '1'}])
+
+    def verify_care(self, **changes):
+        return self.provider.verify_care_schedule('9001', **({'expected_campaign': '422',
+            'expected_customer_id': '8001', 'shipment_interval_days': 90, 'shipment_count': 4, 'term_days': 360} | changes))
+
+    def test_care_schedule_uses_original_paid_first_cycle_and_verified_model_offer(self):
+        self.care_fixture()
+        value = self.verify_care()
+        self.assertEqual((value['product_id'], value['offer_id'], value['billing_model_id']), ('7001', '7002', '4'))
+        self.assertEqual((value['shipment_interval_days'], value['shipment_count'], value['term_days']), (90, 4, 360))
+        self.assertEqual(value['term_started_at'], '2026-10-22 19:04:34')
+        self.assertEqual(value['term_order_id'], '9001')
+        self.api.order['parent_id'] = '9001'
+        self.assertEqual(self.verify_care(), value)
+        self.assertNotIn('customer', value)
+        self.assertNotIn('sample@example.invalid', json.dumps(value))
+        self.assertTrue(all(method == 'GET' or path == '/api/v1/order_view' for method, path, _ in self.api.calls))
+
+    def test_care_schedule_rejects_wrong_site_customer_and_arbitrary_entitlement(self):
+        self.care_fixture()
+        for changes in [{'expected_campaign': '423'}, {'expected_customer_id': '9999'},
+                {'shipment_count': 2, 'term_days': 180}, {'shipment_interval_days': 30, 'term_days': 120},
+                {'term_days': 365}, {'shipment_interval_days': True}, {'shipment_count': 1, 'term_days': 90}]:
+            with self.subTest(changes=changes):
+                with self.assertRaises(ProviderRejected): self.verify_care(**changes)
+
+    def test_care_schedule_rejects_changed_models_offers_and_non_original_orders(self):
+        self.care_fixture()
+        original_order, original_model, original_offer = deepcopy(self.api.order), deepcopy(self.api.billing_model), deepcopy(self.api.offer)
+        changes = [lambda: self.api.order.update(parent_id='8999'),
+            lambda: self.api.order.update(child_id='9002'),
+            lambda: self.api.order.update(ancestor_id='8999'), lambda: self.api.order.update(order_total='0.00'),
+            lambda: self.api.order.update(order_status='6'),
+            lambda: self.api.order['products'][0].update(on_hold='1'),
+            lambda: self.api.order['products'][0].update(recurring_date='2027-01-21'),
+            lambda: self.api.order['products'][0]['prepaid'][0].update(current_cycle='2'),
+            lambda: self.api.order['products'][0].pop('offer'),
+            lambda: self.api.billing_model.update(days=30), lambda: self.api.billing_model.update(buffer_days=1),
+            lambda: self.api.billing_model.update(type={'id': 2}),
+            lambda: self.api.offer.update(products=[{'id': 9999}]),
+            lambda: self.api.offer.update(billing_models=[{'id': 3}]),
+            lambda: self.api.offer['prepaid'].update(is_subscription=0)]
+        for index, change in enumerate(changes):
+            with self.subTest(case=index):
+                self.api.order, self.api.billing_model, self.api.offer = deepcopy(original_order), deepcopy(original_model), deepcopy(original_offer)
+                change()
+                with self.assertRaises(ProviderRejected): self.verify_care()
+        self.assertTrue(all(method == 'GET' or path == '/api/v1/order_view' for method, path, _ in self.api.calls))
 
     def test_flat_and_wrapped_order_are_normalized_without_sensitive_fields(self):
         flat = self.provider.read_order('9001', expected_campaign='422', expected_customer_id='8001')

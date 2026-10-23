@@ -113,3 +113,34 @@ The current preview uses the real database through a localhost tunnel. Sign
 into `/portal-admin/master-therapy-test-422` with the existing owner account.
 Patient accounts are enrolled from an owned receipt or an owner-issued invite.
 The public checkout and API processes have not yet received this release.
+
+## Product intakes and care timeline
+
+Master refill settings also hold `intake_template_id`,
+`initial_intake_required` and `check_in_days`. Exact bindings in
+`intake_templates.py` connect the 40 known SEMA/TIRZ/SERM/METFORM/PT141 SKUs to
+their four product-specific mock questionnaire families. A 12-month term has
+an initial intake and independent day-90, day-180 and day-270 check-ins. A
+six-month term has an initial intake and day-90 check-in. Questions, policies
+and care dates are snapshotted per patient, site, product and verified paid term.
+
+Patient API additions, below the site's `/portal` API prefix:
+
+- `GET /orders/{order_id}/care-plan`
+- `GET/PATCH /orders/{order_id}/care-tasks/{task_id}/intake`
+- `POST /orders/{order_id}/care-tasks/{task_id}/intake/submit`
+- Existing refill requests additionally identify `task_id` for mapped plans.
+
+Task IDs are `initial` or `checkin-{day}`. Drafts autosave independently; stale
+revisions and edits to submitted answers are rejected. Completing one intake
+does not complete another. Refill requests are tied to the applicable checkpoint
+and preserve its rule and intake evidence. Existing master disable switches
+remain authoritative even when older care plans have snapshots.
+
+Owner APIs include `POST /orders/{id}/verify-care-schedule` for imported original
+prepaid orders and `POST /orders/{id}/care-clock` for isolated Dry Run testing.
+Verification uses original paid-order evidence plus the exact purchased offer
+and fixed-day model, never today's SKU label alone. The care clock expires after
+24 hours, is restricted to verified non-shippable gateway-1 test orders, and
+never changes provider billing or shipment state. Simulated submissions cannot
+qualify a later non-test entitlement. Every refill stays a review request.
