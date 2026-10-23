@@ -182,3 +182,18 @@ account credentials remain unchanged. The adapter uses verified HTTPS; see the
 guide for the IP attribution limitation. The owner authorized any frontend
 origin; direct browser requests use per-session bearer tokens and no
 cross-origin cookie credentials.
+
+
+## Multi-site Site API
+
+The public Site API serves any number of sites. `demo/sites.json` maps each
+`site_id` to the **public plan-checkout publication** it sells (its `catalog`)
+and, optionally, its checkout `domains`. Every endpoint (plans, sessions, quote,
+payment, resume, complete, docs) is per site. Each site has its own catalog
+cache, so one failing catalog never affects another site. New endpoints:
+`GET /api/v1/sites/{site_id}` (name and brand design) and
+`GET /api/v1/domains/{domain}` (domain → site_id). Field rules and the steps
+for adding a site are in [the Site Payment API guide](../../../docs/SITE_PAYMENT_API.md).
+`test_site_api_multisite` covers per-site catalogs and branding, session/site
+binding, 404s for unknown or disabled sites, failure isolation, registry reload
+and per-site docs.

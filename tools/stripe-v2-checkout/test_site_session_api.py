@@ -66,7 +66,7 @@ class SessionApiTests(unittest.TestCase):
         self.transport=EngineTransport(self.engine)
         self.catalog=fixture()
         self.catalog['entries'][0]['options'][0]['key']='706:54537:2'
-        self.api=create_public_app(ORIGIN,read_catalog=lambda:self.catalog,session_store=self.store,transport=self.transport)
+        self.api=create_public_app(ORIGIN,read_catalog=lambda catalog:self.catalog,session_store=self.store,transport=self.transport)
         self.client=TestClient(self.api,base_url=ORIGIN)
 
     def tearDown(self):
@@ -273,7 +273,7 @@ class SessionApiTests(unittest.TestCase):
 
     def test_configured_browser_origin_receives_cors_without_account_credentials(self):
         with patch.dict('os.environ',{'SITE_API_ALLOWED_ORIGINS':'https://shop.example'}):
-            app=create_public_app(ORIGIN,read_catalog=lambda:self.catalog,session_store=self.store,transport=self.transport)
+            app=create_public_app(ORIGIN,read_catalog=lambda catalog:self.catalog,session_store=self.store,transport=self.transport)
         with TestClient(app,base_url=ORIGIN) as client:
             response=client.options(BASE,headers={'Origin':'https://shop.example','Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'authorization,content-type'})
             self.assertEqual(response.headers.get('access-control-allow-origin'),'https://shop.example')
@@ -283,7 +283,7 @@ class SessionApiTests(unittest.TestCase):
 
     def test_owner_allowed_any_origin_still_requires_the_correct_bearer_without_cookies(self):
         with patch.dict('os.environ',{'SITE_API_ALLOWED_ORIGINS':'*'}):
-            app=create_public_app(ORIGIN,read_catalog=lambda:self.catalog,session_store=self.store,transport=self.transport)
+            app=create_public_app(ORIGIN,read_catalog=lambda catalog:self.catalog,session_store=self.store,transport=self.transport)
         with TestClient(app,base_url=ORIGIN) as client:
             origin='https://independent-frontend.example'
             preflight=client.options(BASE,headers={'Origin':origin,'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'authorization,content-type'})
