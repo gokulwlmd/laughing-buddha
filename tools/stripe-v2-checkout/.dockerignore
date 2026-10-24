@@ -16,6 +16,7 @@
 !demo/publish.py
 !demo/runtime.py
 !admin.py
+!commerce_admin.py
 !master.py
 !entrypoint.py
 !web/

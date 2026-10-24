@@ -250,7 +250,7 @@ class MasterCatalog:
         return master
 
     def local_fingerprint(self):
-        return fingerprint([self.records(k) for k in ('brand','sku','link','offering','master','campaign_master','assignment','therapy','purchase_option','plan_checkout','checkout_template','site','template_draft','site_defaults','test_catalog_activation')])
+        return fingerprint([self.records(k) for k in ('brand','sku','link','offering','master','campaign_master','assignment','therapy','purchase_option','plan_checkout','checkout_template','site','template_draft','site_defaults','test_catalog_activation','coupon','price_replacement')])
 
     def prepare_setup(self,payload,required_skus=None,site_brand=None):
         request=CampaignSetup.model_validate(payload).model_dump(mode='json')

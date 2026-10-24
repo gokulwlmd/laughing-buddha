@@ -4,6 +4,7 @@ Set SITE_API_MANIFEST to an on-volume, deployment-owned publication allowlist.
 Adding valid publications hot-reloads the catalog without restarting payments.
 """
 import asyncio
+import copy
 from contextlib import asynccontextmanager
 import json
 import os
@@ -50,6 +51,34 @@ class SiteAPIPath:
             await self.app(forwarded,receive,send)
 
 
+class PricedManifest:
+    """Follow only owner-approved, exact brand/campaign price replacements."""
+    def __init__(self, source, admin):
+        self.source,self.admin=source,admin
+        self.signature=None;self.value=None;self.lock=threading.Lock()
+
+    def __call__(self):
+        with self.lock:
+            source=self.source();rows=self.admin.records('price_replacement')
+            signature=json.dumps([source,rows],sort_keys=True)
+            if signature==self.signature:return self.value
+            value=copy.deepcopy(source)
+            for site in value.get('sites',[]):
+                replacements={f"{r['old_offer']}:{r['old_product']}":r for r in rows
+                    if r['brand_id']==site['brand_id'] and r['campaign_id']==site['campaign_id']}
+                for therapy in site.get('therapies',[]):
+                    for plan in therapy.get('plans',[]):
+                        offer,product,model=plan['selection'].split(':');seen=set()
+                        while (key:=offer+':'+product) in replacements:
+                            if key in seen:raise ValueError('Cyclic price replacement')
+                            seen.add(key);r=replacements[key]
+                            if int(model) not in r['billing_models']:raise ValueError('Published billing option removed')
+                            offer,product=str(r['offer']),str(r['product'])
+                        plan['selection']=':'.join((offer,product,model))
+            self.value=value;self.signature=signature
+            return value
+
+
 def install_site_api(engine, manifest_path=None, transport=None):
     if getattr(engine.state,'site_api',None) is not None:
         return engine.state.site_api
@@ -59,7 +88,7 @@ def install_site_api(engine, manifest_path=None, transport=None):
     cfg=engine.state.settings;admin=engine.state.admin
     if not cfg.public_url.startswith('https://'):
         raise ValueError('Site payment APIs require the configured HTTPS checkout origin')
-    manifest=ManifestFile(manifest_path)
+    manifest=PricedManifest(ManifestFile(manifest_path),admin)
     store=SessionStore(cfg.state_dir/'site-api-sessions')
     transport=transport or CheckoutTransport(cfg.public_url,approved_origins=(cfg.public_url,),
         loopback_port=int(os.environ.get('SITE_API_INTERNAL_PORT','8080')))

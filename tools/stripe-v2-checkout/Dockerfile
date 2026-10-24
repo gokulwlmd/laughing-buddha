@@ -7,6 +7,7 @@ ENV PYTHONUNBUFFERED=1 \
     CHECKOUT_AUTHORIZATION_VERIFIED=1
 
 WORKDIR /app
+COPY --chown=10001:10001 commerce_admin.py ./
 COPY requirements.txt ./
 RUN --mount=type=secret,id=build_ca_bundle \
     if [ -f /run/secrets/build_ca_bundle ]; then export PIP_CERT=/run/secrets/build_ca_bundle; fi; \

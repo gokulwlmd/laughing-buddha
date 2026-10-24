@@ -12,6 +12,7 @@ class SyntheticSticky:
     def __init__(self, state_dir):
         self.path = Path(state_dir) / 'synthetic-catalog.json'
         self.data = json.loads(self.path.read_text()) if self.path.exists() else {'products':{},'offers':{},'campaigns':{}}
+        self.data.setdefault('coupons',{})
         self.models = [{'id':mid,'name':name,'days':days,'type':{'id':1},'is_archived':0}
             for mid,days,name in [(2,0,'One-time'),(3,30,'Every 30 days'),(4,90,'Every 90 days'),(5,180,'Every 180 days'),(6,360,'Every 360 days')]]
 
@@ -21,6 +22,8 @@ class SyntheticSticky:
 
     def detail(self, path):
         identifier = path.rsplit('/',1)[1]
+        if '/coupons/' in path and identifier in self.data['coupons']:
+            return copy.deepcopy(self.data['coupons'][identifier])
         if '/providers/payment/profiles/' in path:
             return {'id':1,'account_id':250,'currency':{'code':'USD'},'fields':{'account_fields':{'publishable_key':'pk_test_synthetic_only','capture_on_shipment':False}}}
         if '/products/' in path:
@@ -42,10 +45,25 @@ class SyntheticSticky:
                 'channel':{'id':1},'payment_methods':[{'value':'visa'},{'value':'stripe_link'}],
                 'alternative_payments':[{'payment_method':'stripe_link','provider':{'id':1,'account_id':250}}],
                 'countries':[{'id':223,'iso_2':'US','name':'United States'}],'shipping_profiles':[{'id':2,'name':'No shipping'}],
+                'coupon_profiles':[{'id':pid,'name':self.data['coupons'][str(pid)]['name']} for pid in raw.get('coupon_profiles',[])],
                 'offers':[self.detail('/api/v2/offers/'+str(oid)) for oid in raw['offers']]}
         raise ValueError('Synthetic object does not exist')
 
     def call(self, method, path, body=None):
+        if method=='POST' and path=='/api/v2/coupons':
+            key=str(20000+len(self.data['coupons']))
+            self.data['coupons'][key]={'id':int(key),'name':body['name'],'type_id':1,'is_active':1,
+                'discount_percent':body['discount']['percent'],'is_lifetime':body['is_lifetime'],
+                'is_free_shipping':body['is_free_shipping'],'limits':copy.deepcopy(body['limits']),
+                'expires_at':{'date':body['expiration']['date']+' 00:00:00','timezone':body['expiration']['timezone']},
+                'promo_codes':[dict(p,is_active=1,is_deleted=0) for p in body['promo_codes']]}
+            self.save();return {'status':'SUCCESS','data':{'id':int(key)}}
+        if method=='PUT' and '/coupon-profiles/' in path:
+            cid,pid=path.split('/')[4],int(path.rsplit('/',1)[1])
+            if str(pid) not in self.data['coupons']:raise ValueError('Synthetic coupon does not exist')
+            campaign=self.data['campaigns'].setdefault(cid,{'id':int(cid),'name':'Synthetic routing template','offers':[]})
+            campaign['coupon_profiles']=list(dict.fromkeys(campaign.get('coupon_profiles',[])+[pid]))
+            self.save();return {'status':'SUCCESS'}
         if path in ('/api/v1/authorize_payment','/api/v1/new_order'):
             raise RuntimeError('Payment writes are disabled in synthetic staging')
         if method == 'GET' and path == '/api/v2/billing_models':

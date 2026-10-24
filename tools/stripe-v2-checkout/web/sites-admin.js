@@ -112,6 +112,7 @@ function renderSites(){
  if(p)action(actions,'Edit checkout',()=>openSiteCustomizer(site,row));else action(actions,'Fix template',()=>{page('templates');newTemplate(templates.find(t=>t.id===row.template_id));});
  checkout.append(actions);e.append(checkout);}
  action(e,site.checkouts.some(c=>c.update_available)?'Review template updates':site.checkouts.some(c=>c.status==='incomplete')?'Check setup':'Update checkouts',()=>newSite(site));
+ action(e,'Prices & coupons',()=>openCommerce(site.brand_id,site.campaign_id));
  action(e,'Edit branding',()=>{page('brands');fill('brand-form',b);});return e;
  },'Your sites will appear here. Add a site to prepare its branded checkouts.');
 }

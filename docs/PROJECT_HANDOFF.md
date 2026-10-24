@@ -693,3 +693,30 @@ checkout/patient counts are preserved. The reported patient's exact upload recor
 was reconciled from an encrypted provider success response, and its intake gate
 passes. Diagnosis included targeted retries; final reconciliation made no further
 upload. The temporary encrypted response was removed. No payment was submitted.
+
+
+## 24 October 2026 — brand commerce and AWS migration plan
+
+Built the owner-only Prices & coupons screen and brand-scoped price/coupon
+review APIs, with a private per-brand OpenAPI contract. Coupons support percent,
+expiry/timezone, usage limits and initial-only or continuing renewal applicability.
+Approved price edits preserve existing subscriptions and propagate exact approved
+replacement choices to public site APIs. Read-back, CSRF, tenant/campaign scope,
+review history and uncertain-write holds remain enforced. Synthetic staging can
+exercise coupon creation without contacting a provider.
+
+Validation: initial full backend run 527 passed; subsequent focused checks cover
+the final additions. All 14 selected commerce, brand and prepaid browser checks
+passed. See BRAND_COMMERCE.md for endpoints, boundaries and rollout status.
+The live Fly worker was not restarted: preflight found unfinished payment forms
+and unresolved authorizations. No live catalog or financial writes were performed.
+This is implemented source, not a claim of live deployment.
+
+The owner next requested an enterprise AWS migration plan. Confirmed: no AWS
+account yet, client-owned portal subdomains with DNS instructions, production
+approval by owner/designated leads. AWS_PLATFORM_PLAN.md proposes separate
+staging/production accounts, ECS Fargate, RDS PostgreSQL, private S3/KMS,
+CloudFront SaaS domains, durable payment state and GitHub OIDC releases. It
+includes migration/rollback gates and owner setup inputs. No AWS infrastructure,
+DNS or data migration has been applied. Full spreadsheet catalog import remains
+unapproved and paused; preserve the separate review prototypes.

@@ -24,6 +24,19 @@ class PrepaidTests(unittest.TestCase):
         self.seed();self.provision();data=self.state();o=data['offers'][0]
         self.assertEqual(o['price'],'1200.00');self.assertEqual(self.fake.products[o['product_id']]['price'],300.0);self.assertEqual(cycles_for(self.fake.detail('/api/v2/offers/'+str(o['offer_id']))),4)
         self.provision();self.assertEqual(self.fake.count('/products'),1)
+
+    def test_brand_price_api_preserves_prepaid_cycles_and_updates_full_upfront_price(self):
+        self.seed();self.provision();old=self.state()['offers'][0]
+        path='brands/'+old['brand_id']+'/prices/'+old['id']+'/reviews'
+        r=self.post(path,{'price':'1600.00','expected_price':'1200.00'})
+        self.assertEqual(r.status_code,200,r.text)
+        self.assertEqual(self.apply(r.json()).status_code,200)
+        changed=self.state()['offers'][0]
+        self.assertEqual(changed['configuration'],old['configuration'])
+        self.assertEqual(changed['billing_models'],old['billing_models'])
+        self.assertEqual(self.fake.products[changed['product_id']]['price'],400.0)
+        self.assertEqual(cycles_for(self.fake.detail('/api/v2/offers/'+str(changed['offer_id']))),4)
+        self.assertEqual(self.fake.products[old['product_id']]['price'],300.0)
     def test_prepaid_total_and_owned_capture_include_cycle_count_and_stop_terms(self):
         c,p,h,cfg=self.setup_customer();o=cfg['options'][0];self.assertEqual(o['upfrontPrice'],'1200.0');self.assertEqual(o['prepaidCycles'],4);self.assertFalse(o['renewal'])
         q=c.post('/api/quote',params=p,headers=h,json={'contact':CONTACT,'selection':o['key'],'shipping_id':2});self.assertEqual(q.status_code,200,q.text);self.assertEqual(q.json()['amount'],120000)
