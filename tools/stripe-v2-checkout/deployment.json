@@ -679,5 +679,28 @@
     "synthetic_quote_only_sessions_created": true,
     "new_payment_or_order_submitted": false,
     "report": "docs/CHECKOUT_PRICE_PERFORMANCE.md"
+  },
+  "brand_commerce_release": {
+    "date": "2026-10-24",
+    "status": "deployed_verified",
+    "image_digest": "sha256:33f2fed43a58bf7adbaf2f584e2e2583188fb87706b22285eabf060ecde77021",
+    "runtime_source_commit": "775142b8df88902ce2397682a036fd9388d0efa2",
+    "backend_checks_passed": 531,
+    "backend_evidence": "GitHub run 40105425562 passed all 531 backend and 140 browser checks",
+    "browser_checks_passed": 140,
+    "browser_skipped": 0,
+    "browser_flaky": 0,
+    "source_hashes_match": true,
+    "health_status": 200,
+    "anonymous_commerce_apis_blocked": true,
+    "test_hooks_absent": true,
+    "backup_integrity_verified": true,
+    "existing_records_preserved": true,
+    "encryption_keys_and_publications_preserved": true,
+    "financial_status_counts_unchanged": true,
+    "live_payment_or_coupon_writes_performed": false,
+    "restart_preserved_unfinished_attempts": true,
+    "github_ci_status": "success",
+    "github_ci_url": "https://github.com/gokulwlmd/laughing-buddha/actions/runs/40105425562"
   }
 }

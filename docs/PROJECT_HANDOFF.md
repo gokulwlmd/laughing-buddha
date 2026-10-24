@@ -720,3 +720,23 @@ CloudFront SaaS domains, durable payment state and GitHub OIDC releases. It
 includes migration/rollback gates and owner setup inputs. No AWS infrastructure,
 DNS or data migration has been applied. Full spreadsheet catalog import remains
 unapproved and paused; preserve the separate review prototypes.
+
+## 24 October 2026 — commerce published and CI fixtures corrected
+
+Owner requested fixing CI and publishing the commerce work. The initial failure
+was a stale two-item navigation expectation and detached DOM layout measurements.
+A later rerun exposed backend/browser clock skew after a fixed-date test session
+expired. QA now checks the exact three primary admin screens, snapshots layout
+atomically, and aligns browser Date to the offline backend clock without stopping
+timers or changing production session rules. The final full local browser run
+passed all 140 scenarios, with no skips or flaky results. Runtime backend code
+previously passed all 531 GitHub checks.
+
+Prices & coupons is now live at `/admin#commerce` on the shared Fly app. The tested
+image, protected-route checks and state-preservation evidence are recorded in
+BRAND_COMMERCE.md and deployment.json. All existing records and persistent keys
+were preserved, and no financial/provider mutation was performed for QA. AWS
+setup remains unprovisioned and the spreadsheet catalog proposal remains paused.
+
+Final GitHub CI run 40105425562 is green: 531 backend and 140 browser scenarios.
+Validated source: `775142b8df88902ce2397682a036fd9388d0efa2`. The following release-record commit changes documentation and deployment metadata only.

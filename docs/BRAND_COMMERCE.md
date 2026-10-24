@@ -97,9 +97,9 @@ their quote if their selected offer changes.
   Desktop/mobile screenshots inspected; no horizontal overflow.
 - Synthetic staging supports persisted coupon creation without network access;
   real payment writes remain disabled there.
-- Live read-only preflight found 19 awaiting-card and 2 authorization-pending
-  checkouts. The live worker was not restarted and no coupon, product, order,
-  payment or subscription was changed for QA. Publication is a separate step.
+- Initial read-only preflight found unfinished payment forms and unresolved
+  authorizations. Publication was held until the owner requested the CI fixes
+  and deployment. The verified release is recorded below.
 
 Provider contract: [Sticky REST API](https://developer-v2.sticky.io/), Create
 Coupon Profile and Assign Campaign Coupon Profile. Verified against its published
@@ -120,3 +120,21 @@ clock was fixed to 23 October while browser expiry used wall time. Browser QA no
 reads the offline server's clock and fixes Date to the same instant, leaving timers
 running. Production authentication and expiration rules are unchanged. Intake
 resume, the complete included-refill journey and branded navigation pass together.
+
+## Live release — 24 October 2026
+
+Published to the existing shared Fly app using immutable image
+`sha256:33f2fed43a58bf7adbaf2f584e2e2583188fb87706b22285eabf060ecde77021`.
+Open `/admin#commerce` with the existing owner login. All 140 browser scenarios
+passed locally, with no skipped or flaky results; the runtime backend had passed
+531 checks in GitHub. Subsequent corrections changed test fixtures only.
+
+Live health, runtime source hashes, admin asset delivery and anonymous rejection
+of all three commerce read endpoints were verified. The test-only endpoint is
+absent. An on-volume database backup passed SQLite integrity checking. Existing
+records across 13 protected tables, encryption keys, site publication and payment
+status counts were preserved. The restart does not make unfinished authorizations
+safe to retry; existing uncertainty holds remain. No payment, coupon, product or
+subscription write was performed as a release check. AWS remains a proposal.
+
+Final [GitHub CI run](https://github.com/gokulwlmd/laughing-buddha/actions/runs/40105425562) passed all 531 backend tests and all 140 browser scenarios for app/test commit `775142b8df88902ce2397682a036fd9388d0efa2`.
