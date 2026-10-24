@@ -11,6 +11,12 @@ const test=base.extend({careMode:[false,{option:true}],member:async({careMode},u
   const child=spawn(process.env.QA_PYTHON||'python3',[path.join(__dirname,'member_server.py'),'--port',String(port),'--state-dir',directory,...(careMode?['--care-plan']:[])],{stdio:['ignore','pipe','pipe']});let errors='';child.stderr.on('data',data=>errors+=data);
   try{await expect.poll(async()=>{if(child.exitCode!==null)throw Error(errors);try{return(await fetch(origin+'/health')).status;}catch{return 0;}},{timeout:15000}).toBe(200);await use({origin});}
   finally{child.kill('SIGTERM');await new Promise(resolve=>{if(child.exitCode!==null)return resolve();child.once('exit',resolve);setTimeout(()=>{child.kill('SIGKILL');resolve();},2000).unref();});fs.rmSync(directory,{recursive:true,force:true});}
+},page:async({page,member},use)=>{
+  // Keep browser session expiry on the same clock as the offline backend.
+  // Fixed Date leaves timers running, so autosave and asynchronous UI still work.
+  const fixture=await(await page.request.get(member.origin+'/__member_qa')).json();
+  await page.clock.setFixedTime(new Date(fixture.clock*1000));
+  await use(page);
 }});
 
 async function ownerLogin(page,member){await page.goto(member.origin+'/portal-admin/site-a');await page.locator('#auth-email').fill('owner@example.invalid');await page.locator('#auth-password').fill('owner-only-test-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.locator('#site-select')).toHaveValue('site-a');await expect(page.getByRole('button',{name:'Sync captured orders',exact:true})).toBeVisible();}

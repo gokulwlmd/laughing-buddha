@@ -58,6 +58,6 @@ if __name__ == '__main__':
             'id': order['order_id'], 'total': order['order_total'],
             'next_cycle_date': order['products'][0].get('recurring_date'),
         } for order in getattr(fake, 'orders', {}).values()]
-        return {'calls': counts, 'native_orders': native_orders, 'shipping_state': fake.order.get('shipping_state'), 'subscription_state': fake.subscription.get('shipping', {}).get('state')}
+        return {'clock': app.state.member_portal.clock(), 'calls': counts, 'native_orders': native_orders, 'shipping_state': fake.order.get('shipping_state'), 'subscription_state': fake.subscription.get('shipping', {}).get('state')}
 
     uvicorn.run(app, host='127.0.0.1', port=args.port, log_level='warning', access_log=False, proxy_headers=False)

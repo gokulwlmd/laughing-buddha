@@ -114,3 +114,9 @@ check now asserts the exact three primary screen labels; the portal check reads
 one DOM snapshot and requires all seven routes to remain visible and within the
 viewport. Both failed scenarios pass locally after correction. No application
 behavior or payment protections were changed to make these checks pass.
+
+The later full rerun also exposed a date-dependent portal fixture: its backend
+clock was fixed to 23 October while browser expiry used wall time. Browser QA now
+reads the offline server's clock and fixes Date to the same instant, leaving timers
+running. Production authentication and expiration rules are unchanged. Intake
+resume, the complete included-refill journey and branded navigation pass together.
