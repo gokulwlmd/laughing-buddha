@@ -1,10 +1,10 @@
 """Synthetic master catalog support shared by regression and browser tests."""
 import copy
 from decimal import Decimal
-from test_admin import AdminSticky
+from test_commerce_admin import CouponSticky
 from test_checkout import FakeSticky
 
-class MasterSticky(AdminSticky):
+class MasterSticky(CouponSticky):
     def __init__(self):
         super().__init__();self.campaign_offers={};self.model_changes={};self.fail_attachment=False;self.new_campaigns={};self.deny_new_campaign=False
     def models(self):
@@ -28,6 +28,7 @@ class MasterSticky(AdminSticky):
             d['offers']=[self.detail('/api/v2/offers/'+str(i)) for i in self.campaign_offers.get(cid,[706])];return d
         return super().detail(path)
     def call(self,method,path,body=None):
+        if '/coupon-profiles/' in path:return super().call(method,path,body)
         if path=='/api/v2/order_total/calculate' and body['offers'][0].get('prepaid_cycles'):
             line=body['offers'][0];cycles=line['prepaid_cycles'];product=self.detail('/api/v2/products/'+str(line['product_id']));total=str(Decimal(str(product['price']))*cycles)
             self.calls.append((method,path,copy.deepcopy(body)))

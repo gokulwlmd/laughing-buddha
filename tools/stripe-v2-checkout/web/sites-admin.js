@@ -55,6 +55,7 @@ function templatePayload(draft=false){
 }
 function newSite(s={}){
  const f=$('site-form');f.reset();creatingSiteBrand=!s.id;newSiteBrandId='brand-'+crypto.randomUUID().slice(0,12);f.elements.id.value=s.id||'site-'+crypto.randomUUID().slice(0,12);f.elements.name.value=s.name||'';
+ f.elements.wlmd_site_id.value=s.wlmd_site_id||'';f.elements.wlmd_site_id.readOnly=!!s.wlmd_site_id;
  f.elements.brand_id.value=s.brand_id||'';f.elements.campaign_id.value=s.campaign_id||'';f.elements.connection.value=s.id?'existing':'new';f.elements.brand_id.disabled=!!s.id;f.elements.connection.disabled=!!s.id;f.elements.campaign_id.disabled=!!s.id;
  $('site-brand-options').hidden=!!s.id;$('site-mode').textContent=s.id?'Update site checkouts':'Add a site';$('site-editor').hidden=false;$('site-customizer').hidden=true;
  $('site-form').querySelector('button[type=submit]').textContent=s.id?'Review checkout updates →':'Review and create site →';siteConnection();siteDefaults();renderSiteBrand();setSiteStep(s.id?2:1);$('site-editor').scrollIntoView({block:'start'});
@@ -71,7 +72,7 @@ function renderSiteBrand(){
  $('site-brand-note').textContent=creatingSiteBrand?'Your name, logo and color will appear on every checkout.':b?'Uses '+b.name+'’s logo, colors and support details.':'';
 }
 function setSiteStep(step){siteStep=step;$('site-step-identity').hidden=step!==1;$('site-step-checkouts').hidden=step!==2;$('site-step-label').textContent=step===1?'1 · YOUR SITE':'2 · INCLUDED CHECKOUTS';$('site-identity-summary').textContent=$('site-form').elements.name.value+' · '+(creatingSiteBrand?'New branding':state.brands.find(b=>b.id===$('site-brand').value)?.name||'');}
-function sitePayload(){const f=$('site-form'),data={id:f.elements.id.value,name:f.elements.name.value,brand_id:creatingSiteBrand?newSiteBrandId:f.elements.brand_id.value,remember_connection:f.elements.remember_connection.checked};
+function sitePayload(){const f=$('site-form'),data={id:f.elements.id.value,name:f.elements.name.value,brand_id:creatingSiteBrand?newSiteBrandId:f.elements.brand_id.value,remember_connection:f.elements.remember_connection.checked,wlmd_site_id:f.elements.wlmd_site_id.value.trim()||null};
  if(f.elements.connection.value==='existing')data.campaign_id=Number(f.elements.campaign_id.value);else {data.campaign_name=f.elements.name.value;data.routing_template_id=Number(f.elements.routing_template_id.value);}
  if(creatingSiteBrand)data.new_brand={id:newSiteBrandId,name:f.elements.brand_name.value||f.elements.name.value,logo_url:f.elements.logo_url.value,color:f.elements.color.value,support_email:f.elements.support_email.value};return data;
 }
@@ -111,6 +112,7 @@ function renderSites(){
  if(p)action(actions,'Edit checkout',()=>openSiteCustomizer(site,row));else action(actions,'Fix template',()=>{page('templates');newTemplate(templates.find(t=>t.id===row.template_id));});
  checkout.append(actions);e.append(checkout);}
  action(e,site.checkouts.some(c=>c.update_available)?'Review template updates':site.checkouts.some(c=>c.status==='incomplete')?'Check setup':'Update checkouts',()=>newSite(site));
+ action(e,'Prices & coupons',()=>openCommerce(site.brand_id,site.campaign_id));
  action(e,'Edit branding',()=>{page('brands');fill('brand-form',b);});return e;
  },'Your sites will appear here. Add a site to prepare its branded checkouts.');
 }

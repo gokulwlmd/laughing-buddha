@@ -8,6 +8,7 @@ import hmac
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 import http.client
+import ipaddress
 from http.cookies import SimpleCookie
 from html.parser import HTMLParser
 import json
@@ -22,6 +23,8 @@ import time
 from urllib import parse
 import weakref
 
+from patient_demo.app import IntakePatch, IntakeSubmit
+from member_portal.app import ReceiptEnrollment
 from fastapi import APIRouter, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -67,6 +70,7 @@ class QuoteBody(StrictBody):
     contact: Contact
     shipping_id: int | None = Field(default=None,gt=0)
     dollar_test: bool = False
+    coupon_code: str = Field(default='', max_length=30, pattern=r'^[A-Za-z0-9_% .-]*$')
 
 class PaymentBody(StrictBody):
     model_config=ConfigDict(extra='forbid',json_schema_extra={'example':{'quote_id':'COPY_QUOTE_ID','accept_terms':False}})
@@ -150,6 +154,10 @@ class QuoteResult(BaseModel):
     currency: str
     payment_terms: str
     terms_consent_required: bool
+    coupon_code: str | None = None
+    discount_amount: int = 0
+    subtotal_amount: int | None = None
+    discount_applies_to_renewals: bool = False
 
 class PaymentResult(BaseModel):
     payment_intent_id: str
@@ -251,12 +259,17 @@ class CheckoutTransport:
     A failed request is never retried, including on a previously healthy socket.
     Financial callers therefore retain their existing uncertain-result handling.
     """
-    def __init__(self,upstream=PUBLIC_UPSTREAM,*,max_connections=8,idle_timeout=4.0,timeout=90.0):
-        if upstream != PUBLIC_UPSTREAM:
+    def __init__(self,upstream=PUBLIC_UPSTREAM,*,max_connections=8,idle_timeout=4.0,timeout=90.0,
+                 approved_origins=(PUBLIC_UPSTREAM,),loopback_port=None):
+        parsed=parse.urlsplit(upstream)
+        if upstream not in approved_origins or parsed.scheme!='https' or not parsed.hostname or parsed.username or parsed.password or parsed.path or parsed.query or parsed.fragment:
             raise ValueError('Unexpected checkout upstream')
+        if loopback_port is not None and (type(loopback_port) is not int or not 1<=loopback_port<=65535):
+            raise ValueError('Invalid local checkout port')
         if max_connections<1 or idle_timeout<=0 or timeout<=0:
             raise ValueError('Invalid checkout connection pool settings')
         self.upstream=upstream
+        self._loopback_port=loopback_port
         self._host=parse.urlsplit(upstream).hostname
         self._context=ssl.create_default_context()
         self._max_connections=max_connections;self._idle_timeout=idle_timeout;self._timeout=timeout
@@ -275,7 +288,9 @@ class CheckoutTransport:
                 if self._count<self._max_connections:
                     # Construction does not perform network I/O. The first request
                     # connects using the system trust store and hostname checking.
-                    connection=http.client.HTTPSConnection(self._host,timeout=self._timeout,context=self._context)
+                    connection=(http.client.HTTPConnection('127.0.0.1',self._loopback_port,timeout=self._timeout)
+                        if self._loopback_port is not None else
+                        http.client.HTTPSConnection(self._host,timeout=self._timeout,context=self._context))
                     self._count+=1
                     return connection
                 remaining=deadline-time.monotonic()
@@ -298,7 +313,7 @@ class CheckoutTransport:
 
     def call(self,row,method,path,body=None,client_ip=None):
         # Paths and link IDs come only from the server's published catalog.
-        if not re.fullmatch(r'/c/choice-[a-f0-9]{32}|/api/(?:start-checkout|config|status|quote|authorize|resume|capture)',path):
+        if not re.fullmatch(r'/c/choice-[a-f0-9]{32}|/api/(?:start-checkout|config|status|quote|authorize|resume|capture|portal-enrollment|post-checkout-account|post-checkout-identity|post-checkout-id-photo(?:/reuse)?|post-checkout-intake(?:/submit)?)',path):
             raise ValueError('Unexpected checkout path')
         target=path
         if path.startswith('/api/'):
@@ -306,13 +321,18 @@ class CheckoutTransport:
         cookies=json.loads(row['cookies'])
         if any(not (k=='__Host-checkout-browser' or re.fullmatch(r'purchase_[a-f0-9]{20}',k)) for k in cookies):
             raise ValueError('Unexpected upstream cookie')
-        headers={'Accept':'application/json','Host':parse.urlsplit(PUBLIC_UPSTREAM).netloc,
+        headers={'Accept':'application/json','Host':parse.urlsplit(self.upstream).netloc,
             'Cookie':'; '.join(k+'='+v for k,v in cookies.items())}
         if row['attempt']:headers['X-Checkout-Attempt']=row['attempt']
-        if method=='POST':
-            headers.update({'Content-Type':'application/json','Origin':PUBLIC_UPSTREAM,'X-CSRF-Token':row['csrf']})
+        if method in ('POST', 'PATCH'):
+            headers.update({'Content-Type':'application/json','Origin':self.upstream,'X-CSRF-Token':row['csrf']})
         # Do not forward/spoof a customer IP through the public Fly proxy.
         # The unchanged engine attributes these calls to this API service.
+        # A dedicated same-process loopback connection never traverses that
+        # proxy: retain its already edge-supplied address for the engine.
+        if self._loopback_port is not None and client_ip:
+            try:headers['Fly-Client-IP']=str(ipaddress.ip_address(client_ip))
+            except ValueError:pass
         encoded=json.dumps(body).encode() if body is not None else None
         connection=None;reusable=False
         try:
@@ -326,7 +346,9 @@ class CheckoutTransport:
             if not 200<=response.status<300:
                 try:
                     detail=json.loads(raw).get('detail')
-                    if not isinstance(detail,str):detail='Checkout request was rejected'
+                    if isinstance(detail,dict) and detail.get('code')=='identity_verification_required':
+                        detail={'code':'identity_verification_required','message':'Verify your identity to continue your intake.'}
+                    elif not isinstance(detail,str):detail='Checkout request was rejected'
                 except (ValueError,AttributeError):detail='Checkout request was rejected'
                 raise UpstreamError(response.status,detail)
             for value in response.headers.get_all('Set-Cookie',[]):
@@ -347,12 +369,14 @@ class CheckoutTransport:
 
 def terms(q):
     o=q['option'];total=f"{q['amount']/100:.2f} {q['currency'].upper()}"
+    renewal=f"{q.get('renewalPrice',o.get('upfrontPrice',o.get('basePrice',q['amount']/100)))} {q['currency'].upper()}"
     if o.get('prepaidCycles'):
-        return f"Pay {total} upfront. {o['prepaidCycles']} prepaid cycles, {o['days']} days apart. "+(f"Full plan renews every {o['renewalDays']} days." if o.get('renewal') else 'No automatic renewal.')
-    return f"Pay {total} today. "+(f"Renews every {o['days']} days." if o['recurring'] else 'One-time payment. No automatic renewal.')
+        return f"Pay {total} upfront. {o['prepaidCycles']} deliveries, {o['days']} days apart. "+(f"Renews at {renewal} every {o['renewalDays']} days until cancelled." if o.get('renewal') else 'No automatic renewal.')
+    return f"Pay {total} today. "+(f"Renews at {renewal} every {o['days']} days until cancelled." if o['recurring'] else 'One-time payment. No automatic renewal.')
 
 
-def install_session_api(app,site_check,catalog_loader,store,transport,origin,allowed_origins=(),clock=time.monotonic):
+def install_session_api(app,site_check,catalog_loader,store,transport,origin,allowed_origins=(),clock=time.monotonic,portal_site_for=None,
+                        checkout_origin=PUBLIC_UPSTREAM):
     router=APIRouter(prefix='/api/v1/sites/{site_id}/sessions',tags=['On-page checkout API'])
     bearer=HTTPBearer(auto_error=False,scheme_name='CheckoutSession',description='Paste the session_token from POST sessions. This is scoped to one customer checkout, not an account key.')
     display_configuration=DisplayConfigurationCache(clock=clock)
@@ -405,11 +429,11 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
     def create(site_id:str,body:CreateSession,req:Request):
         """Returns a session ID/token, not a hosted checkout URL. Save these before sending quote/payment requests. No charge or payment authorization is created."""
         ready();site_check(site_id);origin_check(req)
-        _,routes=catalog_loader()
+        _,routes=catalog_loader(site_id)
         target=routes.get(body.plan_id)
         if not target:raise HTTPException(404,'Plan not found')
         url=parse.urlsplit(target);selection=parse.parse_qs(url.query).get('selection',[])
-        if url.scheme+'://'+url.netloc!=PUBLIC_UPSTREAM or not re.fullmatch(r'/c/choice-[a-f0-9]{32}',url.path) or len(selection)!=1:
+        if url.scheme+'://'+url.netloc!=checkout_origin or not re.fullmatch(r'/c/choice-[a-f0-9]{32}',url.path) or len(selection)!=1:
             raise HTTPException(503,'Published checkout mapping needs review')
         row,token=store.create(site_id,body.plan_id,url.path.split('/')[-1],selection[0])
         try:
@@ -457,11 +481,13 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
             contact=body.contact.model_dump()
             if contact['country']=='US' and contact['region'] not in US_REGIONS:
                 raise HTTPException(422,'Use the two-letter US state code')
-            try:value=call(row,'POST','/api/quote',{'contact':contact,'selection':row['selection'],'shipping_id':body.shipping_id,**({'dollar_test':True} if body.dollar_test else {})},req)
+            try:value=call(row,'POST','/api/quote',{'contact':contact,'selection':row['selection'],'shipping_id':body.shipping_id,**({'dollar_test':True} if body.dollar_test else {}),**({'coupon_code':body.coupon_code} if body.coupon_code else {})},req)
             except UpstreamError as exc:raise translated(exc)
             store.update(row['id'],quote_id=value['id'],phase='quoted')
             o=value['option'];consent=bool(o['recurring'])
-            return QuoteResult(quote_id=value['id'],amount=value['amount'],currency=value['currency'],payment_terms=terms(value),terms_consent_required=consent)
+            return QuoteResult(quote_id=value['id'],amount=value['amount'],currency=value['currency'],payment_terms=terms(value),terms_consent_required=consent,
+                coupon_code=value.get('coupon',{}).get('code'),discount_amount=value.get('discountAmount',0),
+                subtotal_amount=value.get('subtotalAmount',value['amount']),discount_applies_to_renewals=value.get('coupon',{}).get('lifetime',False))
 
     @router.post('/{session_id}/payment',response_model=PaymentResult,summary='Prepare the Stripe Payment Element for this reviewed quote')
     def payment(site_id:str,session_id:str,body:PaymentBody,req:Request,credentials:HTTPAuthorizationCredentials|None=Security(bearer)):
@@ -545,10 +571,98 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
                     raise HTTPException(409,'Complete the checkout before creating a member account')
                 result=call(row,'POST','/api/portal-enrollment',{},req)
                 url=parse.urlsplit(result.get('enrollment_url',''))
-                upstream=parse.urlsplit(getattr(transport,'upstream',PUBLIC_UPSTREAM))
+                upstream=parse.urlsplit(checkout_origin)
                 if url.scheme!='https' or url.netloc!=upstream.netloc or not url.path.startswith('/portal/') or url.username or url.password:
                     raise UpstreamError(detail='The member portal link could not be verified')
+                expected_site=portal_site_for(site_id) if portal_site_for else None
+                if expected_site and (result.get('site_id')!=expected_site or url.path!='/portal/'+expected_site):
+                    raise UpstreamError(detail='The member portal does not belong to this site')
                 return PortalEnrollmentResult.model_validate(result)
             except UpstreamError as exc:raise translated(exc)
+
+    @router.get('/{session_id}/account', summary='Read Sticky password setup availability after purchase')
+    def account(site_id: str, session_id: str, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
+        row = auth(site_id, session_id, req, credentials)
+        try:
+            return call(row, 'GET', '/api/post-checkout-account', req=req)
+        except UpstreamError as exc:
+            raise translated(exc)
+
+    @router.post('/{session_id}/account', summary='Set a Sticky member password for this verified purchase')
+    def setup_account(site_id: str, session_id: str, body: ReceiptEnrollment, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
+        row = auth(site_id, session_id, req, credentials)
+        with store.lock(row['id']):
+            try:
+                return call(row, 'POST', '/api/post-checkout-account', body.model_dump(), req)
+            except UpstreamError as exc:
+                raise translated(exc)
+
+    from member_portal.id_uploads import IDPhotoInput
+
+    @router.get('/{session_id}/id-photo', summary='Read the saved ID photo status')
+    def id_photo_status(site_id: str, session_id: str, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
+        row = auth(site_id, session_id, req, credentials)
+        try:
+            return call(row, 'GET', '/api/post-checkout-id-photo', req=req)
+        except UpstreamError as exc:
+            raise translated(exc)
+
+    @router.post('/{session_id}/id-photo', summary='Upload an ID photo as an alternative to SSN verification')
+    def id_photo_upload(site_id: str, session_id: str, body: IDPhotoInput, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
+        row = auth(site_id, session_id, req, credentials)
+        try:
+            return call(row, 'POST', '/api/post-checkout-id-photo', {'file_contents': body.file_contents.get_secret_value()}, req)
+        except UpstreamError as exc:
+            raise translated(exc)
+
+    @router.post('/{session_id}/id-photo/reuse', summary='Attach the saved ID photo to this purchased order')
+    def id_photo_reuse(site_id: str, session_id: str, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
+        row = auth(site_id, session_id, req, credentials)
+        try:
+            return call(row, 'POST', '/api/post-checkout-id-photo/reuse', {}, req)
+        except UpstreamError as exc:
+            raise translated(exc)
+
+    from member_portal.wlmd import IdentityInput
+
+    @router.get('/{session_id}/identity', summary='Read saved identity status for this purchase')
+    def identity_status(site_id: str, session_id: str, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
+        row = auth(site_id, session_id, req, credentials)
+        try:
+            return call(row, 'GET', '/api/post-checkout-identity', req=req)
+        except UpstreamError as exc:
+            raise translated(exc)
+
+    @router.post('/{session_id}/identity', summary='Verify identity before intake; SSN digits are not stored')
+    def identity_check(site_id: str, session_id: str, body: IdentityInput, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
+        row = auth(site_id, session_id, req, credentials)
+        try:
+            return call(row, 'POST', '/api/post-checkout-identity', {'last4': body.last4.get_secret_value()}, req)
+        except UpstreamError as exc:
+            raise translated(exc)
+
+    @router.get('/{session_id}/intake', summary='Read the purchased product intake without signing in')
+    def intake(site_id: str, session_id: str, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
+        row = auth(site_id, session_id, req, credentials)
+        try:
+            return call(row, 'GET', '/api/post-checkout-intake', req=req)
+        except UpstreamError as exc:
+            raise translated(exc)
+
+    @router.patch('/{session_id}/intake', summary='Save a partial purchased product intake')
+    def save_intake(site_id: str, session_id: str, body: IntakePatch, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
+        row = auth(site_id, session_id, req, credentials)
+        try:
+            return call(row, 'PATCH', '/api/post-checkout-intake', body.model_dump(), req)
+        except UpstreamError as exc:
+            raise translated(exc)
+
+    @router.post('/{session_id}/intake/submit', summary='Submit the purchased product intake')
+    def submit_intake(site_id: str, session_id: str, body: IntakeSubmit, req: Request, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
+        row = auth(site_id, session_id, req, credentials)
+        try:
+            return call(row, 'POST', '/api/post-checkout-intake/submit', body.model_dump(), req)
+        except UpstreamError as exc:
+            raise translated(exc)
 
     app.include_router(router)

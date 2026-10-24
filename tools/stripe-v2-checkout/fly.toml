@@ -10,6 +10,9 @@ kill_timeout = "10s"
   CHECKOUT_PUBLIC_URL = "https://wlmd-stripe-test-0f89b1bb.fly.dev"
   CHECKOUT_STATE_DIR = "/data"
   CHECKOUT_AUTHORIZATION_VERIFIED = "1"
+  SITE_API_MANIFEST = "/data/site-api-publications.json"
+  SITE_API_ALLOWED_ORIGINS = "*"
+  MEMBER_IDENTITY_PROVIDER = "sticky"
 
 [[mounts]]
   source = "checkout_data"
@@ -31,5 +34,5 @@ kill_timeout = "10s"
 
 [[vm]]
   cpu_kind = "shared"
-  cpus = 1
-  memory = "512mb"
+  cpus = 2
+  memory = "1024mb"

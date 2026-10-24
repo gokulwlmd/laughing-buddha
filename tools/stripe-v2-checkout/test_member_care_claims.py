@@ -90,6 +90,8 @@ class MemberClaimCareTests(care_fixtures.MemberCareTests):
         products = response.json()['plans']
         self.assertEqual(len(products), 1)
         self.assertEqual(products[0]['total'], '1494.00')
+        self.assertEqual(products[0]['sku'], self.sku)
+        self.assertIs(products[0]['recurring'], True)
         self.assertTrue(products[0]['checkout_url'].startswith('https://checkout.example.invalid/plans/plan-a/choose?'))
         self.assertNotIn('access=', products[0]['checkout_url'])
         self.assertEqual(calls, ['plan-a'])

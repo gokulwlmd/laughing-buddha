@@ -5,6 +5,13 @@
   font-display: swap;
   src: url('/portal-assets/red-hat-display-latin-v1.woff2') format('woff2');
 }
+@font-face {
+  font-family: "Fortify Code Pro";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/portal-assets/fortifyhp/code-pro.ttf') format('truetype');
+}
 
 :root {
   font-family: "Red Hat Display", system-ui, sans-serif;
@@ -41,6 +48,12 @@ h3 { font-size: 21px; letter-spacing: -.3px; line-height: 1.35; }
 h4 { font-size: 18px; line-height: 1.4; }
 p { line-height: 1.6; }
 svg { display: block; }
+.site-rule-editor { max-width: 960px; }
+.rule-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; }
+.rule-checks { display: grid; gap: 12px; margin: 24px 0; }
+.site-rule-editor details { padding: 18px 0; border-top: 1px solid var(--line); }
+.site-rule-editor summary { min-height: 48px; cursor: pointer; font-weight: 700; }
+@media (max-width: 650px) { .rule-grid { grid-template-columns: minmax(0, 1fr); } }
 
 /* A quiet, consistent frame keeps the next action in view. */
 .shell { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 100vh; }
@@ -777,6 +790,65 @@ svg { display: block; }
 .patient-mode .home-links .text-button, .patient-mode .home-links .subtle-link { display: inline-flex; align-items: center; gap: 12px; font-size: 17px; text-decoration: underline; }
 .patient-mode .care-home > .summary-grid, .patient-mode .care-home > .grid-main { margin-top: 36px; }
 
+/* FortifyHP: tokens from the client's Lovable source, restricted to this
+   named patient theme. Keep all care actions and the accessible portal type
+   scale. Code Pro and the logo are the verified source assets. */
+.patient-mode[data-portal-theme="fortifyhp"] {
+  --ink: #141312;
+  --brand: #A2563F;
+  --brand-accent: #A2563F;
+  --soft: #f0e3db;
+  --line: #ded6cc;
+  --muted: #61584f;
+  --surface: #FBF8F4;
+  --radius: 12px;
+  background: #F4F1EC;
+  font-family: "Fortify Code Pro", "Red Hat Display", system-ui, sans-serif;
+  font-synthesis: weight;
+}
+.brand-logo { display: block; width: 200px; max-width: 100%; height: auto; mix-blend-mode: multiply; }
+.patient-mode[data-portal-theme="fortifyhp"] .brand-name { font-size: 28px; letter-spacing: -1.2px; font-weight: 750; color: var(--ink); }
+.patient-mode[data-portal-theme="fortifyhp"] .brand-caption { color: var(--muted); font-size: 14px; }
+.patient-mode[data-portal-theme="fortifyhp"] .sidebar { background: #FBF8F4; border-color: var(--line); }
+.patient-mode[data-portal-theme="fortifyhp"] .nav-link { color: #554c43; }
+.patient-mode[data-portal-theme="fortifyhp"] .nav-link:hover,
+.patient-mode[data-portal-theme="fortifyhp"] .btn-secondary:hover { background: #eee7df; }
+.patient-mode[data-portal-theme="fortifyhp"] .nav-link.active { color: #743e2d; background: var(--soft); box-shadow: inset 3px 0 var(--brand); }
+.patient-mode[data-portal-theme="fortifyhp"] .btn-primary:hover,
+.patient-mode[data-portal-theme="fortifyhp"] .btn-light:hover { background: #854532; border-color: #854532; }
+.patient-mode[data-portal-theme="fortifyhp"] .btn-secondary { background: #FBF8F4; color: var(--ink); border-color: #b4a79a; }
+.patient-mode[data-portal-theme="fortifyhp"] .nav-unread,
+.patient-mode[data-portal-theme="fortifyhp"] .notification-count { background: var(--brand); }
+.patient-mode[data-portal-theme="fortifyhp"] .notification-count { border-color: #F4F1EC; }
+.patient-mode[data-portal-theme="fortifyhp"] .helper-card,
+.patient-mode[data-portal-theme="fortifyhp"] .refill-next-step,
+.patient-mode[data-portal-theme="fortifyhp"] .order-progress,
+.patient-mode[data-portal-theme="fortifyhp"] .order-stages,
+.patient-mode[data-portal-theme="fortifyhp"] .review-box,
+.patient-mode[data-portal-theme="fortifyhp"] .chat-draft-explanation,
+.patient-mode[data-portal-theme="fortifyhp"] .shipment-card { background: #f0eae2; border-color: var(--line); }
+.patient-mode[data-portal-theme="fortifyhp"] .home-title h1 { color: var(--ink); }
+.patient-mode[data-portal-theme="fortifyhp"] .welcome-card p,
+.patient-mode[data-portal-theme="fortifyhp"] .home-plan-summary p { color: var(--muted); }
+.patient-mode[data-portal-theme="fortifyhp"] .home-plan-summary .home-plan-name { color: var(--ink); }
+.patient-mode[data-portal-theme="fortifyhp"] .field input,
+.patient-mode[data-portal-theme="fortifyhp"] .field textarea,
+.patient-mode[data-portal-theme="fortifyhp"] .field select,
+.patient-mode[data-portal-theme="fortifyhp"] .choice,
+.patient-mode[data-portal-theme="fortifyhp"] .message-compose textarea,
+.patient-mode[data-portal-theme="fortifyhp"] .head-filter select,
+.patient-mode[data-portal-theme="fortifyhp"] .refill-plan-options select,
+.patient-mode[data-portal-theme="fortifyhp"] .store-plan select,
+.patient-mode[data-portal-theme="fortifyhp"] .address-grid select { border-color: #b4a79a; }
+.patient-mode[data-portal-theme="fortifyhp"] .field input[readonly],
+.patient-mode[data-portal-theme="fortifyhp"] .draft-mode-label,
+.patient-mode[data-portal-theme="fortifyhp"] .bubble { background: #f0eae2; }
+.patient-mode[data-portal-theme="fortifyhp"] .choice:has(input:checked) { border-color: var(--brand); }
+.patient-mode[data-portal-theme="fortifyhp"] .notification-item.unread { background: #f5ece5; }
+.patient-mode[data-portal-theme="fortifyhp"] .auth-aside { background: #eee5da; border-right-color: var(--line); }
+.patient-mode[data-portal-theme="fortifyhp"] .auth-main { background: #F4F1EC; }
+.patient-mode[data-portal-theme="fortifyhp"] :is(button, a, input, textarea, select, [tabindex]):focus-visible { outline-color: #896833; }
+
 @media (max-width: 1200px) {
   .patient-mode .main { padding-right: 32px; padding-left: 32px; }
   .patient-mode .topbar { padding-right: 32px; padding-left: 32px; }
@@ -849,3 +921,36 @@ svg { display: block; }
   .patient-mode .auth-main { padding: 34px 24px 42px; }
   .patient-mode .bottom-note { margin-top: 32px; }
 }
+
+/* Keep navigation and intake steps visible below the portal header. */
+.main h1,.intake-card,[id^="order-"],#main-content{scroll-margin-top:100px}
+body.modal-open{overflow:hidden}
+.modal{overscroll-behavior:contain}
+@media(max-width:760px){.main h1,.intake-card,[id^="order-"],#main-content{scroll-margin-top:24px}}
+
+/* Keep unavailable refills visible, with readable instructions. */
+.refill-locked { margin: 20px 0; padding: 20px; background: #f5f6f5; border: 1px solid #dfe3e1; border-radius: 12px; }
+.refill-locked button:disabled { opacity: 1; color: #58615d; background: #e3e7e5; border-color: #ccd3cf; }
+.refill-locked p,.refill-locked li { font-size: 16px; line-height: 1.6; }
+.refill-locked ol { padding-left: 24px; }
+.refill-locked li+li { margin-top: 8px; }
+
+/* Keep payment renewals separate from already-paid included deliveries. */
+.refill-renewal { padding: 24px; margin-top: 24px; border-radius: 14px; background: var(--soft); }
+.refill-renewal h3 { font-size: 22px; }
+.refill-renewal p { margin-top: 12px; font-size: 17px; line-height: 1.6; }
+.refill-inclusion-note, .refill-purchase-unavailable { margin-top: 24px; font-size: 16px; line-height: 1.6; color: var(--muted); }
+.refill-option-action strong { display: block; }
+
+/* Identity and account settings: readable, compact and site branded. */
+.account-grid{display:grid;grid-template-columns:minmax(240px,.8fr) minmax(0,1.4fr);gap:24px;align-items:start}
+.account-profile,.identity-card{padding:clamp(24px,3vw,40px);max-width:850px}
+.identity-card-top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:24px}
+.identity-card-top h2{margin:4px 0;font-size:24px;line-height:1.3}
+.identity-card-top .status{margin-left:auto}.identity-card .eyebrow{margin:0;font-size:12px}
+.identity-symbol{display:grid;place-items:center;flex:none;width:56px;height:56px;border-radius:16px;background:var(--soft);color:var(--brand)}
+.identity-card p{font-size:17px;line-height:1.6}.identity-card .identity-lead{font-size:21px;font-weight:600;line-height:1.4}
+.identity-card form{margin:24px 0}.identity-card input{font-size:24px;letter-spacing:.35em;max-width:220px;min-height:56px}
+.identity-card .btn{min-height:52px}.identity-card .identity-privacy{display:flex;gap:8px;align-items:center;border-top:1px solid var(--line,#e2dfd9);padding-top:20px;margin:24px 0 0;font-size:14px;letter-spacing:0}
+.account-profile h2{font-size:24px;margin-top:0}.account-profile dt{font-size:14px;color:var(--muted,#64645f);margin-top:22px}.account-profile dd{font-size:18px;line-height:1.5;margin:4px 0;overflow-wrap:anywhere}
+@media(max-width:900px){.account-grid{grid-template-columns:1fr}.identity-card-top .status{margin-left:0}.identity-card form .btn{width:100%}}

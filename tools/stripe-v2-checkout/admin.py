@@ -1,5 +1,6 @@
 """Owner admin, persisted configuration, and explicit Sticky change reviews."""
 from therapy_skeletons import all_skeletons, skeleton_draft
+from commerce_admin import prepare_coupon, verify_coupon, register_commerce
 import hashlib
 import hmac
 import json
@@ -122,7 +123,7 @@ class Campaign(Form):
 
 
 class Proposal(Form):
-    kind: str = Field(pattern=r'^(brand|sku|link|offer|campaign|master|provision|campaign_setup|therapy|purchase_option|plan_checkout|checkout_template|site|site_checkout|template_editor)$')
+    kind: str = Field(pattern=r'^(brand|sku|link|offer|campaign|master|provision|campaign_setup|therapy|purchase_option|plan_checkout|checkout_template|site|site_checkout|template_editor|coupon)$')
     data: dict
 
 
@@ -253,6 +254,9 @@ class Admin(MasterCatalog,PlanCatalog,SiteCatalog):
         return data['sku'] if kind=='sku' else data['id']
 
     def prepare(self,kind,data):
+        if kind=='coupon':
+            try:return prepare_coupon(self,data)
+            except ValidationError:raise HTTPException(422,'Check the coupon code, percentage, expiry and usage limits') from None
         if kind in ('master','provision','campaign_setup','therapy','purchase_option','plan_checkout','checkout_template','site','site_checkout','template_editor'):
             try:
                 if kind in ('checkout_template','site','site_checkout','template_editor'):return self.prepare_site(kind,data)
@@ -384,7 +388,22 @@ class Admin(MasterCatalog,PlanCatalog,SiteCatalog):
         with self.store.db() as db:
             return db.execute('SELECT preview FROM admin_reviews WHERE id=?',(key,)).fetchone()[0]
 
+    def create_review(self,kind,request):
+        with LOCK:
+            if kind=='offer' and request.get('id'):
+                with self.store.db() as db:
+                    held=db.execute("SELECT data FROM admin_reviews WHERE kind='offer' AND status IN ('applying','reconcile')").fetchall()
+                if any(json.loads(r[0])['data'].get('id')==request['id'] for r in held):
+                    raise HTTPException(409,'This price change needs reconciliation before another review can be prepared')
+            data,guards,preview,ops,local_hash=self.prepare(kind,request)
+            key=secrets.token_urlsafe(20)
+            internal={'version':2,'request':request,'data':data,'guards':guards,'operations':ops}
+            with self.store.db() as db:db.execute('INSERT INTO admin_reviews VALUES(?,?,?,?,?,?,?,NULL)',
+                (key,kind,json.dumps(internal),local_hash,'draft',time.time(),json.dumps(preview)))
+        return {'id':key,'preview':preview}
+
     def attach(self,app):
+        register_commerce(self,app)
         self.attach_plans(app)
         @app.get('/admin')
         def page(req:Request):
@@ -500,13 +519,7 @@ class Admin(MasterCatalog,PlanCatalog,SiteCatalog):
         @app.post('/api/admin/reviews')
         def review(body:Proposal,req:Request):
             self.authenticated(req,True)
-            with LOCK:
-                data,guards,preview,ops,local_hash=self.prepare(body.kind,body.data)
-                key=secrets.token_urlsafe(20)
-                internal={'version':2,'request':body.data,'data':data,'guards':guards,'operations':ops}
-                with self.store.db() as db:db.execute('INSERT INTO admin_reviews VALUES(?,?,?,?,?,?,?,NULL)',
-                    (key,body.kind,json.dumps(internal),local_hash,'draft',time.time(),json.dumps(preview)))
-            return {'id':key,'preview':preview}
+            return self.create_review(body.kind,body.data)
 
         @app.post('/api/admin/reviews/{review_id}/refresh')
         def refresh_review(req:Request,review_id:str):
@@ -571,7 +584,7 @@ class Admin(MasterCatalog,PlanCatalog,SiteCatalog):
                     else:
                         obj=self.api.detail(guard['path']);current=fingerprint({k:obj.get(k) for k in guard['keys']} if guard['keys'] else obj)
                     if current!=guard['hash']:raise HTTPException(409,'Sticky changed after this preview; review again')
-                if kind in ('offer','campaign','provision','campaign_setup','site'):
+                if kind in ('offer','campaign','provision','campaign_setup','site','coupon'):
                     brand=self.get('brand',data['brand_id']) or data.get('setup_brand')
                     campaign_id=data.get('campaign_id') or (brand or {}).get('campaign_id')
                     if campaign_id:
@@ -604,7 +617,11 @@ class Admin(MasterCatalog,PlanCatalog,SiteCatalog):
             for operation_index,op in enumerate(plan['operations'][start_index:],start_index):
                 payload=references(op['body']);stage='submitting'
                 with self.store.db() as db:db.execute('UPDATE admin_reviews SET result=? WHERE id=?',(json.dumps({'created':completed,'operation_index':operation_index,'stage':stage}),review_id))
-                obj=self.api.call(op['method'],op['path'],payload)
+                path=op['path']
+                if op.get('coupon_assignment'):
+                    path += '/coupon-profiles/'+str(payload['coupon_profile_id'])
+                    payload={}
+                obj=self.api.call(op['method'],path,payload)
                 if str(obj.get('status','')).upper()!='SUCCESS':raise ValueError('Sticky did not confirm the write')
                 if op.get('save'):
                     oid=obj.get('data',{}).get('id') or obj.get('data',{}).get('c_id')
@@ -614,6 +631,7 @@ class Admin(MasterCatalog,PlanCatalog,SiteCatalog):
                 with self.store.db() as db:db.execute('UPDATE admin_reviews SET result=? WHERE id=?',(json.dumps({'created':completed,'operation_index':operation_index,'stage':stage}),review_id))
                 if op.get('save'):
                     checked=self.api.detail(op['path']+'/'+str(completed[op['save']]))
+                    if op['save']=='coupon':verify_coupon(checked,data)
                     if op.get('verify'):
                         expected=references(op['verify'])
                         if expected['kind']=='product' and (checked.get('sku')!=expected['sku'] or money(checked.get('price'))!=money(expected['price'])):
@@ -637,9 +655,13 @@ class Admin(MasterCatalog,PlanCatalog,SiteCatalog):
                         raise ValueError('Offer read-back did not match')
                 elif op['method']=='PUT':
                     checked=self.api.detail(op['path'])
+                    if op.get('coupon_assignment') and not (set(op['preserve_coupons'])|{completed['coupon']}).issubset({int(p['id']) for p in checked.get('coupon_profiles',[])}):
+                        raise ValueError('Coupon assignment read-back did not match')
                     if 'offers' in payload and not set(payload['offers']).issubset({int(o['id']) for o in checked.get('offers',[])}):raise ValueError('Offer attachment read-back did not match')
             stage='finalizing'
-            if kind in ('brand','sku','link'):
+            if kind=='coupon':
+                self.put('coupon',str(completed['coupon']),data|{'id':completed['coupon']})
+            elif kind in ('brand','sku','link'):
                 if kind=='link' and data.get('_link_brand'):
                     brand=data.pop('_link_brand');self.put('brand',brand['id'],brand)
                 self.put(kind,self.identity(kind,data),data)
@@ -659,6 +681,13 @@ class Admin(MasterCatalog,PlanCatalog,SiteCatalog):
                         updated=[f"{completed['offer']}:{completed['product']}:{key.split(':')[2]}" if key.startswith(f"{old['offer_id']}:{old['product_id']}:") else key for key in link['options']]
                         if updated!=link['options']:
                             link['options']=updated;link['revision']=link.get('revision',1)+1;self.put('link',link['id'],link)
+                    # Public API publications pin exact selections. Record approved
+                    # replacements so their allowlists follow this price revision.
+                    self.put('price_replacement',f"{data['brand_id']}:{data['campaign_id']}:{old['offer_id']}:{old['product_id']}",{
+                        'brand_id':data['brand_id'],'campaign_id':data['campaign_id'],
+                        'old_offer':old['offer_id'],'old_product':old['product_id'],
+                        'offer':completed['offer'],'product':completed['product'],
+                        'billing_models':data['billing_models']})
                 self.put('offering',data['id'],data|{'product_id':completed['product'],'offer_id':completed['offer']})
             elif kind=='campaign':
                 brand=attach_campaign(self.get('brand',data['brand_id']),completed['campaign']);self.put('brand',brand['id'],brand)

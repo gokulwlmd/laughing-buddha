@@ -16,6 +16,7 @@ class CheckoutTemplate(Form):
     therapy_id: str = Field(min_length=1, max_length=61)
     purchase_option_ids: list[str] = Field(min_length=1, max_length=20)
     enabled: bool = True
+    site_id: str | None = Field(default=None, max_length=61)
 
     @field_validator('purchase_option_ids')
     @classmethod
@@ -30,11 +31,22 @@ class Site(Form):
     name: str = Field(min_length=1, max_length=100)
     brand_id: str = Field(min_length=1, max_length=61)
     campaign_id: int | None = Field(default=None, gt=0)
+    wlmd_site_id: str | None = Field(default=None, max_length=100)
     campaign_name: str = Field(default='', max_length=100)
     routing_template_id: int = Field(default=422, gt=0)
     # A new brand can be reviewed together with site setup; existing brands are immutable here.
     new_brand: dict | None = None
     remember_connection: bool = False
+
+    @field_validator('wlmd_site_id')
+    @classmethod
+    def wlmd_identifier(cls, value):
+        if value is None or not value.strip():
+            return None
+        value = value.strip()
+        if not all(c.isascii() and (c.isalnum() or c in '_-') for c in value):
+            raise ValueError('Use the site ID supplied by WLMD, without a URL or spaces')
+        return value
 
 
 class TemplateEditor(Form):
@@ -47,6 +59,7 @@ class TemplateEditor(Form):
     plans: list[PurchaseOption] = Field(default_factory=list, max_length=20)
     draft: bool = False
     enabled: bool = True
+    site_id: str | None = Field(default=None, max_length=61)
 
 
 class SiteCheckout(Form):
@@ -78,6 +91,12 @@ def checkout_id(site_id, template_id):
 
 
 class SiteCatalog:
+    def templates_for_site(self, site_id):
+        """Site-owned templates take precedence without leaking into new sites."""
+        templates = self.records('checkout_template')
+        owned = [t for t in templates if t.get('site_id') == site_id]
+        return owned if owned else [t for t in templates if not t.get('site_id')]
+
     def template_state(self):
         templates = self.records('checkout_template')
         for template in templates:
@@ -102,6 +121,8 @@ class SiteCatalog:
         before = self.get('checkout_template', request['id'])
         if before and before['therapy_id'] != request['therapy_id']:
             raise HTTPException(422, 'Create another template to change its therapy')
+        if before and request.get('site_id') not in (None, before.get('site_id')):
+            raise HTTPException(422, 'Keep this template attached to its existing site')
         view = copy.copy(self)
         original = self.get
         therapy = request['new_therapy']
@@ -136,6 +157,8 @@ class SiteCatalog:
         template = {'id':request['id'], 'name':request['name'], 'title':request['title'],
             'therapy_id':request['therapy_id'], 'purchase_option_ids':list(plans),
             'enabled':request['enabled'], 'revision':(before or {}).get('revision',0)+1}
+        if (before or {}).get('site_id') or request.get('site_id'):
+            template['site_id'] = (before or {}).get('site_id') or request['site_id']
         if not request['draft']:
             if not plans:
                 raise HTTPException(422, 'Add at least one plan, or save this template as a draft')
@@ -158,9 +181,10 @@ class SiteCatalog:
             if not data['request']['draft']:
                 db.execute("DELETE FROM admin_config WHERE kind='template_draft' AND id=?", (template['id'],))
 
-    def template_source(self, template):
+    def template_source(self, template, site=None):
         """Snapshot the approved plan and SKU metadata, with no gateway secrets."""
         therapy = self.get('therapy', template['therapy_id'])
+        site = site or (self.get('site', template['site_id']) if template.get('site_id') else None)
         if not therapy or not therapy['enabled']:
             raise HTTPException(422, 'Choose an active therapy for this template')
         purchases, masters = [], {}
@@ -173,7 +197,7 @@ class SiteCatalog:
             for sku in purchase['skus']:
                 master = self.get('master', sku) or {}
                 self.therapy_for(master, therapy['id'])
-                master=self.activated_master(master)
+                master=self.activated_master(master, (site or {}).get('brand_id'), (site or {}).get('campaign_id'))
                 if not master.get('enabled') or master.get('exclude_from_campaign_setup') or master['product_duration_months'] != purchase['duration_months']:
                     raise HTTPException(422, sku + ': choose an enabled master SKU with matching product duration')
                 masters[sku] = master
@@ -188,6 +212,10 @@ class SiteCatalog:
             before = self.get(kind, data['id'])
             if before and before['therapy_id'] != data['therapy_id']:
                 raise HTTPException(422, 'Create another template to change its therapy')
+            if before and data.get('site_id') not in (None, before.get('site_id')):
+                raise HTTPException(422, 'Keep this template attached to its existing site')
+            if before and before.get('site_id'):
+                data['site_id'] = before['site_id']
             data['revision'] = (before or {}).get('revision', 0) + 1
             source = self.template_source(data)
             return data, [], {'before': before, 'after': data, 'plans': source['plans'], 'stickyWrites': [],
@@ -209,6 +237,11 @@ class SiteCatalog:
 
         request = Site.model_validate(payload).model_dump(mode='json')
         before = self.get('site', request['id'])
+        # A checkout edit must not erase or switch the clinical account mapping.
+        # Remapping an existing WLMD tenant requires a separate migration.
+        wlmd_site_id = request.get('wlmd_site_id') or (before or {}).get('wlmd_site_id')
+        if (before or {}).get('wlmd_site_id') and wlmd_site_id != before['wlmd_site_id']:
+            raise HTTPException(409, 'This site is already linked to WLMD. Its patient records must be migrated before changing the WLMD site ID.')
         if before and (request['brand_id'] != before['brand_id'] or request['campaign_id'] != before['campaign_id']):
             raise HTTPException(422, 'A site keeps its brand, campaign and published URLs. Create another site to use a different connection.')
         if request['campaign_id'] and any(s['id'] != request['id'] and s['brand_id'] == request['brand_id'] and s['campaign_id'] == request['campaign_id'] for s in self.records('site')):
@@ -219,7 +252,8 @@ class SiteCatalog:
             prior = json.loads(raw)['request']; created = json.loads(result or '{}').get('created', {})
             if prior['id'] == request['id'] or (request['campaign_id'] and request['campaign_id'] in (prior.get('campaign_id'), created.get('campaign'))) or (not request['campaign_id'] and prior.get('campaign_name') == request['campaign_name']):
                 raise HTTPException(409, 'This site setup needs reconciliation. Inspect its recorded objects before preparing another review.')
-        templates = [self.template_source(t) for t in self.records('checkout_template') if t['enabled']]
+        scope = {'id': request['id'], 'brand_id': request['brand_id'], 'campaign_id': request['campaign_id']}
+        templates = [self.template_source(t, scope) for t in self.templates_for_site(request['id']) if t['enabled']]
         if not templates:
             raise HTTPException(422, 'Save an enabled checkout template with assigned plans first')
         skus = list(dict.fromkeys(m['sku'] for source in templates for m in source['masters']))
@@ -236,6 +270,8 @@ class SiteCatalog:
         setup = {'brand_id': brand['id'], 'campaign_id': request['campaign_id'], 'name': request['campaign_name'], 'template_id': request['routing_template_id']}
         data, guards, preview, ops, local = self.prepare_setup(setup, required_skus=skus, site_brand=brand)
         site = {k: request[k] for k in ('id', 'name', 'brand_id')}
+        if wlmd_site_id:
+            site['wlmd_site_id'] = wlmd_site_id
         site['campaign_id'] = data['campaign_id']
         site['revision'] = (before or {}).get('revision', 0) + 1
         data.update(site=site, templates=templates, remember_connection=request['remember_connection'], routing_template_id=request['routing_template_id'])
@@ -320,7 +356,7 @@ class SiteCatalog:
         view.api = ReadCache(self.api)
         for site in sites:
             rows = []
-            for template in self.records('checkout_template'):
+            for template in self.templates_for_site(site['id']):
                 plan = self.get('plan_checkout', checkout_id(site['id'], template['id']))
                 if not plan and not template['enabled']:
                     continue
@@ -331,7 +367,7 @@ class SiteCatalog:
                     row['visibility'] = plan['visibility']
                     row['enabled'] = plan['enabled']
                     try:
-                        row['update_available'] = fingerprint(self.template_source(template)) != plan.get('template_source_hash')
+                        row['update_available'] = fingerprint(self.template_source(template, site)) != plan.get('template_source_hash')
                     except HTTPException:
                         row['update_available'] = True
                     try:
@@ -344,7 +380,7 @@ class SiteCatalog:
                         row['status'] = 'paused'
                 if row['status'] == 'incomplete':
                     try:
-                        self.template_source(template)
+                        self.template_source(template, site)
                         row['reason'] = 'Check the payment connection and product availability, then review setup again.'
                     except HTTPException as exc:
                         row['reason'] = str(exc.detail)

@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);
-const titles={sites:'Sites',templates:'Checkout Templates','purchase-options':'Plans',therapies:'Therapies',overview:'Overview',master:'Master SKUs',campaigns:'Campaigns',brands:'Brands',skus:'SKU catalog',offers:'Prices & billing',links:'Checkout links',reviews:'Review queue'};
+const titles={commerce:'Prices & coupons',sites:'Sites',templates:'Checkout Templates','purchase-options':'Plans',therapies:'Therapies',overview:'Overview',master:'Master SKUs',campaigns:'Campaigns',brands:'Brands',skus:'SKU catalog',offers:'Prices & billing',links:'Checkout links',reviews:'Review queue'};
 let auth={},state={brands:[],skus:[],offers:[],links:[],reviews:[]},currentReview=null;
 let checkoutBrand='',activeBrand='',campaigns=[],models=[],campaignLoading=null,modelLoading=null,linkEpoch=0,lookupEpoch=0,applying=false,reviewRefreshing=false;
 const pendingForms=new Set();
@@ -28,10 +28,11 @@ function page(name){
   history.replaceState({},'',location.pathname+'#'+name);
   document.querySelectorAll('[data-view]').forEach(e=>e.hidden=e.dataset.view!==name);
   document.querySelectorAll('[data-page]').forEach(e=>e.classList.toggle('active',e.dataset.page===name));$('page-title').textContent=titles[name];
-  $('advanced-navigation').open=!['sites','templates'].includes(name)&&!(name==='reviews'&&['site','site_checkout','template_editor'].includes(currentReview?.kind));
+  $('advanced-navigation').open=!['sites','templates','commerce'].includes(name)&&!(name==='reviews'&&['site','site_checkout','template_editor'].includes(currentReview?.kind));
   if(auth.authenticated&&['sites','brands','skus','offers','links','campaigns'].includes(name))loadCampaigns().catch(e=>message(e.message,true));
   if(auth.authenticated&&name==='master'&&typeof masterPage==='function')masterPage().catch(e=>message(e.message,true));
   if(name==='links')renderCheckoutBrowser();
+  if(auth.authenticated&&name==='commerce'&&typeof loadCommerce==='function')loadCommerce().catch(e=>message(e.message,true));
   if(auth.authenticated&&name==='offers')loadModels().catch(e=>message(e.message,true));
 }
 function list(id,records,render,empty){const e=$(id);e.replaceChildren();if(!records.length)e.append(element('div',empty,'empty'));records.forEach(r=>e.append(render(r)));}
@@ -97,6 +98,7 @@ async function loadModels(force=false){
   try{await modelLoading;}finally{modelLoading=null;$('load-models').disabled=false;}
 }
 function render(){
+  if(typeof renderCommerceSelectors==='function')renderCommerceSelectors();
   if(typeof renderSites==='function')renderSites();
   if(typeof renderTherapies==='function')renderTherapies();
   if(typeof renderMaster==='function')renderMaster();
@@ -158,7 +160,7 @@ function showReview(r){
   if(r.status==='reconcile')$('review-result').append(element('p','This change needs reconciliation. The recorded object IDs are shown below; do not submit it again.','readiness-warning'));
   if(r.result&&Object.keys(r.result.created||{}).length){const ids=Object.entries(r.result.created).map(([kind,id])=>kind.charAt(0).toUpperCase()+kind.slice(1)+' '+id);$('review-result').append(element('p','Recorded Sticky objects: '+ids.join(' · '),'status-note'));}
   if(r.status==='applied'){
-    const next={site:['sites','Open site checkouts'],site_checkout:['sites','Open site checkouts'],template_editor:['templates','Open templates'],checkout_template:['sites','Add a site'],therapy:['purchase-options','Create plans'],purchase_option:['links','Build a checkout'],plan_checkout:['links','Open plan checkouts'],brand:['campaigns','Manage brand campaigns'],sku:['offers','Continue to offers'],offer:['links','Configure checkout link'],link:['links','Open checkout links'],campaign:['master','Apply master to this campaign'],master:['campaigns','Assign SKUs to a campaign'],provision:['links','Copy checkout links'],campaign_setup:['links','Copy checkout links']}[r.kind];
+    const next={coupon:['commerce','Back to prices & coupons'],site:['sites','Open site checkouts'],site_checkout:['sites','Open site checkouts'],template_editor:['templates','Open templates'],checkout_template:['sites','Add a site'],therapy:['purchase-options','Create plans'],purchase_option:['links','Build a checkout'],plan_checkout:['links','Open plan checkouts'],brand:['campaigns','Manage brand campaigns'],sku:['offers','Continue to offers'],offer:['links','Configure checkout link'],link:['links','Open checkout links'],campaign:['master','Apply master to this campaign'],master:['campaigns','Assign SKUs to a campaign'],provision:['links','Copy checkout links'],campaign_setup:['links','Copy checkout links']}[r.kind];
     if(next)action($('review-result'),next[1],()=>page(next[0]));
     if(r.result?.validation&&typeof renderMasterValidation==='function')renderMasterValidation(r.result.validation,$('review-result'));
   }

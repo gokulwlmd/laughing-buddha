@@ -1,7 +1,7 @@
 """Scoped reads retain exact published payment boundaries and legacy fingerprints."""
 import copy
 import unittest
-from catalog import CatalogError,resolve
+from catalog import CatalogError,CampaignSnapshots,resolve
 from test_checkout import FakeSticky,SKU
 
 class CatalogSpeedTests(unittest.TestCase):
@@ -58,3 +58,46 @@ class CatalogSpeedTests(unittest.TestCase):
         api=FakeSticky();ReadCache(api).prefetch_choices(422,{'999:999:2','706:999:2'})
         self.assertNotIn('/api/v2/products/999',api.reads)
         self.assertNotIn('/api/v2/offers/999',api.reads)
+
+class CampaignSnapshotTests(unittest.TestCase):
+    def test_expiry_is_bounded_and_fresh_reads_replace_snapshot(self):
+        api=FakeSticky();now=[0];cache=CampaignSnapshots(api,clock=lambda:now[0],ttl=120)
+        first=cache.read(422);first['offers'].clear()
+        self.assertTrue(cache.read(422)['offers'])
+        self.assertEqual(len(api.reads),1)
+        api.link_gateway=999
+        self.assertEqual(cache.read(422, fresh=True)['alternative_payments'][0]['provider']['id'],999)
+        self.assertEqual(len(api.reads),2)
+        now[0]=120;cache.read(422)
+        self.assertEqual(len(api.reads),3)
+
+    def test_no_expired_or_failed_fresh_fallback_and_campaign_isolation(self):
+        api=FakeSticky();now=[0];cache=CampaignSnapshots(api,clock=lambda:now[0],limit=2)
+        cache.read(422);cache.read(195);cache.read(999)
+        self.assertNotIn(422,cache.entries)
+        original=api.detail
+        def fail(path):raise CatalogError('Unavailable')
+        api.detail=fail
+        with self.assertRaises(CatalogError):cache.read(195,fresh=True)
+        with self.assertRaises(CatalogError):cache.read(195)
+        now[0]=120
+        with self.assertRaises(CatalogError):cache.read(999)
+        api.detail=original;cache.read(195)
+        self.assertEqual(api.reads.count('/api/v2/campaigns/195'),2)
+
+    def test_concurrent_cart_items_share_one_campaign_read(self):
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+        api=FakeSticky();entered=threading.Event();release=threading.Event();original=api.detail
+        def delayed(path):
+            entered.set();release.wait(3)
+            return original(path)
+        api.detail=delayed;cache=CampaignSnapshots(api)
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            first=pool.submit(cache.read,195)
+            self.assertTrue(entered.wait(3))
+            others=[pool.submit(cache.read,195) for _ in range(2)]
+            release.set()
+            values=[first.result()]+[f.result() for f in others]
+        self.assertEqual(api.reads,['/api/v2/campaigns/195'])
+        values[0]['offers'].clear();self.assertTrue(values[1]['offers'])

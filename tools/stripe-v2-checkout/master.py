@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel,ConfigDict,Field,field_validator,model_validator
 from catalog import CatalogError,enabled,money,resolve,quote
 from prepaid import configuration as prepaid_configuration, cycles_for, unit_price, renewal_for
+from external_fulfillment import fortifyhp_prepaid_supported
 
 
 def fingerprint(value):
@@ -208,13 +209,36 @@ def assignment_id(brand,campaign,sku):
     return hashlib.sha256(f'{brand}:{campaign}:{sku}'.encode()).hexdigest()[:24]
 
 
+def campaign_master_id(brand, campaign, sku):
+    return f'{brand}:{campaign}:{sku}'
+
+
 class MasterCatalog:
-    def activated_master(self, master):
+    def master_for(self, sku, brand_id=None, campaign_id=None):
+        """Resolve a campaign's production mapping without changing shared masters."""
+        base = self.get('master', sku) or {}
+        override = self.get('campaign_master', campaign_master_id(brand_id, campaign_id, sku)) if brand_id and campaign_id else None
+        if not override:
+            return base
+        master = override.get('master') or {}
+        if (override.get('brand_id') != brand_id or override.get('campaign_id') != campaign_id
+                or override.get('sku') != sku or master.get('sku') != sku
+                or master.get('payment_test_only') or master.get('planning_contract')
+                or not base or not base.get('enabled')
+                or any(master.get(k) != base.get(k) for k in ('therapy_id', 'treatment_id', 'product_duration_months'))):
+            raise HTTPException(409, 'Campaign master mapping needs reconciliation: ' + sku)
+        return master
+
+    def activated_master(self, master, brand_id=None, campaign_id=None):
         """Use only operator-verified non-fulfilling payment-test mappings.
 
         Editing a master invalidates its saved mapping; catalog planning never
         grants permission to activate a physical medication product.
         """
+        if brand_id and campaign_id:
+            scoped = self.master_for(master.get('sku', ''), brand_id, campaign_id)
+            if self.get('campaign_master', campaign_master_id(brand_id, campaign_id, master.get('sku', ''))):
+                return scoped
         activation=self.get('test_catalog_activation',master.get('sku',''))
         if activation and activation.get('payment_test_only') and activation.get('master_hash')==fingerprint(master):
             configured=activation['master'];source=configured.get('product_template',{})
@@ -226,7 +250,7 @@ class MasterCatalog:
         return master
 
     def local_fingerprint(self):
-        return fingerprint([self.records(k) for k in ('brand','sku','link','offering','master','assignment','therapy','purchase_option','plan_checkout','checkout_template','site','template_draft','site_defaults','test_catalog_activation')])
+        return fingerprint([self.records(k) for k in ('brand','sku','link','offering','master','campaign_master','assignment','therapy','purchase_option','plan_checkout','checkout_template','site','template_draft','site_defaults','test_catalog_activation','coupon','price_replacement')])
 
     def prepare_setup(self,payload,required_skus=None,site_brand=None):
         request=CampaignSetup.model_validate(payload).model_dump(mode='json')
@@ -376,10 +400,15 @@ class MasterCatalog:
             attached=[int(o['id']) for o in c.get('offers',[])];attach=list(attached)
             entries=[];assignments=[];affected=set();replacements=[]
             for index,master in enumerate(masters):
-                master=self.activated_master(master)
+                master=self.activated_master(master, brand['id'], cid)
                 if master['currency']!=currency:raise HTTPException(422,'Master and campaign currencies differ; configure an explicit preset for this currency')
                 source=source_product(master,watch)
-                if any(o.get('prepaid_cycles') for o in master['offers']) and (enabled(source.get('is_shippable')) or enabled(source.get('taxable',source.get('is_taxable')))):
+                physical_prepaid = [o for o in master['offers'] if o.get('prepaid_cycles')]
+                physical_prepaid_supported = all(fortifyhp_prepaid_supported(c, source, {
+                    **prepaid_configuration(o.get('prepaid_cycles'), o.get('prepaid_renewal', False)),
+                    'billing_models': [available[mid] for mid in o['billing_models'] if mid in available]
+                }) for o in physical_prepaid)
+                if physical_prepaid and (enabled(source.get('is_shippable')) or enabled(source.get('taxable',source.get('is_taxable')))) and not physical_prepaid_supported:
                     raise HTTPException(422,master['sku']+': prepaid plan saved, but campaign assignment needs verified prepaid shipping and tax support. Existing campaigns are unchanged. Use a non-shippable, non-taxable test product to test this plan now.')
                 old_assignment=next((a for a in self.records('assignment') if a['brand_id']==brand['id'] and a['campaign_id']==cid and a['sku']==master['sku']),None)
                 aid=old_assignment['id'] if old_assignment else assignment_id(brand['id'],cid or secrets.token_hex(12),master['sku'])
@@ -493,7 +522,7 @@ class MasterCatalog:
         rows=[]
         for assignment in self.records('assignment'):
             if assignment['brand_id']!=brand_id or assignment['campaign_id']!=cid:continue
-            master=self.get('master',assignment['sku']);item={'sku':assignment['sku'],'revision':assignment['master_revision'],
+            master=self.master_for(assignment['sku'], brand_id, cid);item={'sku':assignment['sku'],'revision':assignment['master_revision'],
                 'masterCurrent':bool(master and master['enabled'] and master['revision']==assignment['master_revision']),'link_id':assignment['link_id'],'checks':[]}
             try:
                 current_models={int(m['id']):m for m in model_rows(self.api)}

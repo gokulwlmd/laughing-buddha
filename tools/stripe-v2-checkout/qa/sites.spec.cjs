@@ -8,17 +8,17 @@ async function seed(page){
  await page.locator('#refresh-workspace').click();await nav(page,'templates');
  await page.locator('#template-new').click();const f=page.locator('#template-form');await f.locator('[name=name]').fill('Weight Loss');await f.locator('[name=title]').fill('Choose your plan');await f.locator('[name=therapy_id]').selectOption('weight-loss');await expect(page.locator('#template-preview-plans')).toContainText('$299.00');await f.locator('button[type=submit]').click();await expect(page.locator('#review-summary')).toContainText('DEMO-SEMA-1M');await approve(page);
 }
-async function site(page,{newBrand=false}={}){
- await nav(page,'sites');await page.locator('#site-new').click();const f=page.locator('#site-form');await f.locator('[name=name]').fill('Demo site');
+async function site(page,{newBrand=false,wlmdSiteId=""}={}){
+ await nav(page,'sites');await page.locator('#site-new').click();const f=page.locator('#site-form');await f.locator('[name=name]').fill('Demo site');await f.locator('[name=wlmd_site_id]').fill(wlmdSiteId);
  if(newBrand){await f.locator('[name=brand_name]').fill('New site brand');await f.locator('[name=color]').fill('#123456');await f.locator('[name=routing_template_id]').selectOption('422');}
  else {await page.locator('#site-brand-options summary').click();await f.locator('[name=brand_id]').selectOption('demo-brand');await f.locator('[name=connection]').selectOption('existing');await f.locator('[name=campaign_id]').selectOption('422');}
  await page.locator('#site-continue').click();await expect(page.locator('#site-templates-summary')).toContainText('Weight Loss');await f.locator('button[type=submit]').click();
  await expect(page.locator('#review-summary')).toContainText('Weight Loss');await expect(page.locator('#review-summary')).toContainText('299.00');await approve(page);await expect(page.locator('[data-view=sites]')).toBeVisible();
 }
 test('SITE-01 template and site UI prepare all branded checkouts, repeat setup and preserve private URL',async({ownerPage:page,app})=>{
- await expect(page.locator('[data-view=sites]')).toBeVisible();await expect(page.locator('#advanced-navigation')).not.toHaveAttribute('open','');await seed(page);await site(page);
+ await expect(page.locator('[data-view=sites]')).toBeVisible();await expect(page.locator('#advanced-navigation')).not.toHaveAttribute('open','');await seed(page);await site(page,{wlmdSiteId:'wlmd-browser-101'});
  const list=page.locator('#site-list');await expect(list).toContainText('Ready to preview');const url=await list.getByRole('link',{name:'Preview ↗'}).getAttribute('href');const before=(await stats(page,app)).counts;
- await list.getByRole('button',{name:'Update checkouts'}).click();await page.locator('#site-form button[type=submit]').click();await approve(page);await nav(page,'sites');expect(await list.getByRole('link',{name:'Preview ↗'}).getAttribute('href')).toBe(url);expect((await stats(page,app)).counts).toEqual(before);
+ await list.getByRole('button',{name:'Update checkouts'}).click();await expect(page.locator('#site-form [name=wlmd_site_id]')).toHaveValue('wlmd-browser-101');await expect(page.locator('#site-form [name=wlmd_site_id]')).toHaveAttribute('readonly','');await page.locator('#site-form button[type=submit]').click();await approve(page);await nav(page,'sites');expect(await list.getByRole('link',{name:'Preview ↗'}).getAttribute('href')).toBe(url);expect((await stats(page,app)).counts).toEqual(before);
  await page.goto(url);await page.locator('#treatments').getByRole('button',{name:'Semaglutide',exact:true}).click();await expect(page.locator('#durations [data-duration="1"]')).toContainText('$299.00');await expect(page.locator('#durations')).not.toContainText('$449.00');await page.locator('#treatments').getByRole('button',{name:'Tirzepatide',exact:true}).click();await expect(page.locator('#durations [data-duration="1"]')).toContainText('$449.00');
 });
 test('SITE-02 mobile site creation with new brand, customization and reviewed template update',async({ownerPage:page,app})=>{

@@ -9,11 +9,13 @@ from decimal import Decimal
 import hashlib
 import hmac
 import json
+import os
 from pathlib import Path
 import re
 import secrets
 import sqlite3
 import time
+import threading
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -29,6 +31,7 @@ from .provider import StickyOrderProvider, ProviderError, ProviderUncertain, Pro
 from .care import CareManager, CarePlan
 from .claims import ClaimsManager
 from .notifications import NotificationsResult, order_notifications
+from refill_rules import RefillRules, SaveRefillRules, site_rule_key
 
 HERE = Path(__file__).parent
 SESSION_SECONDS = 86400
@@ -60,16 +63,19 @@ class Form(BaseModel):
 
 
 class Login(Form):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=False)
     email: str = Field(min_length=5, max_length=254)
     password: str = Field(min_length=1, max_length=256)
 
 
 class Enrollment(Form):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=False)
     invite_token: str = Field(min_length=20, max_length=200)
     password: str = Field(min_length=12, max_length=256)
 
 
 class ReceiptEnrollment(Form):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=False)
     password: str = Field(min_length=12, max_length=256)
 
 
@@ -132,6 +138,7 @@ class SiteModel(BaseModel):
     color: str
     logo_url: str = ''
     support_email: str = ''
+    theme: str = 'default'
 
 
 class TherapyModel(BaseModel):
@@ -169,6 +176,8 @@ class SubscriptionModel(BaseModel):
     status: str
     next_billing_date: str | None = None
     next_cycle_date: str | None = None
+    billing_interval_days: int | None = None
+    prepaid_renews: bool | None = None
     actions: list[str]
     address_update_available: bool = False
     shipping_address: dict | None = None
@@ -219,6 +228,8 @@ class OrdersResult(BaseModel):
 
 
 class StorePlan(BaseModel):
+    sku: str = ''
+    recurring: bool | None = None
     plan_id: str
     checkout_id: str
     therapy_id: str
@@ -264,7 +275,7 @@ class MessageDraft(BaseModel):
 
 
 class MessageDraftSave(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=False)
     body: str = Field(max_length=2000)
     revision: StrictInt = Field(ge=0)
 
@@ -303,6 +314,7 @@ def install(app, admin, store, cfg, receipt_access=None, clock=time.time, provid
 
 
 class MemberService:
+    identity_init_lock = threading.Lock()
     def __init__(self, admin, store, cfg, clock, provider):
         self.admin, self.store, self.cfg, self.clock, self.provider = admin, store, cfg, clock, provider
         with self.db() as db:
@@ -359,8 +371,18 @@ class MemberService:
             if 'reason' not in existing_columns:
                 db.execute("ALTER TABLE member_refills ADD COLUMN reason TEXT NOT NULL DEFAULT ''")
 
+        from .answer_profile import AnswerProfile
+        from refill_rules import migrate_claim_window
+        migrate_claim_window(self.store)
+        self.answer_profile = AnswerProfile(self)
+        from .wlmd import IdentityChecks
+        self.identity_checks = IdentityChecks(self)
+        from .id_uploads import IDUploads
+        self.id_uploads = IDUploads(self)
         self.care = CareManager(self)
         self.claims = ClaimsManager(self)
+        from .renewals import RenewalsManager
+        self.renewals = RenewalsManager(self)
         self._store_cache = {}
 
     def db(self):
@@ -368,17 +390,76 @@ class MemberService:
         db.row_factory = sqlite3.Row
         return db
 
+    @property
+    def identity(self):
+        if os.environ.get('MEMBER_IDENTITY_PROVIDER') != 'sticky':
+            return None
+        with self.identity_init_lock:
+            if not hasattr(self, '_sticky_identity'):
+                from .identity import StickyIdentity
+                self._sticky_identity = StickyIdentity(self)
+        return self._sticky_identity
+
+    def authenticate_password(self, site_id, email, password):
+        email = email.strip().lower()
+        identity = digest(site_id + ':' + email)
+        with self.db() as db:
+            db.execute('DELETE FROM member_auth_failures WHERE created<?', (self.clock() - 900,))
+            failures = db.execute('SELECT COUNT(*) FROM member_auth_failures WHERE site_id=? AND identity_hash=?', (site_id, identity)).fetchone()[0]
+        if failures >= 10:
+            raise HTTPException(429, 'Too many sign-in attempts. Please try again later.')
+        try:
+            return self.identity.login(email, password)
+        except HTTPException as exc:
+            if exc.status_code == 401:
+                with self.db() as db:
+                    db.execute('INSERT INTO member_auth_failures VALUES(?,?,?)', (site_id, identity, self.clock()))
+            raise
+
+    def receipt_account(self, row, password=None):
+        if not self.identity:
+            raise HTTPException(503, 'Sticky member accounts are not enabled yet.')
+        order, _ = self.receipt_order(row)
+        email = json.loads(order['payload'])['customer']['email'].strip().lower()
+        site_id = order['site_id']
+        result = {'site_id': site_id, 'provider': 'sticky', 'password_min_length': 12,
+                  'portal_url': self.cfg.public_url + '/portal/' + site_id}
+        if password is None:
+            result['state'] = self.identity.setup_state(email, site_id, order['order_id'])
+            return result
+        # Existing identity is never overwritten. The provider only uses the
+        # temporary secret it created for this exact receipt, or authenticates.
+        self.enroll(site_id, order, password, 'checkout_receipt')
+        return result | {'state': 'ready'}
+
     def site(self, site_id):
         site = self.admin.get('site', site_id)
         if not site:
             raise HTTPException(404, 'Site not found')
         brand = self.admin.get('brand', site['brand_id']) or {}
+        # Named themes are presentation only. Site/order ownership still uses
+        # the saved site ID; a brand name or incoming host never grants access.
+        theme = site.get('portal_theme', 'fortifyhp' if site_id == 'fortifyhp' else 'default')
+        if theme not in ('default', 'fortifyhp'):
+            theme = 'default'
         return site, {'id': site_id, 'name': site['name'], 'color': brand.get('color', '#245844'),
-                      'logo_url': brand.get('logo_url', ''), 'support_email': brand.get('support_email', '')}
+                      'logo_url': brand.get('logo_url') or ('/portal-assets/fortifyhp/logo.png' if theme == 'fortifyhp' else ''), 'support_email': brand.get('support_email', ''),
+                      'theme': theme}
 
     def origin(self, req):
-        if req.headers.get('origin') not in (None, self.cfg.public_url):
+        site_id = getattr(req, 'path_params', {}).get('site_id')
+        if req.headers.get('origin') not in (None, *self.portal_origins(site_id)):
             raise HTTPException(403, 'Use this site’s registered portal origin')
+
+    def portal_origins(self, site_id):
+        site = self.admin.get('site', site_id or '') or {}
+        origins = site.get('portal_origins', [])
+        # This deployed storefront is explicitly owned by the FortifyHP client.
+        # Additional clients register exact HTTPS origins in their site record.
+        if site_id == 'fortifyhp' and site:
+            origins = [*origins, 'https://fortifyhp-care.lovable.app']
+        return [self.cfg.public_url, *[o for o in origins if isinstance(o, str)
+            and re.fullmatch(r'https://[A-Za-z0-9.-]+(?::[0-9]+)?', o)]]
 
     def patient(self, site_id, req, credentials):
         self.site(site_id)
@@ -390,17 +471,23 @@ class MemberService:
                              (digest(credentials.credentials), site_id, self.clock())).fetchone()
         if not row:
             raise HTTPException(401, 'Your portal session expired. Please sign in again.')
+        if self.identity:
+            self.identity.check_session(digest(credentials.credentials))
         return dict(row)
 
     def patient_public(self, patient):
         return {key: patient[key] for key in ('id', 'name', 'email')}
 
-    def session(self, patient):
+    def session(self, patient, member=None):
         token = secrets.token_urlsafe(32)
         expires = self.clock() + SESSION_SECONDS
         with self.db() as db:
             db.execute('DELETE FROM member_sessions WHERE expires<=?', (self.clock(),))
             db.execute('INSERT INTO member_sessions VALUES(?,?,?,?)', (digest(token), patient['site_id'], patient['id'], expires))
+        if self.identity:
+            if member is None:
+                raise HTTPException(401, 'Please sign in with your Sticky member password.')
+            expires = min(expires, self.identity.save_session(digest(token), member))
         return {'access_token': token, 'expires_at': stamp(expires), 'patient': self.patient_public(patient), 'site': self.site(patient['site_id'])[1]}
 
     def captured(self, site_id, order_id=None):
@@ -585,9 +672,32 @@ class MemberService:
             raise HTTPException(404, 'Order not found in this account')
         return dict(row)
 
-    def rule(self, sku):
+    def rule(self, sku, site_id=None):
+        if site_id:
+            saved = self.admin.get('site_refill_policy', site_rule_key(site_id, sku))
+            if saved and saved.get('site_id') == site_id and saved.get('sku') == sku:
+                return saved
         return self.admin.get('refill_policy', sku) or {'enabled': False, 'minimum_days': 0, 'request_window_days': 14,
                                                      'check_in_required': True, 'review_required': True, 'test_requests_enabled': False, 'revision': 0}
+
+    def site_rule_products(self, site_id):
+        site, _ = self.site(site_id)
+        products = {}
+        for plan in self.admin.records('plan_checkout'):
+            if (plan.get('site_id') != site_id or plan.get('brand_id') != site['brand_id']
+                    or plan.get('campaign_id') != site['campaign_id']):
+                continue
+            for master in (plan.get('template_snapshot') or {}).get('masters', []):
+                if master.get('sku'):
+                    products[master['sku']] = master
+        return products
+
+    def site_rule_public(self, site_id, sku, product):
+        saved = self.admin.get('site_refill_policy', site_rule_key(site_id, sku))
+        rule = self.rule(sku, site_id)
+        result = RefillRules.model_validate({key: value for key, value in rule.items() if key in RefillRules.model_fields}).model_dump()
+        return dict(result, sku=sku, site_id=site_id, name=product.get('name') or sku,
+                    revision=saved['revision'] if saved else 0, source='site' if saved else 'master')
 
     @staticmethod
     def date(value):
@@ -608,7 +718,7 @@ class MemberService:
         return self.legacy_refill_availability(row)
 
     def legacy_refill_availability(self, row):
-        raw, snapshot, rule = json.loads(row['payload']), json.loads(row['snapshot']), self.rule(row['sku'])
+        raw, snapshot, rule = json.loads(row['payload']), json.loads(row['snapshot']), self.rule(row['sku'], row['site_id'])
         line = raw['products'][0]
         test_only = bool(snapshot.get('payment_test_only') or raw.get('test_order'))
         result = {'eligible': False, 'reason': 'Refill requests are not enabled for this SKU.', 'next_date': None, 'test_only': test_only}
@@ -684,7 +794,8 @@ class MemberService:
         if line.get('subscription_id'):
             actions = ['pause'] if line.get('billing_status') == 'active' else ['resume'] if line.get('billing_status') == 'held' else []
             subscriptions.append({'id': str(line['subscription_id']), 'product_id': str(line['product_id']), 'status': line.get('billing_status', 'unknown'),
-                                  'next_billing_date': line.get('next_billing_date'), 'next_cycle_date': line.get('next_cycle_date'), 'actions': actions,
+                                  'next_billing_date': line.get('next_billing_date'), 'next_cycle_date': line.get('next_cycle_date'), 'billing_interval_days': line.get('billing_interval_days'), 'actions': actions,
+                                  'prepaid_renews': (line.get('prepaid') or {}).get('renews'),
                                   'address_update_available': bool(raw.get('contact_id')) and line.get('billing_status') in ('active', 'held'),
                                   'shipping_address': line.get('subscription_shipping_address')})
         availability = self.refill_availability(row)
@@ -717,6 +828,8 @@ class MemberService:
         email = contact['email'].strip().lower()
         if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email):
             raise HTTPException(409, 'The order email needs review before account creation')
+        if self.identity:
+            return self.enroll_sticky(site_id, order, email, password, source, invite_token)
         salt = secrets.token_hex(16)
         password_value = password_hash(password, salt)
         patient_id = identifier('patient')
@@ -736,31 +849,147 @@ class MemberService:
             if invite_token:
                 db.execute('UPDATE member_invites SET used=? WHERE token_hash=?', (self.clock(), digest(invite_token)))
             patient = dict(db.execute('SELECT * FROM member_patients WHERE id=?', (patient_id,)).fetchone())
+        self.adopt_receipt_intake(order, patient)
         self.sync_children(order)
         return self.session(patient)
 
+    def enroll_sticky(self, site_id, order, email, password, source, invite_token):
+        with self.identity.lock_for(email):
+            with self.db() as db:
+                if invite_token:
+                    invite = db.execute('SELECT * FROM member_invites WHERE token_hash=? AND site_id=? AND order_id=? AND expires>?',
+                        (digest(invite_token), site_id, order['order_id'], self.clock())).fetchone()
+                    if not invite or invite['used'] is not None:
+                        raise HTTPException(410, 'This enrollment invitation expired or was already used')
+            state = self.identity.setup_state(email, site_id, order['order_id'])
+            if state == 'sign_in':
+                member = self.authenticate_password(site_id, email, password)
+            else:
+                member = self.identity.setup(email, password, site_id, order['order_id'], order['customer_id'])
+            with self.db() as db:
+                db.execute('BEGIN IMMEDIATE')
+                patient = db.execute('SELECT * FROM member_patients WHERE site_id=? AND email=?', (site_id, email)).fetchone()
+                if not patient:
+                    if db.execute('SELECT 1 FROM member_patients WHERE site_id=? AND customer_id=?', (site_id, order['customer_id'])).fetchone():
+                        raise HTTPException(409, 'This order identity needs review before linking an account.')
+                    patient_id = identifier('patient')
+                    contact = json.loads(order['payload'])['customer']
+                    db.execute('INSERT INTO member_patients VALUES(?,?,?,?,?,?,?,?,?)',
+                        (patient_id, site_id, order['customer_id'], contact.get('name') or 'Patient', email, '', '', 'sticky', self.clock()))
+                else:
+                    patient_id = patient['id']
+                grant = db.execute('SELECT patient_id FROM member_grants WHERE site_id=? AND order_id=?', (site_id, order['order_id'])).fetchone()
+                if grant and grant['patient_id'] != patient_id:
+                    raise HTTPException(409, 'This order belongs to a different patient account.')
+                db.execute('UPDATE member_patients SET salt=?,password_hash=?,identity_source=? WHERE id=?', ('', '', 'sticky', patient_id))
+                db.execute('INSERT OR IGNORE INTO member_grants VALUES(?,?,?,?,?)', (site_id, order['order_id'], patient_id, self.clock(), source))
+                if invite_token:
+                    db.execute('UPDATE member_invites SET used=? WHERE token_hash=?', (self.clock(), digest(invite_token)))
+                patient = dict(db.execute('SELECT * FROM member_patients WHERE id=?', (patient_id,)).fetchone())
+            self.adopt_receipt_intake(order, patient)
+            self.sync_children(order)
+            return self.session(patient, member)
+
+    def adopt_receipt_intake(self, order, patient):
+        guest = 'receipt:' + order['order_id']
+        if patient['id'] == guest:
+            return
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            # The caller has proved this exact order grant. Never merge by email.
+            granted = db.execute('SELECT 1 FROM member_grants WHERE site_id=? AND order_id=? AND patient_id=?',
+                (order['site_id'], order['order_id'], patient['id'])).fetchone()
+            existing = db.execute('SELECT 1 FROM member_intakes WHERE site_id=? AND order_id=? AND patient_id=?',
+                (order['site_id'], order['order_id'], patient['id'])).fetchone()
+            if granted and not existing:
+                db.execute('UPDATE member_intakes SET patient_id=? WHERE site_id=? AND order_id=? AND patient_id=?',
+                    (patient['id'], order['site_id'], order['order_id'], guest))
+
+        if patient.get('_reuse_allowed') is not False:
+            self.identity_checks.status(order, patient)
+            self.id_uploads.status(order, patient)
+
+    def initial_intake(self, order, patient):
+        self.adopt_receipt_intake(order, patient)
+        if self.care.configured(order) and self.care.ensure(order):
+            _, _, record = self.care.intake(order, patient, 'initial')
+            return self.care.intake_public(order, record)
+        return self.intake_public(self.intake(order, patient), order)
+
+    def receipt_order(self, row):
+        if not row or row.get('status') != 'captured' or not row.get('order_id'):
+            raise HTTPException(409, 'Complete this checkout before opening its intake')
+        link = self.admin.get('link', row.get('link_id') or '') or {}
+        plan = self.admin.get('plan_checkout', link.get('plan_checkout_id') or '') or {}
+        site_id = plan.get('site_id')
+        if not site_id or not any(c['id'] == row['id'] for c in self.captured(site_id, str(row['order_id']))):
+            raise HTTPException(403, 'This receipt does not belong to a verified site order')
+        try:
+            order = self.order_record(site_id, str(row['order_id']))
+        except HTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            order = self.sync(site_id, str(row['order_id']))
+        with self.db() as db:
+            grant = db.execute('SELECT patient_id FROM member_grants WHERE site_id=? AND order_id=?', (site_id, order['order_id'])).fetchone()
+        return order, {'id': grant['patient_id'] if grant else 'receipt:' + order['order_id'], '_reuse_allowed': False}
+
+    def modify_initial(self, order, body, patient, submit=False):
+        site_id, order_id = order["site_id"], order["order_id"]
+        self.adopt_receipt_intake(order, patient)
+        if self.care.configured(order) and self.care.ensure(order):
+            return self.care.modify(order, patient, 'initial', body, submit)
+        self.intake(order, patient)
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = dict(db.execute('SELECT * FROM member_intakes WHERE site_id=? AND order_id=? AND patient_id=?', (site_id, order_id, patient['id'])).fetchone())
+            if row['status'] == 'submitted' or row['revision'] != body.revision:
+                raise HTTPException(409, 'This intake is submitted or changed. Reload before saving.')
+            template, answers = json.loads(row['template']), json.loads(row['answers'])
+            now = self.clock()
+            self.answer_profile.validate(db, order, patient, template, incoming=None if submit else body.answers, submit=submit, answers=answers)
+            if submit:
+                questions = [q for q in template['questions'] if visible(q, answers)]
+                missing = [q['id'] for q in questions if q.get('required') and answers.get(q['id']) in (None, '', [])]
+                if missing:
+                    raise HTTPException(422, {'code': 'required_answers_missing', 'question_ids': missing})
+                answers = {q['id']: answers[q['id']] for q in questions if q['id'] in answers}
+                db.execute("UPDATE member_intakes SET status='submitted',revision=revision+1,answers=?,submitted_answers=?,updated=?,submitted=? WHERE id=?", (encoded(answers), encoded(answers), now, now, row['id']))
+            else:
+                for key, value in clean_answers(template, body.answers).items():
+                    if value is None:
+                        answers.pop(key, None)
+                    else:
+                        answers[key] = value
+                step = row['current_step'] if body.current_step is None else body.current_step
+                if not 0 <= step < len(template['sections']):
+                    raise HTTPException(422, 'Unknown intake step')
+                db.execute('UPDATE member_intakes SET answers=?,current_step=?,revision=revision+1,updated=? WHERE id=?', (encoded(answers), step, now, row['id']))
+            row = dict(db.execute('SELECT * FROM member_intakes WHERE id=?', (row['id'],)).fetchone())
+        return self.intake_public(row, order)
+
     def intake(self, order, patient):
+        self.identity_checks.require(order, patient)
         with self.db() as db:
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT * FROM member_intakes WHERE site_id=? AND order_id=? AND patient_id=?', (order['site_id'], order['order_id'], patient['id'])).fetchone()
             if row:
-                return dict(row)
+                return self.answer_profile.hydrate(db, order, patient, row, 'member_intakes')
             therapy = order['therapy_id']
             if therapy not in QUESTION_THERAPIES:
                 raise HTTPException(409, 'This therapy’s intake questions have not been configured yet')
-            template = get_template(therapy)
+            from .intake_templates import get_template as sku_template, binding_for_sku
+            template = sku_template(therapy, sku=order['sku']) if binding_for_sku(order['sku']) else get_template(therapy)
             template['questions'] = [q for q in template['questions'] if q['id'] != 'demo_confirmation']
-            template['description'] = 'Preview questions from our backend. The clinical intake API is not connected; these answers will not be sent to the medical team.'
-            template['id'] = therapy + '-placeholder-intake'
-            template['version'] = 'placeholder-1'
-            db.execute('INSERT INTO member_intakes VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', (identifier('intake'), order['site_id'], order['order_id'], patient['id'], 'draft', 0, '{}', 0, encoded(template), self.clock(), None, None))
+            template, answers = self.answer_profile.seed(db, order, patient, template)
+            db.execute('INSERT INTO member_intakes VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', (identifier('intake'), order['site_id'], order['order_id'], patient['id'], 'draft', 0, encoded(answers), 0, encoded(template), self.clock(), None, None))
             return dict(db.execute('SELECT * FROM member_intakes WHERE site_id=? AND order_id=? AND patient_id=?', (order['site_id'], order['order_id'], patient['id'])).fetchone())
 
     def intake_public(self, row, order):
         return {'id': row['id'], 'order_id': row['order_id'], 'therapy_id': order['therapy_id'], 'status': row['status'], 'revision': row['revision'],
                 'answers': json.loads(row['answers']), 'current_step': row['current_step'], 'updated_at': stamp(row['updated']),
                 'submitted_at': stamp(row['submitted']) if row['submitted'] is not None else None, 'template': json.loads(row['template']),
-                'reused_fields': [], 'provider_connected': False}
+                'reused_fields': [q['id'] for q in json.loads(row['template'])['questions'] if q.get('reuse_status') in ('stable', 'verified')], 'provider_connected': False}
 
     def messages(self, site_id, patient_id):
         with self.db() as db:
@@ -837,6 +1066,7 @@ class MemberService:
                     rows.append({'plan_id': 'portal-choice-' + unique, 'checkout_id': plan['id'],
                         'therapy_id': plan['therapy_id'], 'therapy_name': catalog.get('therapy') or plan['therapy_id'],
                         'product_name': entry.get('name') or entry['sku'], 'plan_name': label,
+                        'sku': entry['sku'], 'recurring': recurring if isinstance(recurring, bool) else None,
                         'total': format(total, '.2f'), 'currency': currency,
                         'checkout_url': checkout_origin + '/plans/' + plan['id'] + '/choose?' + urlencode(selection),
                         'payment_test_only': bool(catalog.get('paymentTestOnly'))})
@@ -855,6 +1085,8 @@ class MemberService:
                 'rule_revision': json.loads(row['rule']).get('revision', 0), 'kind': row['kind'], 'reason': row['reason'], 'clinical_approval': False, 'fulfillment_created': False}
 
     def attach(self, app, receipt_access):
+        from .cors import PortalCORS
+        app.add_middleware(PortalCORS, service=self)
         router = APIRouter(prefix='/api/v1/sites/{site_id}/portal', tags=['Patient portal'])
         owner = APIRouter(prefix='/api/admin/sites/{site_id}/portal', tags=['Site order administration'])
         bearer = HTTPBearer(auto_error=False, scheme_name='PatientSession', description='Site-specific patient access token. Never use payment processor credentials.')
@@ -862,12 +1094,54 @@ class MemberService:
         def auth(site_id: str, req: Request, credentials: HTTPAuthorizationCredentials | None = Depends(bearer)):
             return self.patient(site_id, req, credentials)
 
+        from .wlmd import IdentityInput
+
+        @router.get('/account/identity')
+        def account_identity(site_id: str, patient=Depends(auth)):
+            return self.identity_checks.account(site_id, patient)
+
+        @router.get('/orders/{order_id}/identity')
+        def order_identity(site_id: str, order_id: str, patient=Depends(auth)):
+            return self.identity_checks.status(self.order_record(site_id, order_id, patient), patient)
+
+        @router.post('/orders/{order_id}/identity')
+        def verify_order_identity(site_id: str, order_id: str, body: IdentityInput, patient=Depends(auth)):
+            return self.identity_checks.verify(self.order_record(site_id, order_id, patient), patient, body)
+
+        from .id_uploads import IDPhotoInput
+
+        @router.get('/orders/{order_id}/id-photo')
+        def id_photo_status(site_id: str, order_id: str, patient=Depends(auth)):
+            return self.id_uploads.status(self.order_record(site_id, order_id, patient), patient)
+
+        @router.post('/orders/{order_id}/id-photo')
+        def id_photo_upload(site_id: str, order_id: str, body: IDPhotoInput, patient=Depends(auth)):
+            return self.id_uploads.upload(self.order_record(site_id, order_id, patient), patient, body)
+
+        @router.post('/orders/{order_id}/id-photo/reuse')
+        def id_photo_reuse(site_id: str, order_id: str, patient=Depends(auth)):
+            return self.id_uploads.upload(self.order_record(site_id, order_id, patient), patient)
+
         @router.get('/configuration', response_model=ConfigurationResult)
         def configuration(site_id: str):
             _, site = self.site(site_id)
             therapy_ids = {p.get('therapy_id') for p in self.admin.records('plan_checkout') if p.get('site_id') == site_id}
             therapies = [{'id': t, 'name': (self.admin.get('therapy', t) or {}).get('name', t)} for t in sorted(therapy_ids) if t]
             return {'site': site, 'therapies': therapies, 'intake_provider_connected': False, 'messaging_provider_connected': False}
+
+        @router.get('/onboarding', summary='Post-checkout account and intake API contract')
+        def onboarding(site_id: str):
+            self.site(site_id)
+            base = '/api/v1/sites/' + site_id + '/portal'
+            return {'version': 2, 'site_id': site_id, 'password_min_length': 12,
+                'identity_provider': 'sticky' if self.identity else 'local',
+                'enroll_path': base + '/auth/enroll', 'login_path': base + '/auth/login',
+                'claim_path': base + '/auth/claim', 'me_path': base + '/me',
+                'intake_path': base + '/intakes/{order_id}',
+                'intake_submit_path': base + '/intakes/{order_id}/submit',
+                'portal_url': self.cfg.public_url + '/portal/' + site_id,
+                'intake_provider_connected': False,
+                'submission_message': 'Your answers have been saved in your account.'}
 
         @router.post('/auth/login', response_model=AuthResult)
         def login(site_id: str, body: Login, req: Request):
@@ -878,7 +1152,12 @@ class MemberService:
                 failures = db.execute('SELECT COUNT(*) FROM member_auth_failures WHERE site_id=? AND identity_hash=?', (site_id, identity)).fetchone()[0]
                 if failures >= 10:
                     raise HTTPException(429, 'Too many sign-in attempts. Please try again later.')
-                patient = db.execute('SELECT * FROM member_patients WHERE site_id=? AND email=?', (site_id, body.email.lower())).fetchone()
+                patient = db.execute('SELECT * FROM member_patients WHERE site_id=? AND email=?', (site_id, body.email.strip().lower())).fetchone()
+            if self.identity:
+                member = self.authenticate_password(site_id, body.email, body.password)
+                if not patient:
+                    raise HTTPException(401, 'Open your completed purchase’s portal link to connect your account to this site.')
+                return self.session(dict(patient), member)
             candidate = password_hash(body.password, patient['salt'] if patient else '00' * 16)
             if not patient or not hmac.compare_digest(candidate, patient['password_hash']):
                 with self.db() as db:
@@ -888,6 +1167,9 @@ class MemberService:
 
         @router.post('/auth/logout')
         def logout(site_id: str, patient=Depends(auth), credentials: HTTPAuthorizationCredentials | None = Depends(bearer)):
+            if self.identity:
+                self.identity.logout(digest(credentials.credentials))
+                return {'signed_out': True}
             with self.db() as db:
                 db.execute('DELETE FROM member_sessions WHERE token_hash=?', (digest(credentials.credentials),))
             return {'signed_out': True}
@@ -922,14 +1204,26 @@ class MemberService:
         def claim(site_id: str, body: ClaimInvite, patient=Depends(auth)):
             with self.db() as db:
                 db.execute('BEGIN IMMEDIATE')
-                invite = db.execute('SELECT * FROM member_invites WHERE token_hash=? AND site_id=? AND used IS NULL AND expires>?', (digest(body.invite_token), site_id, self.clock())).fetchone()
-                if not invite or invite['customer_id'] != patient['customer_id']:
+                invite = db.execute('SELECT * FROM member_invites WHERE token_hash=? AND site_id=? AND expires>?', (digest(body.invite_token), site_id, self.clock())).fetchone()
+                if not invite:
+                    raise HTTPException(403, 'This invitation cannot be connected to this account')
+                # Separate cart orders may have separate Sticky customer IDs.
+                # Require both the private receipt invitation AND authenticated
+                # account identity; email alone never imports or grants an order.
+                order = db.execute('SELECT payload FROM member_orders WHERE site_id=? AND order_id=?', (site_id, invite['order_id'])).fetchone()
+                contact = json.loads(order['payload']).get('customer', {}) if order else {}
+                if str(contact.get('email', '')).strip().lower() != patient['email'].strip().lower():
                     raise HTTPException(403, 'This invitation cannot be connected to this account')
                 existing = db.execute('SELECT patient_id FROM member_grants WHERE site_id=? AND order_id=?', (site_id, invite['order_id'])).fetchone()
                 if existing and existing['patient_id'] != patient['id']:
                     raise HTTPException(409, 'This order is already assigned to another account')
+                if invite['used'] is not None:
+                    if existing and existing['patient_id'] == patient['id']:
+                        return {'connected': True}
+                    raise HTTPException(403, 'This invitation has already been used')
                 db.execute('INSERT OR IGNORE INTO member_grants VALUES(?,?,?,?,?)', (site_id, invite['order_id'], patient['id'], self.clock(), 'owner_invitation'))
                 db.execute('UPDATE member_invites SET used=? WHERE token_hash=?', (self.clock(), digest(body.invite_token)))
+            self.adopt_receipt_intake(self.order_record(site_id, invite['order_id'], patient), patient)
             return {'connected': True}
 
         @router.get('/me', response_model=MeResult)
@@ -972,7 +1266,7 @@ class MemberService:
                     if previous['status'] != 'complete':
                         raise HTTPException(409, 'This subscription action needs review before retrying')
                     return self.order_public(row)
-                if db.execute("SELECT 1 FROM member_actions WHERE site_id=? AND order_id=? AND subscription_id=? AND status IN ('pending','uncertain')", (site_id, order_id, subscription_id)).fetchone():
+                if db.execute("SELECT 1 FROM member_actions WHERE site_id=? AND subscription_id=? AND status IN ('pending','uncertain')", (site_id, subscription_id)).fetchone():
                     raise HTTPException(409, 'An earlier subscription action needs review')
                 action_id = identifier('action')
                 db.execute('INSERT INTO member_actions VALUES(?,?,?,?,?,?,?,?,?)', (action_id, site_id, patient['id'], order_id, subscription_id, action, body.client_request_id, 'pending', self.clock()))
@@ -1027,7 +1321,7 @@ class MemberService:
                     if previous['status'] != 'complete':
                         raise HTTPException(409, 'The previous subscription-address update needs review')
                     return self.order_public(row)
-                if db.execute("SELECT 1 FROM member_actions WHERE site_id=? AND order_id=? AND subscription_id=? AND status IN ('pending','uncertain')", (site_id, order_id, subscription_id)).fetchone():
+                if db.execute("SELECT 1 FROM member_actions WHERE site_id=? AND subscription_id=? AND status IN ('pending','uncertain')", (site_id, subscription_id)).fetchone():
                     raise HTTPException(409, 'An earlier subscription update needs review')
                 action_id = identifier('action')
                 db.execute('INSERT INTO member_actions VALUES(?,?,?,?,?,?,?,?,?)', (action_id, site_id, patient['id'], order_id, subscription_id, action, body.client_request_id, 'pending', self.clock()))
@@ -1085,50 +1379,15 @@ class MemberService:
         @router.get('/intakes/{order_id}', response_model=MemberIntakeResponse)
         def get_intake(site_id: str, order_id: str, patient=Depends(auth)):
             order = self.order_record(site_id, order_id, patient)
-            if self.care.configured(order):
-                _, _, record = self.care.intake(order, patient, 'initial')
-                return self.care.intake_public(order, record)
-            return self.intake_public(self.intake(order, patient), order)
-
-        def modify_intake(site_id, order_id, body, patient, submit=False):
-            order = self.order_record(site_id, order_id, patient)
-            if self.care.configured(order):
-                return self.care.modify(order, patient, 'initial', body, submit)
-            self.intake(order, patient)
-            with self.db() as db:
-                db.execute('BEGIN IMMEDIATE')
-                row = dict(db.execute('SELECT * FROM member_intakes WHERE site_id=? AND order_id=? AND patient_id=?', (site_id, order_id, patient['id'])).fetchone())
-                if row['status'] == 'submitted' or row['revision'] != body.revision:
-                    raise HTTPException(409, 'This intake is submitted or changed. Reload before saving.')
-                template, answers = json.loads(row['template']), json.loads(row['answers'])
-                now = self.clock()
-                if submit:
-                    questions = [q for q in template['questions'] if visible(q, answers)]
-                    missing = [q['id'] for q in questions if q.get('required') and answers.get(q['id']) in (None, '', [])]
-                    if missing:
-                        raise HTTPException(422, {'code': 'required_answers_missing', 'question_ids': missing})
-                    answers = {q['id']: answers[q['id']] for q in questions if q['id'] in answers}
-                    db.execute("UPDATE member_intakes SET status='submitted',revision=revision+1,answers=?,submitted_answers=?,updated=?,submitted=? WHERE id=?", (encoded(answers), encoded(answers), now, now, row['id']))
-                else:
-                    for key, value in clean_answers(template, body.answers).items():
-                        if value is None:
-                            answers.pop(key, None)
-                        else:
-                            answers[key] = value
-                    step = row['current_step'] if body.current_step is None else body.current_step
-                    if not 0 <= step < len(template['sections']):
-                        raise HTTPException(422, 'Unknown intake step')
-                    db.execute('UPDATE member_intakes SET answers=?,current_step=?,revision=revision+1,updated=? WHERE id=?', (encoded(answers), step, now, row['id']))
-                row = dict(db.execute('SELECT * FROM member_intakes WHERE id=?', (row['id'],)).fetchone())
-            return self.intake_public(row, order)
+            return self.initial_intake(order, patient)
 
         @router.patch('/intakes/{order_id}', response_model=MemberIntakeResponse)
         def save_intake(site_id: str, order_id: str, body: IntakePatch, patient=Depends(auth)):
-            return modify_intake(site_id, order_id, body, patient)
+            return self.modify_initial(self.order_record(site_id, order_id, patient), body, patient)
 
         @router.post('/intakes/{order_id}/submit', response_model=MemberIntakeResponse)
         def submit_intake(site_id: str, order_id: str, body: IntakeSubmit, patient=Depends(auth)):
-            return modify_intake(site_id, order_id, body, patient, True)
+            return self.modify_initial(self.order_record(site_id, order_id, patient), body, patient, True)
 
         @router.get('/messages', response_model=MessagesResult)
         def messages(site_id: str, patient=Depends(auth)):
@@ -1209,7 +1468,7 @@ class MemberService:
                     raise HTTPException(409, availability.get('early_reason') or availability['reason'])
             elif not availability['eligible']:
                 raise HTTPException(409, availability['reason'])
-            rule = self.care.settings(order) if self.care.configured(order) else self.rule(body.sku)
+            rule = self.care.settings(order) if self.care.configured(order) else self.rule(body.sku, site_id)
             if body.kind == 'early' and rule.get('early_reason_required', True) and not body.reason.strip():
                 raise HTTPException(422, 'Tell the review team why you are requesting an early refill')
             with self.db() as db:
@@ -1236,6 +1495,40 @@ class MemberService:
                     db.execute('INSERT INTO member_refill_tasks VALUES(?,?,?,?)', (key, availability['_plan_id'], body.task_id, int(availability.get('_simulated', False))))
                 row = db.execute('SELECT * FROM member_refills WHERE id=?', (key,)).fetchone()
             return {'request': self.refill_public(row)}
+
+        @owner.get('/refill-rules')
+        def site_refill_rules(site_id: str, req: Request):
+            self.admin.authenticated(req)
+            return {'site_id': site_id, 'rules': [self.site_rule_public(site_id, sku, product)
+                    for sku, product in sorted(self.site_rule_products(site_id).items())]}
+
+        @owner.put('/refill-rules/{sku}')
+        def save_site_refill_rules(site_id: str, sku: str, body: SaveRefillRules, req: Request):
+            self.admin.authenticated(req, True)
+            products = self.site_rule_products(site_id)
+            if sku not in products:
+                raise HTTPException(404, 'This product is not assigned to the selected site')
+            from .intake_templates import binding_for_sku
+            binding = binding_for_sku(sku)
+            if body.intake_template_id and (not binding or binding['template_id'] != body.intake_template_id):
+                raise HTTPException(422, 'Choose the intake assigned to this product')
+            if body.check_in_days and not body.intake_template_id:
+                raise HTTPException(422, 'Choose a product intake before scheduling check-ins')
+            setup = products[sku].get('product_setup') or {}
+            if body.included_refills_enabled and (not body.initial_intake_required or not body.check_in_required
+                    or not body.intake_template_id or not body.check_in_days
+                    or body.check_in_days != (setup.get('shipment_days') or [])[1:]):
+                raise HTTPException(422, 'Included refills require an initial intake and check-ins matching this product’s included shipment days')
+            key = site_rule_key(site_id, sku)
+            with self.db() as db:
+                db.execute('BEGIN IMMEDIATE')
+                row = db.execute("SELECT data FROM admin_config WHERE kind='site_refill_policy' AND id=?", (key,)).fetchone()
+                previous = json.loads(row[0]) if row else {'revision': 0}
+                if previous['revision'] != body.expected_revision:
+                    raise HTTPException(409, 'These site refill settings changed. Reload before saving.')
+                value = dict(body.model_dump(exclude={'expected_revision'}), site_id=site_id, sku=sku, revision=previous['revision'] + 1)
+                db.execute("INSERT INTO admin_config(kind,id,data) VALUES('site_refill_policy',?,?) ON CONFLICT(kind,id) DO UPDATE SET data=excluded.data", (key, json.dumps(value)))
+            return self.site_rule_public(site_id, sku, products[sku])
 
         @owner.get('/overview')
         def overview(site_id: str, req: Request, therapy_id: str | None = None):
@@ -1327,6 +1620,7 @@ class MemberService:
 
         self.care.attach(router, owner, auth)
         self.claims.attach(router, auth)
+        self.renewals.attach(router, auth)
         app.include_router(router)
         app.include_router(owner)
 
@@ -1338,9 +1632,16 @@ class MemberService:
 
         @app.get('/portal-assets/{name}', include_in_schema=False)
         def asset(name: str):
-            if name not in ('portal.js', 'portal.css', 'red-hat-display-latin-v1.woff2', 'red-hat-display-OFL.txt'):
+            if name not in ('post-checkout.js', 'id-upload.js', 'portal.js', 'portal.css', 'red-hat-display-latin-v1.woff2', 'red-hat-display-OFL.txt'):
                 raise HTTPException(404, 'Asset not found')
-            return FileResponse(HERE / 'web' / name)
+            return FileResponse(HERE / 'web' / name, headers={'Access-Control-Allow-Origin': '*'} if name == 'id-upload.js' else None)
+
+        @app.get('/portal-assets/fortifyhp/{name}', include_in_schema=False)
+        def fortify_asset(name: str):
+            if name not in ('logo.png', 'code-pro.ttf'):
+                raise HTTPException(404, 'Asset not found')
+            return FileResponse(HERE / 'web' / 'fortifyhp' / name,
+                                media_type='image/png' if name == 'logo.png' else 'font/ttf')
 
         @app.get('/portal/{site_id}/openapi.json', include_in_schema=False)
         def schema(site_id: str):
