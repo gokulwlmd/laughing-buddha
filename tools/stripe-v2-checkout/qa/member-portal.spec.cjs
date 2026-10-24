@@ -24,7 +24,17 @@ async function readable(page){
   for(const item of details)expect(item.size,JSON.stringify(item)).toBeGreaterThanOrEqual(16);
   for(const button of await page.locator('.btn-primary:visible').all()){const box=await button.boundingBox();expect(box.height).toBeGreaterThanOrEqual(48);expect(box.width).toBeGreaterThanOrEqual(48);}
 }
-async function reflow(page,width){expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1)).toBe(false);for(const item of await page.locator('.nav-link').all()){const box=await item.boundingBox();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(width+1);}}
+async function reflow(page,width){
+  // Read one DOM snapshot: background responses can replace the entire shell
+  // between separate boundingBox calls. Still require all seven patient routes.
+  await expect.poll(()=>page.evaluate(width=>{
+    const links=[...document.querySelectorAll('.nav-link')];
+    return document.documentElement.scrollWidth<=innerWidth+1&&links.length===7&&links.every(link=>{
+      const box=link.getBoundingClientRect();
+      return box.width>0&&box.height>0&&box.x>=0&&box.right<=width+1;
+    });
+  },width)).toBe(true);
+}
 async function orders(page){await page.getByRole('button',{name:'Orders & plans',exact:true}).click();await expect(page.locator('.full-order')).toContainText('9001');}
 async function proof(page,member){const result=await(await page.request.get(member.origin+'/__member_qa')).json();expect(result.calls['POST /api/v1/new_order']||0).toBe(0);expect(result.calls['POST /api/v1/authorize_payment']||0).toBe(0);expect(result.calls['POST /api/v1/order_force_bill']||0).toBe(0);return result;}
 

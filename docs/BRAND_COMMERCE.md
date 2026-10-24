@@ -104,3 +104,13 @@ their quote if their selected offer changes.
 Provider contract: [Sticky REST API](https://developer-v2.sticky.io/), Create
 Coupon Profile and Assign Campaign Coupon Profile. Verified against its published
 Postman collection on 24 October 2026; new live coupon writes were not exercised.
+
+## CI follow-up — 24 October 2026
+
+GitHub's full run passed 531 backend checks and 138 of 140 browser scenarios.
+The failures were an obsolete two-item admin navigation expectation and a portal
+layout assertion reading detached elements across a full-shell redraw. The admin
+check now asserts the exact three primary screen labels; the portal check reads
+one DOM snapshot and requires all seven routes to remain visible and within the
+viewport. Both failed scenarios pass locally after correction. No application
+behavior or payment protections were changed to make these checks pass.
