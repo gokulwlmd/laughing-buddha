@@ -22,7 +22,10 @@ async function patientCopy(page){await expect(page.locator('main')).not.toContai
 async function readable(page){
   const details=await page.locator('.page-head p,.welcome-card p,.small-note,.section-description,.field>label,.field legend,.choice,.modal p,.care-task-date,.care-refill-state,.order-progress-note,.order-progress-copy p,.order-progress-copy h4').evaluateAll(nodes=>nodes.filter(node=>node.getClientRects().length&&node.textContent.trim()).map(node=>({text:node.textContent.trim().slice(0,70),size:parseFloat(getComputedStyle(node).fontSize)})));
   for(const item of details)expect(item.size,JSON.stringify(item)).toBeGreaterThanOrEqual(16);
-  for(const button of await page.locator('.btn-primary:visible').all()){const box=await button.boundingBox();expect(box.height).toBeGreaterThanOrEqual(48);expect(box.width).toBeGreaterThanOrEqual(48);}
+  const buttons=await page.locator('.btn-primary:visible').evaluateAll(nodes=>nodes.map(node=>{
+    const {width,height}=node.getBoundingClientRect();return {width,height};
+  }));
+  for(const box of buttons){expect(box.height).toBeGreaterThanOrEqual(48);expect(box.width).toBeGreaterThanOrEqual(48);}
 }
 async function reflow(page,width){
   // Read one DOM snapshot: background responses can replace the entire shell
