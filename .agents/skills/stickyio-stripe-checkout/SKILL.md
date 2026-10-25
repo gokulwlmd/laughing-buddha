@@ -5,6 +5,11 @@ description: Build, verify and deploy Sticky.io Stripe Connect v2 checkouts, sha
 
 # Sticky Stripe Connect v2 checkout
 
+For new master therapies and their checkout selectors, follow the
+[base / -SUB purchase-pair rule](../stickyio-catalog-billing/SKILL.md#new-master-therapies-base-and--sub-pairs).
+Base means one-time upfront; `-SUB` means recurring upfront. Display both
+approved purchase types and test the exact selected SKU and renewal disclosure.
+Reference storefront behavior does not override this platform convention.
 
 ## Sticky membership and post-purchase account setup
 

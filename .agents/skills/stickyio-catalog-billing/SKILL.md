@@ -28,6 +28,35 @@ If access is missing, distinguish an unset binding, a network-proxy denial, HTTP
 
 ## Inspect the catalog
 
+### New master therapies: base and `-SUB` pairs
+
+For this platform's new master-therapy recipes, the owner's purchase convention
+is **base SKU = full-term upfront, one-time, no renewal** and **the exact base
+SKU plus `-SUB` = full-term upfront, recurring**. Build both for every approved
+medication/form/strength/quantity/duration combination unless the owner explicitly
+limits the purchase types. Do not copy a reference storefront's subscription-only
+catalog over this convention. Do not invent a second product variant just to
+represent purchase type in the customer selector.
+
+- For the approved 1/3/6/12-month recipes, renew `-SUB` after 30/90/180/360 days.
+  Never turn an upfront six-month term into six monthly charges.
+- Keep delivery and billing separate. A base SKU can have multiple included
+  $0 shipments and still have no paid renewal. Both members of a newly created
+  pair start with the same approved product identity and delivery schedule;
+  preserve exact source rules rather than inheriting another therapy's rules.
+- Show **One-time / Subscription** in the preview, resolve each to its exact
+  SKU, and update renewal disclosures when switching. Keep existing prices
+  editable; do not invent a subscription discount.
+- Before marking setup complete, validate both stored contracts and preview
+  resolution for every combination. Use
+  `tools/stripe-v2-checkout/catalog_contracts.py:validate_purchase_pairs` for
+  paired planning drafts; ED regression coverage is `test_ed_master.py`.
+  88 ED product combinations require **176 master SKUs**, not 88 recurring
+  records with base names.
+- This rule governs new paired recipes. Do not rename or rewrite legacy Sticky
+  offers, assigned products, or existing subscriptions to enforce it. Corrections
+  must check actual assignments and preserve customer records and owner edits.
+
 1. Read the relevant product and offer, then their campaign and billing models as needed.
 2. Trace the relationship explicitly: **SKU → Sticky product ID → offer ID → campaign ID**, with the selected billing-model ID. A SKU can occur on several distinct product records across brand-named offers.
 3. Prefer a known product ID or a narrowed offer's product list. Inspect candidate product records to confirm an exact SKU. Do not assume a product-name match proves the SKU or that the first match is unique.

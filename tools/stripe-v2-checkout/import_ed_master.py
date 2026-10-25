@@ -1,20 +1,24 @@
 """Add the approved ED master catalog without provider writes or app restarts.
 
 Uses the running release's validators, not app.create_app (which has startup
-side effects). Only adds admin configuration and an audit marker atomically.
-Existing records and owner edits are never replaced. Defaults to preview.
+side effects). Adds paired master configuration or repairs the recorded v1 ED
+draft atomically. Refuses assigned/published ED; preserves edited draft prices
+and shipment schedules. Unrelated records are never replaced. Defaults to preview.
 """
 import argparse
+import copy
 import json
 from pathlib import Path
 import sqlite3
 import time
 
-from master import MasterCatalog, fingerprint
+from master import MasterCatalog, MasterSKU, fingerprint, planned_product_setup
+from catalog_contracts import validate_purchase_pairs
 from plans import PlanCatalog
 from sites import SiteCatalog
 
-RUN_ID = 'owner-approved-ed-master-v1'
+LEGACY_RUN_ID = 'owner-approved-ed-master-v1'
+RUN_ID = 'owner-approved-ed-master-purchase-pairs-v2'
 THERAPY_ID = 'erectile-dysfunction'
 TEMPLATE_ID = 'master-therapy-ed'
 MEDICATIONS = [
@@ -64,7 +68,8 @@ def load_catalog():
     return catalog
 
 
-def prepare(existing):
+def _legacy_records(existing):
+    """Reconstruct v1 for guarded repair only; never install this snapshot."""
     catalog = load_catalog()
     view = CatalogView(dict(existing))
     pending = {}
@@ -132,6 +137,108 @@ def prepare(existing):
     return pending
 
 
+def prepare(existing):
+    legacy = _legacy_records(existing)
+    result = {k: v for k, v in legacy.items() if k[0] not in ('master', 'sku', 'purchase_option', 'template_draft', 'therapy_variant_catalog')}
+    view = CatalogView(dict(existing) | result)
+    for (kind, sku), old in legacy.items():
+        if kind != 'master':
+            continue
+        for recurring in (False, True):
+            payload = copy.deepcopy({k: v for k, v in old.items() if k in MasterSKU.model_fields})
+            payload['sku'] = sku + ('-SUB' if recurring else '')
+            payload['name'] += ' · ' + ('Subscription' if recurring else 'One-time')
+            payload['planning_contract']['renewal_months'] = payload['product_duration_months'] if recurring else None
+            payload['offers'][0]['name'] = 'Full-term upfront ' + ('subscription' if recurring else 'one-time')
+            data, guards, _, operations, _ = view.prepare_master('master', payload)
+            if guards or operations:
+                raise ValueError('Master pairs cannot write provider objects')
+            result['master', data['sku']] = data
+            result['sku', data['sku']] = {k: data[k] for k in ('sku', 'name', 'product_id')}
+    view.saved.update(result)
+    plans = []
+    for (kind, key), old in legacy.items():
+        if kind != 'purchase_option':
+            continue
+        plan = {k: copy.deepcopy(v) for k, v in old.items() if k != 'revision'}
+        plan['skus'] = [variant for sku in old['skus'] for variant in (sku, sku + '-SUB')]
+        plan['payment_types'] = ['once', 'subscription'] + (['prepaid'] if plan['duration_months'] >= 6 else [])
+        result[kind, key] = view.prepare_plan(kind, plan)[0]
+        plans.append(plan)
+    view.saved.update(result)
+    draft = copy.deepcopy(legacy['template_draft', TEMPLATE_ID])
+    draft['plans'] = plans
+    result['template_draft', TEMPLATE_ID] = view.prepare_template_editor(draft)[0]['request']
+    variants = copy.deepcopy(legacy['therapy_variant_catalog', THERAPY_ID])
+    variants.update(version=2, purchase_types=['once', 'subscription'])
+    variants['selection_order'].append('purchase_type')
+    for product in variants['products']:
+        product['purchase_skus'] = {'once': product['sku'], 'subscription': product['sku'] + '-SUB'}
+    result['therapy_variant_catalog', THERAPY_ID] = variants
+    if set(result) & set(existing):
+        raise ValueError('Existing ED record requires reconciliation; nothing overwritten')
+    validate_purchase_pairs([v for (k, _), v in result.items() if k == 'master'], [p['sku'] for p in load_catalog()['products']])
+    return result
+
+
+def _repair_v1(existing, marker):
+    """Correct only the recorded, unassigned ED draft; preserve edited prices/schedules."""
+    legacy = _legacy_records({})
+    if {tuple(key) for key in marker['created_records']} != set(legacy):
+        raise ValueError('Legacy ED import marker differs; reconcile before repair')
+    bases = {p['sku'] for p in load_catalog()['products']}
+    identifiers = bases | {s + '-SUB' for s in bases} | {THERAPY_ID, TEMPLATE_ID}
+    identifiers.update(key for kind, key in legacy if kind == 'purchase_option')
+
+    def references_ed(value):
+        if isinstance(value, str):
+            return value in identifiers
+        if isinstance(value, dict):
+            return any(references_ed(v) for v in value.values())
+        if isinstance(value, list):
+            return any(references_ed(v) for v in value)
+        return False
+
+    for (kind, key), value in existing.items():
+        if (kind, key) not in legacy and references_ed(value):
+            raise ValueError('ED is referenced outside its draft; reconcile before changing billing: ' + kind)
+
+    def comparable(kind, value):
+        value = copy.deepcopy(value)
+        value.pop('revision', None)
+        if kind == 'master':
+            value.pop('product_setup', None)
+            for offer in value.get('offers', []):
+                offer.pop('price', None)
+            for field in ('shipments_per_term', 'shipment_interval'):
+                value.get('planning_contract', {}).pop(field, None)
+        return value
+
+    for key, baseline in legacy.items():
+        current = existing.get(key)
+        if current is None or comparable(key[0], current) != comparable(key[0], baseline):
+            raise ValueError('ED draft changed outside price/shipment edits; reconcile: ' + '/'.join(key))
+        if key[0] == 'master':
+            MasterSKU.model_validate({k: v for k, v in current.items() if k in MasterSKU.model_fields})
+            if current.get('product_setup') != planned_product_setup(current):
+                raise ValueError('ED product setup differs from its contract: ' + key[1])
+    pending = prepare({k: v for k, v in existing.items() if k not in legacy})
+    for sku in bases:
+        old = existing['master', sku]
+        for target in (sku, sku + '-SUB'):
+            data = pending['master', target]
+            data['offers'][0]['price'] = old['offers'][0]['price']
+            for field in ('shipments_per_term', 'shipment_interval'):
+                data['planning_contract'][field] = old['planning_contract'][field]
+            data['product_setup'] = planned_product_setup(data)
+            data['revision'] = old.get('revision', 1) + 1 if target == sku else 1
+    for key in legacy:
+        if key[0] == 'purchase_option':
+            pending[key]['revision'] = existing[key].get('revision', 1) + 1
+    validate_purchase_pairs([v for (k, _), v in pending.items() if k == 'master'], bases)
+    return pending
+
+
 def install(path, apply=False):
     path = Path(path).resolve(strict=True)
     # mode=rw refuses to manufacture a new database at a mistyped destination.
@@ -139,25 +246,37 @@ def install(path, apply=False):
     try:
         db.execute('BEGIN IMMEDIATE' if apply else 'BEGIN')
         existing = {(k, i): json.loads(v) for k, i, v in db.execute('SELECT kind,id,data FROM admin_config')}
+        legacy_marker = None
         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='admin_setup_runs'").fetchone():
             row = db.execute('SELECT details FROM admin_setup_runs WHERE id=?', (RUN_ID,)).fetchone()
             if row:
                 marker = json.loads(row[0])
                 if any(tuple(key) not in existing for key in marker['created_records']):
                     raise ValueError('ED import is incomplete; reconcile without overwriting')
-                return {'already_imported': True, 'created_records': 0, 'master_skus': 88}
-        pending = prepare(existing)
+                validate_purchase_pairs([existing[tuple(key)] for key in marker['created_records'] if key[0] == 'master'], [p['sku'] for p in load_catalog()['products']])
+                return {'already_imported': True, 'created_records': 0, 'master_skus': 176}
+            row = db.execute('SELECT details FROM admin_setup_runs WHERE id=?', (LEGACY_RUN_ID,)).fetchone()
+            legacy_marker = json.loads(row[0]) if row else None
+        pending = _repair_v1(existing, legacy_marker) if legacy_marker else prepare(existing)
+        created = set(pending) - set(existing)
+        updated = {key for key in pending if key in existing and pending[key] != existing[key]}
         if apply:
             db.execute('CREATE TABLE IF NOT EXISTS admin_setup_runs(id TEXT PRIMARY KEY,created REAL NOT NULL,details TEXT NOT NULL)')
             for (kind, key), value in pending.items():
-                db.execute('INSERT INTO admin_config(kind,id,data) VALUES(?,?,?)', (kind, key, json.dumps(value)))
-            details = {'authorization': 'Owner requested Anuwell ED setup as a master therapy',
+                if (kind, key) in updated:
+                    db.execute('UPDATE admin_config SET data=? WHERE kind=? AND id=?', (json.dumps(value), kind, key))
+                elif (kind, key) in created:
+                    db.execute('INSERT INTO admin_config(kind,id,data) VALUES(?,?,?)', (kind, key, json.dumps(value)))
+            details = {'authorization': 'Owner requested base one-time and -SUB recurring ED pairs; correction of unassigned draft only',
                        'created_records': [list(key) for key in pending],
+                       'added_records': [list(key) for key in sorted(created)],
+                       'updated_records': [list(key) for key in sorted(updated)],
                        'catalog_hash': fingerprint(load_catalog()), 'sticky_writes': 0, 'payment_writes': 0}
             db.execute('INSERT INTO admin_setup_runs VALUES(?,?,?)', (RUN_ID, time.time(), json.dumps(details)))
             db.commit()
-        return {'applied': apply, 'master_skus': 88, 'treatments': 3, 'plans': 12,
-                'created_records': len(pending) if apply else 0, 'planned_records': len(pending),
+        return {'applied': apply, 'master_skus': 176, 'product_combinations': 88, 'treatments': 3, 'plans': 12,
+                'created_records': len(created) if apply else 0, 'updated_records': len(updated) if apply else 0,
+                'planned_new_records': len(created), 'planned_updates': len(updated),
                 'checkout_template': 'draft', 'sticky_writes': 0, 'payment_writes': 0}
     finally:
         db.rollback()
