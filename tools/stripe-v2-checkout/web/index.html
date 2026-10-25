@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/assets/checkout-font-v1.css">
   <link rel="stylesheet" href="/assets/checkout-v4.css">
   <script src="/assets/brand-design-v2.js" defer></script>
-  <script src="/assets/checkout-v9.js" defer></script>
+  <script src="/assets/checkout-v10.js" defer></script>
 </head>
 <body>
 <main>
@@ -37,6 +37,7 @@
         <div class="row"><label>City<input name="city" autocomplete="address-level2" required maxlength="80" placeholder="City"></label><label>State / region<select id="state" name="region" autocomplete="address-level1" required><option value="" disabled selected>Choose your state</option></select><input id="other-region" name="region" autocomplete="address-level1" required maxlength="80" hidden disabled></label></div>
         <div class="row"><label>ZIP / postal code<input name="postal_code" autocomplete="postal-code" required maxlength="20" placeholder="ZIP code"></label><label>Country<select id="country" name="country" autocomplete="country" required></select></label></div>
         <label id="shipping-choice">Delivery method<select id="shipping" name="shipping"><option value="">Choose a delivery method</option></select></label>
+        <label>Discount code (optional)<input id="coupon-code" name="coupon_code" maxlength="30" autocomplete="off" placeholder="Enter discount code"></label>
         <button type="submit">Review my order <span aria-hidden="true">→</span></button><p class="button-note">Review your final total before entering payment details.</p>
       </form>
       <section id="review" hidden>

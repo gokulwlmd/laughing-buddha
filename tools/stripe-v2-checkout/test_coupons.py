@@ -70,6 +70,14 @@ class CouponTests(unittest.TestCase):
     def test_client_discount_amount_rejected(self):
         self.assertEqual(self.post('quote',{'contact':CONTACT,'selection':'706:54537:2','discount_percent':99}).status_code,422)
 
+    def test_resume_preserves_discounted_renewal_disclosure(self):
+        q=self.discounted(True).json()
+        self.assertEqual(self.post('authorize',{'quote_id':q['id'],'recurring_consent':True}).status_code,200)
+        resumed=self.post('resume',{}).json()
+        self.assertEqual(resumed['renewalPrice'],'0.02')
+        self.assertEqual(resumed['coupon']['code'],'TEST99')
+        self.assertEqual(resumed['amount'],2)
+
     def test_quote_network_wait_does_not_hold_global_payment_lock(self):
         entered=threading.Event();release=threading.Event();previous=self.fake.call
         def delayed(method,path,body=None):

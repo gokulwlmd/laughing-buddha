@@ -604,7 +604,7 @@ def create_app(settings=None, sticky=None):
         c=catalog(req, legacy=q.get('catalogVersion',1)!=2)
         if c['fingerprint']!=q['fingerprint'] or c['blockedReason']:
             raise HTTPException(409, 'The payment configuration changed. Please contact support before continuing.')
-        return cached[key] | {'contact':json.loads(row['contact']),'option':q['option']}
+        return cached[key] | {'contact':json.loads(row['contact']),'option':q['option']} | {k:q[k] for k in ('coupon','renewalPrice','discountAmount','subtotalAmount') if k in q}
 
     @app.post('/api/capture')
     @serialized
@@ -700,6 +700,10 @@ def create_app(settings=None, sticky=None):
     from patient_demo.app import IntakePatch, IntakeSubmit
 
     from member_portal.app import ReceiptEnrollment
+
+    @app.get('/api/post-checkout-journey')
+    def receipt_journey(req: Request, refresh: bool = False):
+        return members.receipt_journey(member_receipt(req, mutation=False), refresh=refresh)
 
     @app.get('/api/post-checkout-account')
     def receipt_account(req: Request):

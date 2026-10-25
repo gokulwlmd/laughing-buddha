@@ -13,11 +13,20 @@ FORTIFYHP_ACKNOWLEDGEMENT = 'fortifyhp-external-sticky-order-fulfillment-2026-10
 FORTIFYHP_PREPAID_SKU = re.compile(r'(SEMA|TIRZ|SERM|METFORM|PT141)-(6|12)M(-SUB)?')
 
 
+# Owner requested this exact new plan on FortifyHP, 26 October 2026.
+# Other wellness master drafts are not implicitly enabled for fulfillment.
+def fortifyhp_prepaid_terms(sku):
+    if sku == 'NAD-INJ-12M-SUB':
+        return 4, True
+    match = FORTIFYHP_PREPAID_SKU.fullmatch(str(sku))
+    return ({6: 2, 12: 4}[int(match[2])], bool(match[3])) if match else None
+
+
 def fortifyhp_order_scope(campaign_id, gateway_id, sku):
     """Lightweight display scope; never sufficient authorization for a write."""
     try:
         return (int(campaign_id) == 195 and int(gateway_id) == 269
-                and FORTIFYHP_PREPAID_SKU.fullmatch(str(sku)) is not None)
+                and fortifyhp_prepaid_terms(sku) is not None)
     except (TypeError, ValueError):
         return False
 
@@ -42,13 +51,13 @@ def fortifyhp_prepaid_supported(campaign, product, offer):
             return False
         if not any(p.get('iso_2') == 'US' for p in campaign.get('countries', [])):
             return False
-        match = FORTIFYHP_PREPAID_SKU.fullmatch(str(product.get('sku', '')))
-        if not match or product.get('is_shippable') not in (True, 1, '1'):
+        terms = fortifyhp_prepaid_terms(product.get('sku', ''))
+        if not terms or product.get('is_shippable') not in (True, 1, '1'):
             return False
         if product.get('taxable', product.get('is_taxable')) not in (False, 0, '0'):
             return False
-        cycles = {6: 2, 12: 4}[int(match[2])]
-        if cycles_for(offer) != cycles or renewal_for(offer) != bool(match[3]):
+        cycles, renewal = terms
+        if cycles_for(offer) != cycles or renewal_for(offer) != renewal:
             return False
         models = offer.get('offer_billing_models') or offer.get('billing_models', [])
         if len(models) != 1:
