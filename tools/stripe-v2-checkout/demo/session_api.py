@@ -313,11 +313,11 @@ class CheckoutTransport:
 
     def call(self,row,method,path,body=None,client_ip=None):
         # Paths and link IDs come only from the server's published catalog.
-        if not re.fullmatch(r'/c/choice-[a-f0-9]{32}|/api/(?:start-checkout|config|status|quote|authorize|resume|capture|portal-enrollment|post-checkout-account|post-checkout-identity|post-checkout-id-photo(?:/reuse)?|post-checkout-intake(?:/submit)?)',path):
+        if not re.fullmatch(r'/c/choice-[a-f0-9]{32}|/api/(?:start-checkout|config|status|quote|authorize|resume|capture|portal-enrollment|post-checkout-account|post-checkout-journey(?:\?refresh=true)?|post-checkout-identity|post-checkout-id-photo(?:/reuse)?|post-checkout-intake(?:/submit)?)',path):
             raise ValueError('Unexpected checkout path')
         target=path
         if path.startswith('/api/'):
-            target+='?'+parse.urlencode({'link_id':row['link_id']})
+            target+=('&' if '?' in target else '?')+parse.urlencode({'link_id':row['link_id']})
         cookies=json.loads(row['cookies'])
         if any(not (k=='__Host-checkout-browser' or re.fullmatch(r'purchase_[a-f0-9]{20}',k)) for k in cookies):
             raise ValueError('Unexpected upstream cookie')
@@ -638,6 +638,14 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
         row = auth(site_id, session_id, req, credentials)
         try:
             return call(row, 'POST', '/api/post-checkout-identity', {'last4': body.last4.get_secret_value()}, req)
+        except UpstreamError as exc:
+            raise translated(exc)
+
+    @router.get('/{session_id}/journey', summary='Read this purchased order’s progress and next step')
+    def journey(site_id: str, session_id: str, req: Request, refresh: bool = False, credentials: HTTPAuthorizationCredentials | None = Security(bearer)):
+        row = auth(site_id, session_id, req, credentials)
+        try:
+            return call(row, 'GET', '/api/post-checkout-journey' + ('?refresh=true' if refresh else ''), req=req)
         except UpstreamError as exc:
             raise translated(exc)
 

@@ -196,6 +196,7 @@ class RefillAvailability(BaseModel):
 
 
 class OrderModel(BaseModel):
+    journey: dict | None = None
     dry_run: bool = False
     care_plan: CarePlan | None = None
     id: str
@@ -804,7 +805,7 @@ class MemberService:
         if care_plan and care_plan['tasks']:
             intake = {'status': care_plan['tasks'][0]['intake_status']}
         dry_run = raw.get('test_order') is True and str(raw.get('gateway_id')) == '1'
-        return {'dry_run': dry_run, 'care_plan': care_plan, 'id': row['order_id'], 'number': row['order_id'], 'site_id': row['site_id'], 'therapy_id': row['therapy_id'],
+        result = {'dry_run': dry_run, 'care_plan': care_plan, 'id': row['order_id'], 'number': row['order_id'], 'site_id': row['site_id'], 'therapy_id': row['therapy_id'],
                 'therapy_name': snapshot.get('therapy_name', row['therapy_id']), 'product_name': snapshot.get('product_name', row['sku']),
                 'sku': row['sku'], 'plan_name': snapshot.get('quote_option', {}).get('label') or row['sku'], 'total': str(raw['total']),
                 'currency': raw.get('currency'), 'payment_status': raw.get('payment_status', 'unknown'), 'intake_status': intake['status'] if intake else 'not_started',
@@ -813,6 +814,9 @@ class MemberService:
                 'last_synced_at': stamp(row['synced']), 'subscriptions': subscriptions, 'refill': availability, 'test_only': availability['test_only'],
                 'address_update_available': raw.get('fulfillment_posted') is not None and raw.get('fulfillment_posted') == 0 and raw.get('fulfillment_status') not in ('shipped', 'not_shippable') and not raw.get('child_ids') and not raw.get('shipping_date') and not raw.get('tracking_number'),
                 'shipping_address': raw.get('shipping_address')}
+        from .journey import order_journey
+        result['journey'] = order_journey(result)
+        return result
 
     def order_list(self, site_id, patient=None, therapy_id=None):
         with self.db() as db:
@@ -933,6 +937,15 @@ class MemberService:
         with self.db() as db:
             grant = db.execute('SELECT patient_id FROM member_grants WHERE site_id=? AND order_id=?', (site_id, order['order_id'])).fetchone()
         return order, {'id': grant['patient_id'] if grant else 'receipt:' + order['order_id'], '_reuse_allowed': False}
+
+    def receipt_journey(self, row, refresh=False):
+        order, _ = self.receipt_order(row)
+        if refresh and self.clock() - order['synced'] >= 30:
+            order = self.sync(order['site_id'], order['order_id'])
+        public = self.order_public(order)
+        # Receipt capability reveals only this purchase, never account-wide
+        # health answers, identity records or another product's order history.
+        return {key: public[key] for key in ('id', 'product_name', 'intake_status', 'journey')}
 
     def modify_initial(self, order, body, patient, submit=False):
         site_id, order_id = order["site_id"], order["order_id"]

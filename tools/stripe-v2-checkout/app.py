@@ -701,6 +701,10 @@ def create_app(settings=None, sticky=None):
 
     from member_portal.app import ReceiptEnrollment
 
+    @app.get('/api/post-checkout-journey')
+    def receipt_journey(req: Request, refresh: bool = False):
+        return members.receipt_journey(member_receipt(req, mutation=False), refresh=refresh)
+
     @app.get('/api/post-checkout-account')
     def receipt_account(req: Request):
         return members.receipt_account(member_receipt(req, mutation=False))
