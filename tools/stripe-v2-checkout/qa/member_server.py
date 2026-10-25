@@ -14,13 +14,17 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, required=True)
     parser.add_argument('--state-dir', type=Path, required=True)
     parser.add_argument('--care-plan', action='store_true')
+    parser.add_argument('--wellness-plan', action='store_true')
     args = parser.parse_args()
     if not 1024 <= args.port <= 65535:
         parser.error('Use an unprivileged port')
     app, fake, attempt = build_member_fixture(args.state_dir, origin=f'http://127.0.0.1:{args.port}')
     # This fixture is the sole source of order data. No network-capable Sticky
     # client is used. A shippable offline product exercises eligible UI actions.
-    if args.care_plan:
+    if args.wellness_plan:
+        from test_wellness_refills import configure_wellness_fixture
+        fake, _sku = configure_wellness_fixture(app)
+    elif args.care_plan:
         from test_member_care import configure_native_care_fixture
         fake = configure_native_care_fixture(app, months=12)
     else:

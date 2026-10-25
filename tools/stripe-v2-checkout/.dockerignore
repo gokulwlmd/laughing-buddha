@@ -33,6 +33,8 @@
 
 !reconcile_site.py
 !refill_rules.py
+!catalog_refill_policies.py
+!wellness_master_catalog.json
 !dollar_testing.py
 !member_portal/
 !member_portal/*.py

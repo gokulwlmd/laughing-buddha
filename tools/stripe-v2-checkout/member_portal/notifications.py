@@ -60,7 +60,7 @@ def order_notifications(orders, site_id, patient_id):
         if order.get('payment_status') not in ('paid', 'captured', 'approved'):
             continue
         tasks = (order.get('care_plan') or {}).get('tasks', [])
-        if not order.get('care_plan') and order.get('intake_status') != 'submitted':
+        if not order.get('care_plan') and order.get('intake_status') not in ('submitted', 'not_required'):
             add(order, 'intake_needed', f'Complete your {product} health form',
                 'Your answers save as you go. Open your order to continue.')
         for task in tasks:
@@ -68,6 +68,9 @@ def order_notifications(orders, site_id, patient_id):
             if task.get('kind') == 'initial' and task.get('status') != 'submitted' and task.get('can_open'):
                 add(order, 'intake_needed', f'Complete your {product} health form',
                     'Your answers save as you go. Continue when you are ready.', 'open-care-task', task)
+            elif task.get('kind') == 'renewal_check_in' and task.get('status') != 'submitted' and task.get('can_open'):
+                add(order, 'check_in_needed', f'Your {product} renewal needs a check-in',
+                    'Complete the short health update for your renewed plan.', 'open-care-task', task)
             elif claim.get('status') == 'claimed' and task.get('status') != 'submitted' and task.get('can_open'):
                 add(order, 'check_in_needed', f'Your {product} refill needs a check-in',
                     'Your included refill is claimed. Complete its health check-in.', 'open-care-task', task)

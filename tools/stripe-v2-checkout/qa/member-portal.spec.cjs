@@ -8,7 +8,7 @@ const net=require('node:net');
 async function freePort(){const server=net.createServer();await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const port=server.address().port;await new Promise(resolve=>server.close(resolve));return port;}
 const test=base.extend({careMode:[false,{option:true}],member:async({careMode},use)=>{
   const port=await freePort(),directory=fs.mkdtempSync(path.join(os.tmpdir(),'member-portal-qa-')),origin=`http://127.0.0.1:${port}`;
-  const child=spawn(process.env.QA_PYTHON||'python3',[path.join(__dirname,'member_server.py'),'--port',String(port),'--state-dir',directory,...(careMode?['--care-plan']:[])],{stdio:['ignore','pipe','pipe']});let errors='';child.stderr.on('data',data=>errors+=data);
+  const child=spawn(process.env.QA_PYTHON||'python3',[path.join(__dirname,'member_server.py'),'--port',String(port),'--state-dir',directory,...(careMode==='wellness'?['--wellness-plan']:careMode?['--care-plan']:[])],{stdio:['ignore','pipe','pipe']});let errors='';child.stderr.on('data',data=>errors+=data);
   try{await expect.poll(async()=>{if(child.exitCode!==null)throw Error(errors);try{return(await fetch(origin+'/health')).status;}catch{return 0;}},{timeout:15000}).toBe(200);await use({origin});}
   finally{child.kill('SIGTERM');await new Promise(resolve=>{if(child.exitCode!==null)return resolve();child.once('exit',resolve);setTimeout(()=>{child.kill('SIGKILL');resolve();},2000).unref();});fs.rmSync(directory,{recursive:true,force:true});}
 },page:async({page,member},use)=>{
@@ -174,7 +174,7 @@ async function finishCareForm(page,taskId){
       const sample=question.id==='weight_goals'?'INITIAL QA ONLY':question.sample;
       if(question.type==='single_choice'){const value=sample??question.options[0].value;await page.locator(`[data-question="${question.id}"][value="${value}"]`).check();}
       else if(question.type==='multi_choice'){for(const value of(Array.isArray(sample)?sample:[question.options[0].value]))await page.locator(`[data-question="${question.id}"][value="${value}"]`).check();}
-      else await fields.fill(String(sample??(question.type==='number'?180:'MOCK TEST: browser journey only.')));
+      else await fields.fill(String(sample==null||sample===''?(question.type==='number'?180:'MOCK TEST: browser journey only.'):sample));
     }
     const next=page.getByRole('button',{name:'Save & continue',exact:true});if(await next.count())await next.click();
   }
@@ -191,7 +191,7 @@ test.describe('Configured 12-month care journey',()=>{
     for(const width of [1440,390]){await page.setViewportSize({width,height:1000});await page.screenshot({path:testInfo.outputPath(`care-start-${width}.png`),fullPage:true});}await page.setViewportSize({width:1440,height:1000});
     await timeline.getByRole('button',{name:'Start intake',exact:true}).click();await finishCareForm(page,'initial');
     const initial=(await patientData(page,'/orders/9001/care-tasks/initial/intake')).body;expect(initial.answers.weight_goals).toBe('INITIAL QA ONLY');const intakeIds=new Set([initial.id]);
-    await page.getByRole('button',{name:'Back to my care plan',exact:true}).click();await expect(timeline.locator('[data-care-day="0"]')).toContainText('Complete');await orders(page);await expect(page.locator('#order-9001')).not.toContainText('Next eligible date:');await expect(page.locator('#order-9001')).toContainText('View your intake and refill schedule.');await expect(page.locator('#order-9001 [data-stage="payment"]')).toHaveAttribute('data-state','complete');await expect(page.locator('#order-9001 [data-stage="intake"]')).toHaveAttribute('data-state','complete');await expect(page.locator('#order-9001 [data-stage="review"]')).toHaveAttribute('data-state','current');await expect(page.locator('#order-9001 [data-stage="prescription"],#order-9001 [data-stage="shipping"]')).toHaveCount(2);await page.getByRole('button',{name:'Medical intake',exact:true}).click();
+    await page.getByRole('button',{name:'Back to my care plan',exact:true}).click();await expect(timeline.locator('[data-care-day="0"]')).toContainText('Complete');await orders(page);await expect(page.locator('#order-9001')).not.toContainText('Next eligible date:');await expect(page.locator('#order-9001')).toContainText('View your intake and refill schedule.');await expect(page.locator('#order-9001 [data-stage="payment"]')).toHaveAttribute('data-state','complete');await expect(page.locator('#order-9001 [data-stage="intake"]')).toHaveAttribute('data-state','complete');await expect(page.locator('#order-9001 [data-stage="review"]')).toHaveAttribute('data-state','unconfirmed');await expect(page.locator('#order-9001 [data-stage="prescription"],#order-9001 [data-stage="shipping"]')).toHaveCount(2);await page.getByRole('button',{name:'Medical intake',exact:true}).click();
     const admin=await page.context().newPage();await admin.goto(member.origin+'/portal-admin/site-a');
     async function simulate(day){await admin.locator('[data-action="care-simulation"][data-order="9001"]').click();await admin.locator('#care-simulation-day').selectOption(String(day));await admin.getByRole('button',{name:'Apply timeline preview',exact:true}).click();await expect(admin.getByRole('dialog')).toHaveCount(0);
       if(day===80){let release,observed;const gate=new Promise(resolve=>release=resolve),requested=new Promise(resolve=>observed=resolve),url='**/api/v1/sites/site-a/portal/orders';await page.route(url,async route=>{observed();await gate;await route.continue();});await page.reload();await requested;try{await expect(page.getByRole('button',{name:'Medical intake',exact:true})).toBeDisabled();}finally{release();}await expect(page.locator('.welcome-card')).toBeVisible();await page.unroute(url);}else await page.reload();await expect(page.locator('.welcome-card')).toBeVisible();await page.getByRole('button',{name:'Medical intake',exact:true}).click();await patientCopy(page);}
@@ -224,8 +224,8 @@ test('MEMBER-09 customer next step and same-site plan choices use simple copy an
 });
 
 test('MEMBER-10 order timeline uses only recorded payment, intake, clinical and shipment evidence',async({page,member})=>{
-  let evidence={payment_status:'paid',intake_status:'not_started',medical_status:'not_connected',fulfillment_status:'unknown',dry_run:true,test_only:true};
-  await page.route('**/api/v1/sites/site-a/portal/orders',async route=>{const response=await route.fetch(),body=await response.json();body.orders=body.orders.map(order=>({...order,...evidence}));await route.fulfill({response,json:body});});
+  let evidence={journey:null,payment_status:'paid',intake_status:'not_started',medical_status:'not_connected',fulfillment_status:'unknown',dry_run:true,test_only:true};
+  await page.route('**/api/v1/sites/site-a/portal/orders',async route=>{const response=await route.fetch(),body=await response.json();body.orders=body.orders.map(order=>({...order,...evidence,journey:null}));await route.fulfill({response,json:body});});
   await enroll(page,member);await orders(page);
   const timeline=page.locator('#order-9001 ol[aria-label="Order status timeline"]');
   async function stages(expected){
@@ -280,7 +280,7 @@ test('MEMBER-12 pale site branding keeps primary actions and their labels readab
 
 test('MEMBER-13 shipment details appear only from recorded tracking and shipment dates',async({page,member},testInfo)=>{
   let evidence={fulfillment_status:'unknown',tracking_number:null,shipping_date:null};
-  await page.route('**/api/v1/sites/site-a/portal/orders',async route=>{const response=await route.fetch(),body=await response.json();body.orders=body.orders.map(order=>({...order,...evidence}));await route.fulfill({response,json:body});});
+  await page.route('**/api/v1/sites/site-a/portal/orders',async route=>{const response=await route.fetch(),body=await response.json();body.orders=body.orders.map(order=>({...order,...evidence,journey:null}));await route.fulfill({response,json:body});});
   await enroll(page,member);await orders(page);await expect(page.locator('.tracking-number')).toHaveCount(0);
   evidence={fulfillment_status:'shipped',tracking_number:'1Z-QA-RECORDED-9001',shipping_date:'2027-01-21'};await page.reload();await orders(page);
   const shipment=page.locator('[data-shipment-order="9001"]');await expect(shipment.locator('.tracking-number')).toHaveText('1Z-QA-RECORDED-9001');await expect(shipment).toContainText('Jan 21');
@@ -543,4 +543,37 @@ for(const width of [1440,390])test(`IDPHOTO upload alternative resumes intake at
  await expect(page.locator('#identity-last4')).toHaveCount(0);
  expect(await page.evaluate(()=>JSON.stringify({...localStorage,...sessionStorage}))).not.toContain('data:image');
  await reflow(page,width);await page.screenshot({path:info.outputPath('id-photo-saved-'+width+'.png'),fullPage:true});await proof(page,member);
+});
+
+test.describe('Source-defined wellness refills',()=>{
+  test.use({careMode:'wellness'});
+  test('WELLNESS-01 included delivery without check-in stays out of the intake flow',async({page,member},testInfo)=>{
+    test.setTimeout(90000);await enroll(page,member);
+    await page.getByRole('button',{name:'Medical intake',exact:true}).click();
+    const timeline=page.locator('[data-care-order="9001"]');
+    await expect(timeline).toContainText('No refill check-in is required');
+    await timeline.getByRole('button',{name:'Start intake',exact:true}).click();await finishCareForm(page,'initial');
+    await page.getByRole('button',{name:'Back to my care plan',exact:true}).click();
+    const admin=await page.context().newPage();await admin.goto(member.origin+'/portal-admin/site-a');
+    await admin.locator('[data-action="care-simulation"][data-order="9001"]').click();
+    await admin.locator('#care-simulation-day').selectOption('80');
+    await admin.getByRole('button',{name:'Apply timeline preview',exact:true}).click();await expect(admin.getByRole('dialog')).toHaveCount(0);
+    await page.reload();await expect(page.locator('.welcome-card')).toBeVisible();
+    await expect(page.locator('.home-next-main')).toContainText('No extra payment or check-in is required');
+    await page.getByRole('button',{name:'Medical intake',exact:true}).click();
+    const task=timeline.locator('[data-care-day="90"]');
+    await task.getByRole('button',{name:'Claim included refill',exact:true}).click();
+    await expect(page.getByRole('dialog')).toContainText('No refill check-in is required');
+    await page.getByRole('dialog').getByRole('button',{name:'Claim included refill',exact:true}).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.locator('#intake-form')).toHaveCount(0);
+    await expect(task).toContainText('Refill order 9002');await expect(task).toContainText('Complete');
+    await page.getByRole('button',{name:'Overview',exact:true}).click();await expect(page.locator('main')).not.toContainText('Check-in needed');
+    await page.getByRole('button',{name:'Orders & plans',exact:true}).click();await expect(page.locator('#order-9002')).toContainText('No check-in is required for this refill');
+    await expect(page.locator('#order-9002 [data-stage="review"]')).not.toHaveAttribute('data-state','complete');
+    await page.getByRole('button',{name:'Refill history',exact:true}).click();await expect(page.locator('.refill-row')).toContainText('Refill ordered');
+    await expect(page.locator('.refill-row')).not.toContainText('Check-in needed');
+    for(const width of [1440,390,320]){await page.setViewportSize({width,height:1000});expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1)).toBe(false);await page.screenshot({path:testInfo.outputPath(`wellness-refill-${width}.png`),fullPage:true});}
+    const result=await(await page.request.get(member.origin+'/__member_qa')).json();expect(result.calls['POST /api/v1/order_force_bill']).toBe(1);expect(result.calls['POST /api/v1/new_order']||0).toBe(0);
+    await admin.close();
+  });
 });

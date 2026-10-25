@@ -196,6 +196,9 @@ class RefillAvailability(BaseModel):
 
 
 class OrderModel(BaseModel):
+    order_role: str = 'initial'
+    intake_kind: str = 'initial'
+    journey: dict | None = None
     dry_run: bool = False
     care_plan: CarePlan | None = None
     id: str
@@ -600,18 +603,28 @@ class MemberService:
         queue = [parent]
         seen = {parent['order_id']}
         count = 0
-        while queue and count < 20:
+        fetched = {}
+        while queue:
             current = queue.pop(0)
             original, snapshot = json.loads(current['payload']), json.loads(current['snapshot'])
             for child_id in original.get('child_ids', []):
                 child_id = str(child_id)
-                if child_id in seen or count >= 20:
+                if child_id in seen:
                     continue
-                seen.add(child_id); count += 1
-                try:
-                    child = self.provider.read_order(child_id, expected_campaign=original['campaign_id'], expected_customer_id=current['customer_id'])
-                except ProviderError:
+                if child_id not in fetched:
+                    if count >= 20:
+                        continue
+                    count += 1
+                    try:
+                        fetched[child_id] = self.provider.read_order(child_id, expected_campaign=original['campaign_id'], expected_customer_id=current['customer_id'])
+                    except ProviderError:
+                        fetched[child_id] = None
+                child = fetched[child_id]
+                if not child or str(child.get('parent_id')) != current['order_id']:
+                    # Ancestors list every descendant. Establish each paid term
+                    # from its direct predecessor, never the initial ancestor.
                     continue
+                seen.add(child_id)
                 related = (str(child.get('parent_id')) == current['order_id'] or str(child.get('ancestor_id')) == str(snapshot['root_order_id']))
                 lines = child.get('products', [])
                 root_line = original['products'][0]
@@ -671,6 +684,13 @@ class MemberService:
         if not row:
             raise HTTPException(404, 'Order not found in this account')
         return dict(row)
+
+    def care_order_role(self, row):
+        from .order_roles import order_role
+        root_id = str(json.loads(row['snapshot']).get('root_order_id') or row['order_id'])
+        with self.db() as db:
+            root = db.execute('SELECT * FROM member_orders WHERE site_id=? AND order_id=?', (row['site_id'], root_id)).fetchone()
+        return order_role(row, dict(root) if root else None)
 
     def rule(self, sku, site_id=None):
         if site_id:
@@ -803,8 +823,17 @@ class MemberService:
         care_plan = self.care.public(row)
         if care_plan and care_plan['tasks']:
             intake = {'status': care_plan['tasks'][0]['intake_status']}
+        role = self.care_order_role(row)
+        intake_kind = 'initial' if role == 'initial' else 'checkin'
+        if role == 'included_refill' and care_plan:
+            own_task = next((t for t in care_plan['tasks'] if str((t.get('claim') or {}).get('order_id')) == row['order_id']), None)
+            intake = {'status': own_task['intake_status'] if own_task else 'not_started'}
+        if role == 'paid_renewal' and not care_plan and not self.rule(row['sku'], row['site_id']).get('check_in_required', True):
+            intake = intake or {'status': 'not_required'}
+        if intake and intake['status'] == 'not_required':
+            intake_kind = 'none'
         dry_run = raw.get('test_order') is True and str(raw.get('gateway_id')) == '1'
-        return {'dry_run': dry_run, 'care_plan': care_plan, 'id': row['order_id'], 'number': row['order_id'], 'site_id': row['site_id'], 'therapy_id': row['therapy_id'],
+        result = {'order_role': role, 'intake_kind': intake_kind, 'dry_run': dry_run, 'care_plan': care_plan, 'id': row['order_id'], 'number': row['order_id'], 'site_id': row['site_id'], 'therapy_id': row['therapy_id'],
                 'therapy_name': snapshot.get('therapy_name', row['therapy_id']), 'product_name': snapshot.get('product_name', row['sku']),
                 'sku': row['sku'], 'plan_name': snapshot.get('quote_option', {}).get('label') or row['sku'], 'total': str(raw['total']),
                 'currency': raw.get('currency'), 'payment_status': raw.get('payment_status', 'unknown'), 'intake_status': intake['status'] if intake else 'not_started',
@@ -813,6 +842,9 @@ class MemberService:
                 'last_synced_at': stamp(row['synced']), 'subscriptions': subscriptions, 'refill': availability, 'test_only': availability['test_only'],
                 'address_update_available': raw.get('fulfillment_posted') is not None and raw.get('fulfillment_posted') == 0 and raw.get('fulfillment_status') not in ('shipped', 'not_shippable') and not raw.get('child_ids') and not raw.get('shipping_date') and not raw.get('tracking_number'),
                 'shipping_address': raw.get('shipping_address')}
+        from .journey import order_journey
+        result['journey'] = order_journey(result)
+        return result
 
     def order_list(self, site_id, patient=None, therapy_id=None):
         with self.db() as db:
@@ -909,10 +941,19 @@ class MemberService:
             self.identity_checks.status(order, patient)
             self.id_uploads.status(order, patient)
 
+    def care_task_for_order(self, order):
+        if self.care_order_role(order) != 'included_refill':
+            return 'initial'
+        tasks = self.care.public(order)['tasks']
+        task = next((t for t in tasks if str((t.get('claim') or {}).get('order_id')) == str(order['order_id'])), None)
+        if not task:
+            raise HTTPException(409, 'This refill order needs its claim to be confirmed before its check-in')
+        return task['id']
+
     def initial_intake(self, order, patient):
         self.adopt_receipt_intake(order, patient)
         if self.care.configured(order) and self.care.ensure(order):
-            _, _, record = self.care.intake(order, patient, 'initial')
+            _, _, record = self.care.intake(order, patient, self.care_task_for_order(order))
             return self.care.intake_public(order, record)
         return self.intake_public(self.intake(order, patient), order)
 
@@ -934,11 +975,20 @@ class MemberService:
             grant = db.execute('SELECT patient_id FROM member_grants WHERE site_id=? AND order_id=?', (site_id, order['order_id'])).fetchone()
         return order, {'id': grant['patient_id'] if grant else 'receipt:' + order['order_id'], '_reuse_allowed': False}
 
+    def receipt_journey(self, row, refresh=False):
+        order, _ = self.receipt_order(row)
+        if refresh and self.clock() - order['synced'] >= 30:
+            order = self.sync(order['site_id'], order['order_id'])
+        public = self.order_public(order)
+        # Receipt capability reveals only this purchase, never account-wide
+        # health answers, identity records or another product's order history.
+        return {key: public[key] for key in ('id', 'product_name', 'intake_status', 'journey')}
+
     def modify_initial(self, order, body, patient, submit=False):
         site_id, order_id = order["site_id"], order["order_id"]
         self.adopt_receipt_intake(order, patient)
         if self.care.configured(order) and self.care.ensure(order):
-            return self.care.modify(order, patient, 'initial', body, submit)
+            return self.care.modify(order, patient, self.care_task_for_order(order), body, submit)
         self.intake(order, patient)
         with self.db() as db:
             db.execute('BEGIN IMMEDIATE')
@@ -976,10 +1026,18 @@ class MemberService:
             if row:
                 return self.answer_profile.hydrate(db, order, patient, row, 'member_intakes')
             therapy = order['therapy_id']
-            if therapy not in QUESTION_THERAPIES:
-                raise HTTPException(409, 'This therapy’s intake questions have not been configured yet')
             from .intake_templates import get_template as sku_template, binding_for_sku
-            template = sku_template(therapy, sku=order['sku']) if binding_for_sku(order['sku']) else get_template(therapy)
+            binding = binding_for_sku(order['sku'])
+            if therapy not in QUESTION_THERAPIES and (not binding or binding['template_id'] != therapy):
+                raise HTTPException(409, 'This therapy’s intake questions have not been configured yet')
+            role = self.care_order_role(order)
+            if role == 'unconfirmed' or role == 'included_refill':
+                raise HTTPException(409, 'The refill order needs a verified care checkpoint')
+            if role == 'paid_renewal' and not self.rule(order['sku'], order['site_id']).get('check_in_required', True):
+                raise HTTPException(409, 'This refill does not require a check-in')
+            if role == 'paid_renewal' and not binding:
+                raise HTTPException(409, 'This product needs a configured refill check-in')
+            template = sku_template(therapy, sku=order['sku'], kind='checkin' if role == 'paid_renewal' else 'initial') if binding else get_template(therapy)
             template['questions'] = [q for q in template['questions'] if q['id'] != 'demo_confirmation']
             template, answers = self.answer_profile.seed(db, order, patient, template)
             db.execute('INSERT INTO member_intakes VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', (identifier('intake'), order['site_id'], order['order_id'], patient['id'], 'draft', 0, encoded(answers), 0, encoded(template), self.clock(), None, None))
@@ -1515,10 +1573,8 @@ class MemberService:
             if body.check_in_days and not body.intake_template_id:
                 raise HTTPException(422, 'Choose a product intake before scheduling check-ins')
             setup = products[sku].get('product_setup') or {}
-            if body.included_refills_enabled and (not body.initial_intake_required or not body.check_in_required
-                    or not body.intake_template_id or not body.check_in_days
-                    or body.check_in_days != (setup.get('shipment_days') or [])[1:]):
-                raise HTTPException(422, 'Included refills require an initial intake and check-ins matching this product’s included shipment days')
+            from refill_rules import validate_included_policy
+            validate_included_policy(body, binding, setup)
             key = site_rule_key(site_id, sku)
             with self.db() as db:
                 db.execute('BEGIN IMMEDIATE')

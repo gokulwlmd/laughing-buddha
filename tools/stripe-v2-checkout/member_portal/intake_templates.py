@@ -18,7 +18,8 @@ SKU_BINDINGS = {
 
 
 def binding_for_sku(sku):
-    return deepcopy(SKU_BINDINGS.get(sku))
+    from catalog_refill_policies import source_binding
+    return deepcopy(SKU_BINDINGS.get(sku) or source_binding(sku))
 
 
 def get_template(template_id, *, sku, kind='initial'):
@@ -27,7 +28,18 @@ def get_template(template_id, *, sku, kind='initial'):
         raise ValueError('No mock intake is assigned to this product')
     name = binding['product_name']
     if kind == 'initial':
-        result = initial_template(template_id)
+        if template_id in ('hair-growth', 'nad-plus', 'glutathione'):
+            from patient_demo.provider import COMMON
+            result = {'sections': [
+                {'id': 'goals', 'title': 'Your treatment', 'description': 'Tell us what brought you here.'},
+                {'id': 'health', 'title': 'Health background', 'description': 'Review your current health information.'},
+                {'id': 'review', 'title': 'Review & submit', 'description': 'Check your answers before submitting.'}],
+                'questions': [question('treatment_goals', 'goals', f'What would you like to discuss about {name}?'),
+                    question('previous_treatment', 'goals', f'Have you used {name} before?', 'single_choice', 'no', options=YES_NO),
+                    question('previous_treatment_details', 'goals', 'Tell us about your previous treatment and experience.',
+                        show_if={'question_id': 'previous_treatment', 'equals': 'yes'}), *deepcopy(COMMON)]}
+        else:
+            result = initial_template(template_id)
         result['questions'] = [q for q in result['questions'] if q['id'] != 'demo_confirmation']
     else:
         specific = {
@@ -50,7 +62,7 @@ def get_template(template_id, *, sku, kind='initial'):
                 question('pt141_progress', 'progress', 'Have your sexual health concerns changed since your last check-in?',
                          sample='MOCK TEST: No real health information supplied.'),
             ],
-        }[template_id]
+        }.get(template_id, [question('treatment_progress', 'progress', f'What would you like to discuss about your experience with {name}?')])
         result = {
             'sections': [
                 {'id': 'progress', 'title': 'Your progress', 'description': 'Tell us how things have been going.'},

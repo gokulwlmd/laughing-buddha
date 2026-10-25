@@ -18,7 +18,7 @@ class RefillRules(BaseModel):
     early_request_minimum_days: int = Field(default=0, ge=0, le=730, strict=True)
     early_request_cooldown_days: int = Field(default=7, ge=1, le=90, strict=True)
     early_reason_required: Literal[True] = True
-    intake_template_id: Literal['', 'weight-loss', 'sermorelin', 'metformin', 'pt-141'] = ''
+    intake_template_id: Literal['', 'weight-loss', 'sermorelin', 'metformin', 'pt-141', 'hair-growth', 'nad-plus', 'glutathione'] = ''
     initial_intake_required: bool = True
     check_in_days: list[StrictInt] = Field(default_factory=list, max_length=24)
     included_refills_enabled: bool = False
@@ -34,6 +34,22 @@ class RefillRules(BaseModel):
 
 class SaveRefillRules(RefillRules):
     expected_revision: int = Field(ge=0, strict=True)
+
+
+def validate_included_policy(body, binding, setup=None):
+    if not body.included_refills_enabled:
+        return
+    if not body.intake_template_id or not body.initial_intake_required:
+        raise HTTPException(422, 'Included refills require an assigned initial intake')
+    if not body.check_in_required:
+        if not binding or binding.get('check_in_required') is not False or body.check_in_days:
+            raise HTTPException(422, 'Omitting refill check-ins requires a confirmed product rule and no check-in days')
+    elif not body.check_in_days:
+        raise HTTPException(422, 'Set the required check-in days for included refills')
+    if setup is not None:
+        days = (setup.get('shipment_days') or [])[1:]
+        if not days or (body.check_in_required and body.check_in_days != days):
+            raise HTTPException(422, 'Included refill rules must match this product’s included shipment days')
 
 
 def site_rule_key(site_id, sku):
@@ -85,9 +101,7 @@ def install_refill_admin(app, admin):
             raise HTTPException(422, 'Choose the mock intake assigned to this product')
         if body.check_in_days and not body.intake_template_id:
             raise HTTPException(422, 'Choose a product intake before scheduling check-ins')
-        if body.included_refills_enabled and (not body.intake_template_id or not body.initial_intake_required
-                or not body.check_in_required or not body.check_in_days):
-            raise HTTPException(422, 'Included refill claims need an initial intake and scheduled check-ins')
+        validate_included_policy(body, binding, (admin.get('master', sku) or {}).get('product_setup'))
         # A policy edit must not invalidate a verified payment mapping, overwrite
         # brand pricing, or silently edit a previously submitted refill request.
         import json

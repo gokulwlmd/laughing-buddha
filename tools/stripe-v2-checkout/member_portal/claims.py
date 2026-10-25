@@ -91,7 +91,7 @@ class ClaimsManager:
             return result | {'status': 'claimed', 'order_id': child['order_id'],
                 'claim_id': saved['id'], 'created_at': stamp(saved['created']),
                 'simulated': bool(saved['simulated']),
-                'reason': 'Your included refill order is placed. Complete its check-in.'}
+                'reason': 'Your included refill order is placed.' + (' Complete its check-in.' if task['required'] else ' No refill check-in is required.')}
         if saved:
             return result | {'status': 'uncertain', 'claim_id': saved['id'],
                 'reason': 'We need to confirm the existing refill order. Please contact support.'}
@@ -120,8 +120,18 @@ class ClaimsManager:
         with self.s.db() as db:
             initial = db.execute("SELECT status,simulated FROM member_care_intakes WHERE plan_id=? AND task_id='initial'", (plan['id'],)).fetchone()
             earlier = db.execute('SELECT task_id,status,simulated FROM member_claim_intakes WHERE plan_id=?', (plan['id'],)).fetchall()
+        first_form_kind = data.get('first_form_kind', 'initial')
+        if first_form_kind == 'none':
+            # No new questionnaire on this renewal; the original required intake
+            # still has to exist. A renewal payment is not an intake submission.
+            with self.s.db() as db:
+                initial = db.execute('''SELECT i.status,i.simulated FROM member_care_intakes i
+                    JOIN member_care_plans p ON p.id=i.plan_id
+                    WHERE p.site_id=? AND p.patient_id=? AND p.root_order_id=?
+                    AND p.term_order_id=? AND p.product_id=? AND i.task_id='initial' ''',
+                    (plan['site_id'], plan['patient_id'], plan['root_order_id'], plan['root_order_id'], plan['product_id'])).fetchone()
         if not initial or initial['status'] != 'submitted':
-            return result | {'status': 'locked', 'reason': 'Complete your initial health intake first.'}
+            return result | {'status': 'locked', 'reason': 'Complete your refill check-in first.' if first_form_kind == 'checkin' else 'Complete your initial health intake first.'}
         prior_days = [day for day in data['rule'].get('check_in_days', []) if day < task['day_offset']]
         complete = {r['task_id'] for r in earlier if r['status'] == 'submitted'}
         if data['rule'].get('check_in_required', True) and any('checkin-' + str(day) not in complete for day in prior_days):
