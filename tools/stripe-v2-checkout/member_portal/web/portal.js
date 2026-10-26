@@ -120,6 +120,9 @@
   function treatmentKey(item){const sku=String(item.sku||'').toUpperCase();return sku&&/-\d+M(?:-SUB)?$/.test(sku)?'sku:'+sku.replace(/-\d+M(?:-SUB)?$/,''):'name:'+productTitle(item).toLowerCase();}
   function refillSubscription(order){const term=String(order.care_plan?.term_order_id||order.id);return subscriptionRows(state.orders).find(row=>String(row.order.care_plan?.term_order_id||row.order.id)===term)||null;}
   const renewalPreviews=new Map();
+  const storeLoads=new Map();
+  let storeExpanded=false,storeLimit=12;
+
   const renewalKey=(order,sub)=>`${state.siteId}:${order.id}:${sub.id}`;
   const renewalPath=(order,sub)=>`/orders/${encodeURIComponent(order.id)}/subscriptions/${encodeURIComponent(sub.id)}/renewal`;
   async function loadRenewal(order,sub,open=false){
@@ -165,12 +168,41 @@
     return{title:state.orders.length?'You’re up to date.':'Your care starts here.',description:state.orders.length?'Your orders and next refill dates are below. We’ll show your next step when it’s available.':'Your orders, care forms and refill dates will appear here after your purchase.',label:'View orders & plans',action:'navigate'};
   }
   function nativeRefills(){const found=new Map();for(const order of filteredOrders())for(const task of order.care_plan?.tasks||[]){if(task.claim?.order_id)found.set(String(task.claim.order_id),{order,task});}return [...found.values()];}
+  function storeLoad(scope='') { return storeLoads.get(scope); }
+  function renderCatalogUpdate(){
+    // Background pricing must not replace a form or dialog the patient is editing.
+    if(!state.loading&&!state.modal&&['dashboard','orders','refills'].includes(state.view))render();
+  }
+  async function loadStore(scope='',force=false){
+    const existing=storeLoad(scope);
+    if(existing?.loading||!force&&existing?.loadedAt&&Date.now()-existing.loadedAt<60000)return;
+    const siteId=state.siteId,token=state.token,entry={loading:true};
+    storeLoads.set(scope,entry);renderCatalogUpdate();
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),scope?20000:60000);
+    try{
+      const result=await request(endpoint('/store',siteId)+(scope?'?therapy_id='+encodeURIComponent(scope):''),{signal:controller.signal},{token});
+      if(siteId!==state.siteId||token!==state.token||storeLoad(scope)!==entry)return;
+      const plans=result.plans||[],retained=scope?state.storePlans.filter(plan=>plan.therapy_id!==scope):[];
+      state.storePlans=[...retained,...plans];
+      storeLoads.set(scope,{loadedAt:Date.now(),error:(result.unavailable_therapies||[]).length?'Some plans are temporarily unavailable. Please try again.':''});
+    }catch(error){
+      if(siteId!==state.siteId||token!==state.token||storeLoad(scope)!==entry)return;
+      storeLoads.set(scope,{error:error.name==='AbortError'?'Prices are taking longer than expected. Your orders are ready; you can retry prices below.':error.message});
+    }finally{clearTimeout(timer);if(siteId===state.siteId&&token===state.token&&storeLoad(scope)!==entry)renderCatalogUpdate();}
+  }
+  function loadRefillPlans(){
+    for(const therapy of new Set(filteredOrders().map(order=>order.therapy_id).filter(Boolean)))void loadStore(therapy);
+  }
   function storeSection(){
     if(state.orders.some(order=>order.care_plan?.tasks?.some(task=>task.claim?.available)))return '';
+    const load=storeLoad('');
+    if(!storeExpanded)return `<section class="store-section"><h2>Explore treatment plans</h2><p class="small-note">Browse available treatments when you’re ready.</p>${button('Browse treatment plans','browse-plans','btn-secondary')}</section>`;
+    if(load?.loading)return '<section class="store-section" role="status"><h2>Explore treatment plans</h2><p>Loading available plans… You can continue using your portal.</p></section>';
+    if(load?.error&&!state.storePlans.length)return `<section class="store-section"><h2>Explore treatment plans</h2><p>${esc(load.error)}</p>${button('Retry available plans','browse-plans','btn-secondary')}</section>`;
     const plans=state.storePlans.filter(plan=>(!state.therapy||plan.therapy_id===state.therapy)&&safeCheckoutUrl(plan.checkout_url)),groups=new Map();
     plans.forEach(plan=>{const key=plan.therapy_id+':'+plan.product_name;groups.set(key,[...(groups.get(key)||[]),plan]);});
-    if(!plans.length)return '';
-    return `<section class="store-section" aria-labelledby="store-title"><div class="card-heading"><div><h2 id="store-title">Explore treatment plans</h2><p class="small-note">Choose a new plan from ${esc(state.site?.name||'your care provider')}. Prices are shown before you pay.</p></div></div><div class="store-grid">${[...groups].map(([key,choices],index)=>{const plan=choices.find(item=>item.plan_id===state.storeChoices[key])||choices[0];return `<article class="card store-plan"><div class="product-icon">${icon('bottle',24)}</div><p class="eyebrow">${esc(plan.therapy_name)}</p><h3>${esc(plan.product_name)}</h3><label class="small-note" for="store-choice-${index}">Choose your plan</label><select id="store-choice-${index}" data-store-group="${esc(key)}">${choices.map(choice=>`<option value="${esc(choice.plan_id)}" ${choice.plan_id===plan.plan_id?'selected':''}>${esc(choice.plan_name)} · ${money(choice)}</option>`).join('')}</select><strong class="store-price">${money(plan)}</strong><a class="btn btn-secondary btn-small" href="${esc(safeCheckoutUrl(plan.checkout_url))}">View plan ${icon('arrow',15)}</a></article>`;}).join('')}</div></section>`;
+    if(!plans.length)return '<section class="store-section"><h2>Explore treatment plans</h2><p>No purchase options are available right now.</p></section>';
+    return `<section class="store-section" aria-labelledby="store-title"><div class="card-heading"><div><h2 id="store-title">Explore treatment plans</h2><p class="small-note">Choose a new plan from ${esc(state.site?.name||'your care provider')}. Prices are shown before you pay.</p></div></div>${load?.error?`<p class="small-note">${esc(load.error)}</p>`:''}<div class="store-grid">${[...groups].slice(0,storeLimit).map(([key,choices],index)=>{const plan=choices.find(item=>item.plan_id===state.storeChoices[key])||choices[0];return `<article class="card store-plan"><div class="product-icon">${icon('bottle',24)}</div><p class="eyebrow">${esc(plan.therapy_name)}</p><h3>${esc(plan.product_name)}</h3><label class="small-note" for="store-choice-${index}">Choose your plan</label><select id="store-choice-${index}" data-store-group="${esc(key)}">${choices.map(choice=>`<option value="${esc(choice.plan_id)}" ${choice.plan_id===plan.plan_id?'selected':''}>${esc(choice.plan_name)} · ${money(choice)}</option>`).join('')}</select><strong class="store-price">${money(plan)}</strong><a class="btn btn-secondary btn-small" href="${esc(safeCheckoutUrl(plan.checkout_url))}">View plan ${icon('arrow',15)}</a></article>`;}).join('')}</div>${groups.size>storeLimit?button('Show more treatments','more-plans','btn-secondary'):''}</section>`;
   }
   function safeCheckoutUrl(value){try{const url=new URL(value,location.origin);return url.protocol==='https:'||(url.origin===location.origin&&url.protocol==='http:')?url.href:'';}catch{return '';}}
   // Home summarizes verified purchases; all existing order/care actions stay in their original views.
@@ -299,11 +331,27 @@
     const subscription=refillSubscription(order)?.subscription,ongoing=subscription&&subscription.prepaid_renews!==false&&['active','held','unknown'].includes(subscription.status);
     // Existing subscriptions renew through the native confirmed renewal API.
     if(ongoing)return '';
-    const plans=state.storePlans.filter(plan=>plan.therapy_id===order.therapy_id&&treatmentKey(plan)===treatmentKey(order)&&safeCheckoutUrl(plan.checkout_url)&&(!ongoing||plan.recurring===false));
-    if(!plans.length)return `<p class="small-note refill-purchase-unavailable">${ongoing?'Need your next supply early? No one-time purchase option is available here yet.':'No matching purchase options are available here yet.'} ${state.site?.support_email?`<a href="mailto:${esc(state.site.support_email)}">Contact support</a>`:'Contact your care team for help.'}</p>`;
-    const key=`refill:${order.id}`,selected=plans.find(plan=>plan.plan_id===state.storeChoices[key])||plans[0];
-    return `<details class="refill-plan-options" ${ongoing?'':'open'}><summary>${ongoing?'Get next supply early':'Buy your next supply'}</summary><p class="small-note">${ongoing?'Buy an additional one-time supply. Your existing subscription and next payment date stay unchanged.':'Choose your next paid plan. Review its payment terms at checkout.'}</p><label for="refill-option-${esc(order.id)}">Choose a plan</label><select id="refill-option-${esc(order.id)}" data-store-group="${esc(key)}">${plans.map(plan=>`<option value="${esc(plan.plan_id)}" ${plan.plan_id===selected.plan_id?'selected':''}>${esc(plan.plan_name)} · ${money(plan)}</option>`).join('')}</select><div class="refill-option-action"><div><span class="small-note">Plan price</span><strong>${money(selected)}</strong></div><a class="btn btn-primary" href="${esc(safeCheckoutUrl(selected.checkout_url))}">Review &amp; checkout ${icon('arrow',16)}</a></div><p class="small-note">Confirm your final total before paying. Treatment remains subject to medical approval.</p></details>`;
+    const load=storeLoad(order.therapy_id);
+    if(!load||load.loading)return '<p class="small-note" role="status">Loading your next-supply options… Your order and care forms are ready to use.</p>';
+    if(load.error)return `<p class="small-note">${esc(load.error)}</p>${button('Retry refill options','retry-refill-plans','btn-secondary',`data-therapy="${esc(order.therapy_id)}"`)}`;
+    const weightLossKeys=['sku:SEMA','sku:TIRZ'],orderKey=treatmentKey(order);
+    const plans=state.storePlans.filter(plan=>plan.therapy_id===order.therapy_id&&safeCheckoutUrl(plan.checkout_url)&&(treatmentKey(plan)===orderKey||(weightLossKeys.includes(orderKey)&&weightLossKeys.includes(treatmentKey(plan)))));
+    if(!plans.length)return `<p class="small-note refill-purchase-unavailable">No matching purchase options are available here yet. ${state.site?.support_email?`<a href="mailto:${esc(state.site.support_email)}">Contact support</a>`:'Contact your care team for help.'}</p>`;
+    const key=`refill:${order.id}`,selected=plans.find(plan=>plan.plan_id===state.storeChoices[key])||plans.find(plan=>treatmentKey(plan)===orderKey&&plan.recurring===false)||plans[0];
+    const term=plan=>String(plan.plan_name||'').match(/^(\d+)-month\b/)?.[1]||plan.plan_name;
+    const medication=plan=>({'sku:SEMA':'Semaglutide','sku:TIRZ':'Tirzepatide'}[treatmentKey(plan)]||productTitle(plan));
+    const medications=[...new Set(plans.map(treatmentKey))],sameMedication=plans.filter(plan=>treatmentKey(plan)===treatmentKey(selected));
+    const durations=[...new Set(sameMedication.map(term))].sort((a,b)=>Number(a)-Number(b));
+    const choose=(choices)=>choices.find(plan=>term(plan)===term(selected)&&plan.recurring===selected.recurring)||choices.find(plan=>plan.recurring===selected.recurring)||choices.find(plan=>plan.recurring===false)||choices[0];
+    const choiceButton=(plan,label,detail,active,id)=>`<button type="button" id="refill-choice-${esc(order.id)}-${esc(id)}" class="supply-choice ${active?'selected':''}" data-action="select-refill-plan" data-group="${esc(key)}" data-plan="${esc(plan.plan_id)}" aria-pressed="${active}"><span class="supply-choice-title">${esc(label)}</span>${detail?`<span class="supply-choice-detail">${esc(detail)}</span>`:''}<span class="supply-choice-check" aria-hidden="true">${active?icon('check',16):''}</span></button>`;
+    const modePlans=sameMedication.filter(plan=>term(plan)===term(selected));
+    return `<section class="refill-plan-options supply-picker" aria-label="Buy your next supply"><h3>Buy your next supply</h3><p class="small-note">Choose your medication and plan. You’ll confirm your order at checkout.</p>
+      <fieldset><legend><span>1</span> Choose medication</legend><div class="supply-medications">${medications.map((name,index)=>{const plan=choose(plans.filter(item=>treatmentKey(item)===name));return choiceButton(plan,medication(plan),name===orderKey?'Your current medication':'',name===treatmentKey(selected),'med-'+index);}).join('')}</div></fieldset>
+      <fieldset><legend><span>2</span> Choose your plan length</legend><div class="supply-durations">${durations.map((duration,index)=>{const plan=choose(sameMedication.filter(item=>term(item)===duration));return choiceButton(plan,/^\d+$/.test(duration)?`${duration} ${duration==='1'?'month':'months'}`:duration,money(plan)+' upfront',duration===term(selected),'term-'+index);}).join('')}</div></fieldset>
+      <fieldset><legend><span>3</span> Choose payment option</legend><div class="supply-payment">${[false,true,null].map((mode,index)=>{const plan=modePlans.find(item=>item.recurring===mode);return plan?choiceButton(plan,mode===false?'One-time purchase':mode===true?'Subscription':plan.plan_name,mode===false?'Pay once. No automatic renewal.':mode===true?'Renews automatically. Full plan price per renewal.':'Review payment terms at checkout.',selected.plan_id===plan.plan_id,'mode-'+index):'';}).join('')}</div></fieldset>
+      <div class="supply-summary"><div><span class="small-note">${esc(medication(selected))} · ${esc(term(selected))}${/^\d+$/.test(term(selected))?' month'+(term(selected)==='1'?'':'s'):''} · ${selected.recurring===true?'Subscription':selected.recurring===false?'One-time purchase':'Plan'}</span><strong>${money(selected)} <small>upfront</small></strong></div><a class="btn btn-primary" href="${esc(safeCheckoutUrl(selected.checkout_url))}">Continue to checkout ${icon('arrow',16)}</a></div><p class="small-note supply-footnote">Final total and ${selected.recurring?'renewal terms':'payment details'} are confirmed at checkout. ${treatmentKey(selected)!==orderKey?'A medication change requires medical review.':'Treatment remains subject to medical approval.'}</p></section>`;
   }
+
   function renderRefills(){
     const orders=careOrders(filteredOrders());
     return pageHead('Your ongoing care','Manage your refills','Each treatment has its own refill schedule. Choose the treatment you want to manage.',true)+`<div class="refill-plans">${orders.length?orders.map(refillPlanCard).join(''):`<section class="card">${empty('Your refills will appear here','After your first order, you can follow the refill schedule for each treatment.','clock')}</section>`}</div>`;
@@ -397,9 +445,9 @@
     try{
       if(adminMode&&state.view==='rules'){const result=await request(adminEndpoint('/refill-rules',siteId),{},context);if(current!==generation)return;state.siteRules=result.rules||[];state.ruleDraft=null;}
       else if(adminMode){const [overview,testing]=await Promise.all([request(adminEndpoint('/overview',siteId)+query(),{},context),request(`/api/admin/sites/${encodeURIComponent(siteId)}/checkout-testing`,{},context).catch(error=>({error:error.message}))]);if(current!==generation)return;state.overview=overview;state.orders=overview.orders||[];state.refills=overview.refills||[];state.checkoutTesting=testing.error?null:testing;state.testingError=testing.error||'';}
-      else{const[orders,refills,store,notifications]=await Promise.all([request(endpoint('/orders',siteId),{},context),request(endpoint('/refills',siteId),{},context),request(endpoint('/store',siteId),{},context).catch(error=>({error:error.message})),request(endpoint('/notifications',siteId),{},context).catch(error=>({error:error.message}))]);if(current!==generation)return;state.orders=orders.orders||[];state.refills=refills.requests||[];state.storePlans=store.plans||[];state.storeError=store.error||'';if(notifications.error)state.notificationsError=notifications.error;else applyNotifications(notifications);}
+      else{const[orders,refills,notifications]=await Promise.all([request(endpoint('/orders',siteId),{},context),request(endpoint('/refills',siteId),{},context),request(endpoint('/notifications',siteId),{},context).catch(error=>({error:error.message}))]);if(current!==generation)return;state.orders=orders.orders||[];state.refills=refills.requests||[];if(notifications.error)state.notificationsError=notifications.error;else applyNotifications(notifications);}
     }catch(error){if(current!==generation)return;state.error=error.message;}
-    if(current===generation){state.loading=false;render();if(!adminMode&&state.view==='refills')void loadRefillPrices();}
+    if(current===generation){state.loading=false;render();if(!adminMode&&state.view==='refills'){void loadRefillPrices();loadRefillPlans();}}
   }
   async function loadOwnerSites(){
     const response=await request('/api/admin/portal/sites');state.sites=response.sites||[];
@@ -430,6 +478,7 @@
   async function logout(){
     if(!await flushIntake())return;
     try{await request(adminMode?'/api/admin/logout':endpoint('/auth/logout'),{method:'POST',body:'{}'});}catch(error){state.error=error.message;render();return;}
+    storeLoads.clear();storeExpanded=false;storeLimit=12;state.storePlans=[];state.storeChoices={};renewalPreviews.clear();
     generation++;sessionStorage.removeItem(storageKey(state.siteId));state.token=null;state.authenticated=false;state.patient=null;state.orders=[];state.refills=[];state.overview=null;state.intake=null;state.messages=[];state.notifications=[];state.unreadCount=0;state.messageDraft='';state.messageDraftSaved='';state.messageDraftRevision=0;state.messageDraftLoaded=false;state.draftError='';state.draftConflict=false;state.draftSaving=false;state.readingNotification=null;state.notificationsError='';state.inviteResult=null;state.error='';state.feedback='';render();
   }
   async function navigate(view){
@@ -441,7 +490,7 @@
     else if(view==='messages'&&!adminMode){state.loading=true;render();const dirty=state.messageDraft!==state.messageDraftSaved;try{const[result,draft]=await Promise.all([request(endpoint('/messages',siteId),{},context),dirty?Promise.resolve(null):request(endpoint('/messages/draft',siteId),{},context).catch(error=>({error:error.message}))]);if(current!==generation)return;state.messages=result.messages||[];state.messagingProviderConnected=result.provider_connected===true;if(draft?.error)state.draftError=draft.error;else if(draft){state.messageDraft=draft.body||'';state.messageDraftSaved=state.messageDraft;state.messageDraftRevision=draft.revision;state.messageDraftLoaded=true;state.draftError='';}}catch(error){if(current!==generation)return;state.error=error.message;}state.loading=false;render();}
     else if(view==='notifications'&&!adminMode){state.loading=true;render();try{const result=await request(endpoint('/notifications',siteId),{},context);if(current!==generation)return;applyNotifications(result);}catch(error){if(current!==generation)return;state.notificationsError=error.message;}state.loading=false;render();}
     else if(view==='intake'&&!adminMode){state.intake=null;state.taskId=null;render();}
-    else if(adminMode)await refreshData();else{render();if(view==='refills')void loadRefillPrices();}
+    else if(adminMode)await refreshData();else{render();if(view==='refills'){void loadRefillPrices();loadRefillPlans();}}
     focusSection();
   }
   async function openIntake(orderId,taskId=null){
@@ -549,6 +598,10 @@
       catch(error){state.error='Your saved order is still here. '+error.message;}
       finally{state.busy=false;render();}return;
     }
+    if(action==='browse-plans'){storeExpanded=true;void loadStore('',true);render();}
+    if(action==='more-plans'){storeLimit+=12;render();}
+    if(action==='retry-refill-plans')void loadStore(target.dataset.therapy,true);
+    if(action==='select-refill-plan'){const plan=state.storePlans.find(item=>item.plan_id===target.dataset.plan);if(!plan)return;const focusId=target.id;state.storeChoices[target.dataset.group]=plan.plan_id;render();document.getElementById(focusId)?.focus({preventScroll:true});}
     if(action==='refresh'){state.error='';await refreshData();}
     if(action==='sync-orders')await syncOrders();
     if(action==='create-invite')await createInvite(target.dataset.order);
