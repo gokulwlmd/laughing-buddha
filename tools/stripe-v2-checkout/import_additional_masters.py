@@ -35,8 +35,8 @@ def load_catalog():
     return data
 
 
-def prepare(existing):
-    catalog = load_catalog()
+def prepare(existing, catalog=None):
+    catalog = load_catalog() if catalog is None else catalog
     view, pending = CatalogView(copy.deepcopy(existing)), {}
 
     def add(kind, key, value):
@@ -84,11 +84,17 @@ def prepare(existing):
                 validate_included_policy(body, source_binding(sku), value['product_setup'])
                 add('refill_policy', sku, policy)
         plans = []
-        for p in products:
-            m = p['duration_months']
+        for m in sorted({p['duration_months'] for p in products}):
+            selected = [p for p in products if p['duration_months'] == m]
+            skus = [sku for p in selected for sku in (p['sku'], p['sku'] + '-SUB')]
+            if family.get('include_existing_therapy_products'):
+                skus = sorted(master['sku'] for master in view.records('master')
+                    if master.get('therapy_id') == tid and master.get('product_duration_months') == m
+                    and master.get('enabled') and master.get('planning_contract'))
             plan = dict(id=f'{fid}-{m}m', name=f'{name} · {m}-month plan', therapy_id=tid,
-                duration_months=m, enabled=True, skus=[p['sku'], p['sku'] + '-SUB'],
-                payment_types=['once', 'subscription'] + (['prepaid'] if p['shipments_per_term'] > 1 else []))
+                duration_months=m, enabled=True, skus=skus,
+                payment_types=['once', 'subscription'] + (['prepaid'] if any(
+                    view.get('master', sku)['planning_contract']['shipments_per_term'] > 1 for sku in skus) else []))
             add('purchase_option', plan['id'], view.prepare_plan('purchase_option', plan)[0])
             plans.append(plan)
         draft = dict(id='master-therapy-' + fid, name='Master Therapy · ' + name,
@@ -108,15 +114,15 @@ def prepare(existing):
     return pending
 
 
-def install(path, apply=False):
+def install(path, apply=False, *, catalog=None, run_id=RUN_ID):
     path = Path(path).resolve(strict=True)
     db = sqlite3.connect(path.as_uri() + '?mode=rw', uri=True, timeout=10)
     try:
         db.execute('BEGIN IMMEDIATE' if apply else 'BEGIN')
         existing = {(k, i): json.loads(v) for k, i, v in db.execute('SELECT kind,id,data FROM admin_config')}
-        catalog = load_catalog()
+        catalog = load_catalog() if catalog is None else catalog
         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='admin_setup_runs'").fetchone():
-            row = db.execute('SELECT details FROM admin_setup_runs WHERE id=?', (RUN_ID,)).fetchone()
+            row = db.execute('SELECT details FROM admin_setup_runs WHERE id=?', (run_id,)).fetchone()
             if row:
                 marker = json.loads(row[0])
                 if marker['catalog_hash'] != fingerprint(catalog):
@@ -125,8 +131,8 @@ def install(path, apply=False):
                 if any(k not in existing for k in keys):
                     raise ValueError('Incomplete import requires reconciliation')
                 validate_purchase_pairs([existing[k] for k in keys if k[0] == 'master'], [p['sku'] for p in catalog['products']])
-                return dict(already_imported=True, created_records=0, master_skus=30)
-        pending = prepare(existing)
+                return dict(already_imported=True, created_records=0, master_skus=len(catalog['products']) * 2)
+        pending = prepare(existing, catalog)
         new = [k for k in pending if k not in existing]
         updated = [k for k in pending if k in existing]
         if apply:
@@ -139,12 +145,13 @@ def install(path, apply=False):
                 else:
                     db.execute('INSERT INTO admin_config(kind,id,data) VALUES(?,?,?)', (kind, key, json.dumps(value)))
             marker = dict(catalog_hash=fingerprint(catalog), created_records=new, updated_records=updated,
-                authorization='Owner approved exact source SKUs plus -SUB for PT141 nasal, NAD RDT, SERM RDT500mcg and Sertraline25mg',
+                authorization='Owner approved exact source SKUs plus -SUB for: ' + ', '.join(f['name'] for f in catalog['families']),
                 provider_writes=0, payment_writes=0)
-            db.execute('INSERT INTO admin_setup_runs VALUES(?,?,?)', (RUN_ID, time.time(), json.dumps(marker)))
+            db.execute('INSERT INTO admin_setup_runs VALUES(?,?,?)', (run_id, time.time(), json.dumps(marker)))
             db.commit()
-        return dict(applied=apply, master_skus=30, product_combinations=15, plans=15, template_drafts=4,
-            refill_policies=30, planned_new_records=len(new), updated_therapies=len(updated), provider_writes=0, payment_writes=0)
+        return dict(applied=apply, master_skus=len(catalog['products']) * 2, product_combinations=len(catalog['products']),
+            plans=sum(k == 'purchase_option' for k, _ in pending), template_drafts=len(catalog['families']),
+            refill_policies=len(catalog['products']) * 2, planned_new_records=len(new), updated_therapies=len(updated), provider_writes=0, payment_writes=0)
     finally:
         db.rollback()
         db.close()

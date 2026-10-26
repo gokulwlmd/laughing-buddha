@@ -36,6 +36,7 @@
 !catalog_refill_policies.py
 !wellness_master_catalog.json
 !additional_master_catalog.json
+!next_master_catalog.json
 !dollar_testing.py
 !member_portal/
 !member_portal/*.py

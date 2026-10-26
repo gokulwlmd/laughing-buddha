@@ -14,8 +14,13 @@ def additional_source_products():
     return json.loads(Path(__file__).with_name('additional_master_catalog.json').read_text())['products']
 
 
+@lru_cache(maxsize=1)
+def next_source_products():
+    return json.loads(Path(__file__).with_name('next_master_catalog.json').read_text())['products']
+
+
 def source_binding(sku):
-    for p in source_products() + additional_source_products():
+    for p in source_products() + additional_source_products() + next_source_products():
         if sku in (p['sku'], p['sku'] + '-SUB'):
             return {'template_id': p['therapy_id'], 'product_name': p['name'],
                     'duration_months': p['duration_months'], 'check_in_required': p['check_in_required']}

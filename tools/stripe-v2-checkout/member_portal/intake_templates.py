@@ -28,7 +28,7 @@ def get_template(template_id, *, sku, kind='initial'):
         raise ValueError('No mock intake is assigned to this product')
     name = binding['product_name']
     if kind == 'initial':
-        if template_id in ('hair-growth', 'nad-plus', 'glutathione', 'premature-ejaculation'):
+        if template_id in ('hair-growth', 'nad-plus', 'glutathione', 'premature-ejaculation', 'performance-anxiety', 'sleep', 'skin-care', 'womens-sexual-health'):
             from patient_demo.provider import COMMON
             result = {'sections': [
                 {'id': 'goals', 'title': 'Your treatment', 'description': 'Tell us what brought you here.'},
