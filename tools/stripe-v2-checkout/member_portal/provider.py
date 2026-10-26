@@ -290,7 +290,7 @@ class StickyOrderProvider:
         return {'id': actual_id, 'campaign_id': campaign, 'customer_id': customer_id,
             'contact_id': identifier(raw.get('contact_id'), 'contact ID', optional=True),
             'customer': {'name': ' '.join(filter(None, [text(raw.get('first_name'), 64), text(raw.get('last_name'), 64)])),
-                         'email': text(raw.get('email_address'), 254)},
+                         'email': text(raw.get('email_address'), 254), 'phone': text(raw.get('phone'), 40)},
             'products': result_products, 'payment_status': payment, 'fulfillment_status': shipping,
             'total': total, 'currency': self._currency(raw, gateway), 'created_at': text(raw.get('time_stamp'), 32) or None,
             'order_status': order_status if order_status.isdigit() else 'unknown', 'gateway_id': gateway,

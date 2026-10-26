@@ -36,9 +36,9 @@ class QuestionnaireTests(unittest.TestCase):
             template=get_template('weight-loss',sku='SEMA-12M-SUB')
             checkin=get_template('weight-loss',sku='SEMA-12M-SUB',kind='checkin')
         parsed=IntakeTemplate.model_validate(template).model_dump();qs={q['id']:q for q in parsed['questions']}
-        self.assertEqual(len(qs),67);self.assertEqual(parsed['version'],'coreage-reference-2026-10-26')
+        self.assertEqual(len(qs),67);self.assertEqual(parsed['version'],'coreage-steps-2026-10-26-v2')
         self.assertFalse(visible(qs['ca_545'],{'ca_538':'No'}));self.assertTrue(visible(qs['ca_545'],{'ca_538':'Yes'}))
-        self.assertFalse(visible(qs['ca_252'],{}));self.assertTrue(visible(qs['ca_252'],{'ca_250':['History of kidney failure']}))
+        self.assertFalse(visible(qs['ca_252'],{}));self.assertFalse(visible(qs['ca_252'],{'ca_250':['History of kidney failure']}))
         self.assertNotIn('ssn',json.dumps(parsed).lower());self.assertLess(len(checkin['questions']),20)
 
 class OfferTests(unittest.TestCase):

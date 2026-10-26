@@ -10,9 +10,10 @@ from fastapi import HTTPException
 from patient_demo.app import clean_answers, visible
 
 
-def annotate(template):
+def annotate(template, presentation=True):
     """Conservative mappings for our versioned mock provider, including old forms."""
-    template = deepcopy(template)
+    from .intake_presentation import upgrade
+    template = upgrade(template) if presentation else deepcopy(template)
     if template.get('version') in ('mock-care-1', 'demo-1'):
         for q in template['questions']:
             if q['id'] in ('height_inches', 'current_medications', 'allergies', 'health_history'):
@@ -89,7 +90,7 @@ class AnswerProfile:
         for record in sorted(records, key=lambda r: r['submitted'] or 0):
             if bool(json.loads(record['payload']).get('test_order')) != test:
                 continue
-            old = annotate(json.loads(record['template']))
+            old = annotate(json.loads(record['template']), presentation=False)
             values = json.loads(record['submitted_answers'] or '{}')
             for q in old['questions']:
                 if q.get('reuse_key') and q.get('reuse_policy') in ('stable', 'confirm') and q['id'] in values and visible(q, values):
@@ -143,16 +144,19 @@ class AnswerProfile:
         Never overwrite an answer already typed, or rewrite a submitted form.
         """
         assert table in ('member_intakes', 'member_care_intakes', 'member_claim_intakes')
-        record = dict(record)
+        from .intake_presentation import prepare_record
+        record = prepare_record(self.s, db, order, record, table)
         original = json.loads(record['template'])
         if record['status'] != 'draft' or original.get('_profile_seeded'):
             return record
         template, saved = self.seed(db, order, patient, original)
+        if template == original and not saved:
+            return record
         if not any(q.get('reuse_status') for q in template['questions']):
             return record
         answers = json.loads(record['answers'])
         for q in template['questions']:
-            if q['id'] in answers and q.get('reuse_policy') != 'verified':
+            if q['id'] in answers and q.get('reuse_policy') != 'verified' and not (q.get('prefill_source') == 'checkout' and answers[q['id']] == q.get('saved_value')):
                 saved.pop(q['id'], None)
                 for key in ('reuse_status', 'saved_value', 'saved_at'):
                     q.pop(key, None)

@@ -1079,7 +1079,8 @@ class MemberService:
             template['questions'] = [q for q in template['questions'] if q['id'] != 'demo_confirmation']
             template, answers = self.answer_profile.seed(db, order, patient, template)
             db.execute('INSERT INTO member_intakes VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', (identifier('intake'), order['site_id'], order['order_id'], patient['id'], 'draft', 0, encoded(answers), 0, encoded(template), self.clock(), None, None))
-            return dict(db.execute('SELECT * FROM member_intakes WHERE site_id=? AND order_id=? AND patient_id=?', (order['site_id'], order['order_id'], patient['id'])).fetchone())
+            row = db.execute('SELECT * FROM member_intakes WHERE site_id=? AND order_id=? AND patient_id=?', (order['site_id'], order['order_id'], patient['id'])).fetchone()
+            return self.answer_profile.hydrate(db, order, patient, row, 'member_intakes')
 
     def intake_public(self, row, order):
         return {'id': row['id'], 'order_id': row['order_id'], 'therapy_id': order['therapy_id'], 'status': row['status'], 'revision': row['revision'],

@@ -1,47 +1,470 @@
 {
   "id": "weight-loss-coreage-reference-v1",
-  "version": "coreage-reference-2026-10-26",
+  "version": "coreage-steps-2026-10-26-v2",
   "title": "Your weight-loss health intake",
   "source_url": "https://www.coreagerx.com/onboarding/",
   "provider_connected": false,
   "sections": [
     {
-      "id": "treatment",
-      "title": "Your treatment",
-      "description": "Your answers save as you go."
+      "id": "contact",
+      "title": "Confirm your details",
+      "description": "Review the details from your purchase. Edit anything that has changed."
     },
     {
       "id": "about",
       "title": "About you",
-      "description": "Your answers save as you go."
+      "description": "Your progress is saved automatically."
     },
     {
-      "id": "history",
-      "title": "Your health history",
-      "description": "Your answers save as you go."
+      "id": "measurements",
+      "title": "Your measurements",
+      "description": "Your progress is saved automatically."
+    },
+    {
+      "id": "treatment",
+      "title": "Current weight-loss treatment",
+      "description": "Your progress is saved automatically."
+    },
+    {
+      "id": "dose",
+      "title": "Your current medication",
+      "description": "Your progress is saved automatically."
+    },
+    {
+      "id": "experience",
+      "title": "Your treatment experience",
+      "description": "Your progress is saved automatically."
+    },
+    {
+      "id": "priorities",
+      "title": "What matters to you",
+      "description": "Your progress is saved automatically."
+    },
+    {
+      "id": "health",
+      "title": "Your health background",
+      "description": "Your progress is saved automatically."
+    },
+    {
+      "id": "allergies",
+      "title": "Allergies & recent care",
+      "description": "Your progress is saved automatically."
     },
     {
       "id": "goals",
-      "title": "Your goals",
-      "description": "Your answers save as you go."
+      "title": "Your weight-loss goals",
+      "description": "Your progress is saved automatically."
+    },
+    {
+      "id": "habits",
+      "title": "Your daily habits",
+      "description": "Your progress is saved automatically."
+    },
+    {
+      "id": "reasons",
+      "title": "Reasons for seeking care",
+      "description": "Your progress is saved automatically."
     },
     {
       "id": "conditions",
-      "title": "Health conditions",
-      "description": "Your answers save as you go."
+      "title": "Your medical history",
+      "description": "Your progress is saved automatically."
+    },
+    {
+      "id": "family",
+      "title": "Family history & kidney health",
+      "description": "Your progress is saved automatically."
+    },
+    {
+      "id": "comfort",
+      "title": "Comfort during treatment",
+      "description": "Your progress is saved automatically."
+    },
+    {
+      "id": "wellbeing",
+      "title": "Your wellbeing",
+      "description": "Your progress is saved automatically."
     },
     {
       "id": "preferences",
-      "title": "Treatment preferences",
-      "description": "Your answers save as you go."
+      "title": "Your treatment preferences",
+      "description": "Your progress is saved automatically."
     },
     {
       "id": "review",
       "title": "Review & finish",
-      "description": "Your answers save as you go."
+      "description": "Your progress is saved automatically."
     }
   ],
   "questions": [
+    {
+      "id": "ca_196",
+      "source_question_id": "196",
+      "section_id": "contact",
+      "label": "State where you live",
+      "type": "single_choice",
+      "required": true,
+      "options": [
+        {
+          "value": "Alabama (AL)",
+          "label": "Alabama (AL)"
+        },
+        {
+          "value": "Alaska (AK)",
+          "label": "Alaska (AK)"
+        },
+        {
+          "value": "Arizona (AZ)",
+          "label": "Arizona (AZ)"
+        },
+        {
+          "value": "Arkansas (AR)",
+          "label": "Arkansas (AR)"
+        },
+        {
+          "value": "California (CA)",
+          "label": "California (CA)"
+        },
+        {
+          "value": "Colorado (CO)",
+          "label": "Colorado (CO)"
+        },
+        {
+          "value": "Connecticut (CT)",
+          "label": "Connecticut (CT)"
+        },
+        {
+          "value": "Delaware (DE)",
+          "label": "Delaware (DE)"
+        },
+        {
+          "value": "District of Columbia (DC)",
+          "label": "District of Columbia (DC)"
+        },
+        {
+          "value": "Florida (FL)",
+          "label": "Florida (FL)"
+        },
+        {
+          "value": "Georgia (GA)",
+          "label": "Georgia (GA)"
+        },
+        {
+          "value": "Hawaii (HI)",
+          "label": "Hawaii (HI)"
+        },
+        {
+          "value": "Idaho (ID)",
+          "label": "Idaho (ID)"
+        },
+        {
+          "value": "Illinois (IL)",
+          "label": "Illinois (IL)"
+        },
+        {
+          "value": "Indiana (IN)",
+          "label": "Indiana (IN)"
+        },
+        {
+          "value": "Iowa (IA)",
+          "label": "Iowa (IA)"
+        },
+        {
+          "value": "Kansas (KS)",
+          "label": "Kansas (KS)"
+        },
+        {
+          "value": "Kentucky (KY)",
+          "label": "Kentucky (KY)"
+        },
+        {
+          "value": "Louisiana (LA)",
+          "label": "Louisiana (LA)"
+        },
+        {
+          "value": "Maine (ME)",
+          "label": "Maine (ME)"
+        },
+        {
+          "value": "Maryland (MD)",
+          "label": "Maryland (MD)"
+        },
+        {
+          "value": "Massachusetts (MA)",
+          "label": "Massachusetts (MA)"
+        },
+        {
+          "value": "Michigan (MI)",
+          "label": "Michigan (MI)"
+        },
+        {
+          "value": "Minnesota (MN)",
+          "label": "Minnesota (MN)"
+        },
+        {
+          "value": "Mississippi (MS)",
+          "label": "Mississippi (MS)"
+        },
+        {
+          "value": "Missouri (MO)",
+          "label": "Missouri (MO)"
+        },
+        {
+          "value": "Montana (MT)",
+          "label": "Montana (MT)"
+        },
+        {
+          "value": "Nebraska (NE)",
+          "label": "Nebraska (NE)"
+        },
+        {
+          "value": "Nevada (NV)",
+          "label": "Nevada (NV)"
+        },
+        {
+          "value": "New Hampshire (NH)",
+          "label": "New Hampshire (NH)"
+        },
+        {
+          "value": "New Jersey (NJ)",
+          "label": "New Jersey (NJ)"
+        },
+        {
+          "value": "New Mexico (NM)",
+          "label": "New Mexico (NM)"
+        },
+        {
+          "value": "New York (NY)",
+          "label": "New York (NY)"
+        },
+        {
+          "value": "North Carolina (NC)",
+          "label": "North Carolina (NC)"
+        },
+        {
+          "value": "North Dakota (ND)",
+          "label": "North Dakota (ND)"
+        },
+        {
+          "value": "Ohio (OH)",
+          "label": "Ohio (OH)"
+        },
+        {
+          "value": "Oklahoma (OK)",
+          "label": "Oklahoma (OK)"
+        },
+        {
+          "value": "Oregon (OR)",
+          "label": "Oregon (OR)"
+        },
+        {
+          "value": "Pennsylvania (PA)",
+          "label": "Pennsylvania (PA)"
+        },
+        {
+          "value": "Rhode Island (RI)",
+          "label": "Rhode Island (RI)"
+        },
+        {
+          "value": "South Carolina (SC)",
+          "label": "South Carolina (SC)"
+        },
+        {
+          "value": "South Dakota (SD)",
+          "label": "South Dakota (SD)"
+        },
+        {
+          "value": "Tennessee (TN)",
+          "label": "Tennessee (TN)"
+        },
+        {
+          "value": "Texas (TX)",
+          "label": "Texas (TX)"
+        },
+        {
+          "value": "Utah (UT)",
+          "label": "Utah (UT)"
+        },
+        {
+          "value": "Vermont (VT)",
+          "label": "Vermont (VT)"
+        },
+        {
+          "value": "Virginia (VA)",
+          "label": "Virginia (VA)"
+        },
+        {
+          "value": "Washington (WA)",
+          "label": "Washington (WA)"
+        },
+        {
+          "value": "West Virginia (WV)",
+          "label": "West Virginia (WV)"
+        },
+        {
+          "value": "Wisconsin (WI)",
+          "label": "Wisconsin (WI)"
+        },
+        {
+          "value": "Wyoming (WY)",
+          "label": "Wyoming (WY)"
+        }
+      ],
+      "reuse_key": "weight_loss.coreage.196",
+      "reuse_version": "1",
+      "reuse_policy": "never",
+      "hint": null,
+      "presentation": "select"
+    },
+    {
+      "id": "ca_199",
+      "source_question_id": "199",
+      "section_id": "contact",
+      "label": "Full name",
+      "type": "text",
+      "required": true,
+      "reuse_key": "weight_loss.coreage.199",
+      "reuse_version": "1",
+      "reuse_policy": "never",
+      "hint": null,
+      "input_type": "text"
+    },
+    {
+      "id": "ca_571",
+      "source_question_id": "571",
+      "section_id": "contact",
+      "label": "Physical address",
+      "type": "textarea",
+      "required": true,
+      "reuse_key": "weight_loss.coreage.571",
+      "reuse_version": "1",
+      "reuse_policy": "never",
+      "hint": null
+    },
+    {
+      "id": "ca_200",
+      "source_question_id": "200",
+      "section_id": "contact",
+      "label": "Email address",
+      "type": "text",
+      "required": true,
+      "reuse_key": "weight_loss.coreage.200",
+      "reuse_version": "1",
+      "reuse_policy": "never",
+      "hint": null,
+      "input_type": "email"
+    },
+    {
+      "id": "ca_202",
+      "source_question_id": "202",
+      "section_id": "contact",
+      "label": "Phone number",
+      "type": "text",
+      "required": true,
+      "reuse_key": "weight_loss.coreage.202",
+      "reuse_version": "1",
+      "reuse_policy": "never",
+      "hint": null,
+      "input_type": "tel"
+    },
+    {
+      "id": "ca_102",
+      "source_question_id": "102",
+      "section_id": "about",
+      "label": "Date of birth",
+      "type": "text",
+      "required": true,
+      "reuse_key": "weight_loss.coreage.102",
+      "reuse_version": "1",
+      "reuse_policy": "stable",
+      "hint": null,
+      "input_type": "date"
+    },
+    {
+      "id": "ca_535",
+      "source_question_id": "535",
+      "section_id": "about",
+      "label": "What is your gender?",
+      "type": "single_choice",
+      "required": true,
+      "options": [
+        {
+          "value": "Male",
+          "label": "Male"
+        },
+        {
+          "value": "Female",
+          "label": "Female"
+        }
+      ],
+      "reuse_key": "weight_loss.coreage.535",
+      "reuse_version": "1",
+      "reuse_policy": "confirm",
+      "hint": null
+    },
+    {
+      "id": "ca_491",
+      "source_question_id": "491",
+      "section_id": "measurements",
+      "label": "Height — feet",
+      "type": "number",
+      "required": true,
+      "reuse_key": "weight_loss.coreage.491",
+      "reuse_version": "1",
+      "reuse_policy": "stable",
+      "hint": null
+    },
+    {
+      "id": "ca_492",
+      "source_question_id": "492",
+      "section_id": "measurements",
+      "label": "Height — inches",
+      "type": "number",
+      "required": true,
+      "reuse_key": "weight_loss.coreage.492",
+      "reuse_version": "1",
+      "reuse_policy": "stable",
+      "hint": null
+    },
+    {
+      "id": "ca_493",
+      "source_question_id": "493",
+      "section_id": "measurements",
+      "label": "Current weight (lb)",
+      "type": "number",
+      "required": true,
+      "reuse_key": "weight_loss.coreage.493",
+      "reuse_version": "1",
+      "reuse_policy": "confirm",
+      "hint": null
+    },
+    {
+      "id": "ca_496",
+      "source_question_id": "496",
+      "section_id": "measurements",
+      "label": "Confirm your measurements",
+      "type": "multi_choice",
+      "required": true,
+      "options": [
+        {
+          "value": "Please confirm your height and weight are correct, as these are crucial to your doctor's prescription decision.",
+          "label": "Please confirm your height and weight are correct, as these are crucial to your doctor's prescription decision."
+        }
+      ],
+      "hint": null
+    },
+    {
+      "id": "ca_364",
+      "source_question_id": "364",
+      "section_id": "measurements",
+      "label": "We require that you provide a recent blood pressure measurement within the last six months.",
+      "type": "text",
+      "required": true,
+      "reuse_key": "weight_loss.coreage.364",
+      "reuse_version": "1",
+      "reuse_policy": "confirm",
+      "hint": null
+    },
     {
       "id": "ca_538",
       "source_question_id": "538",
@@ -77,6 +500,7 @@
           "label": "I am not currently taking prescription weight-loss medication."
         }
       ],
+      "hint": null,
       "show_when": {
         "any": [
           {
@@ -89,8 +513,7 @@
             ]
           }
         ]
-      },
-      "hint": null
+      }
     },
     {
       "id": "ca_545",
@@ -109,6 +532,10 @@
           "label": "Semaglutide (Compound, Ozempic, or Wegovy)"
         }
       ],
+      "reuse_key": "weight_loss.coreage.545",
+      "reuse_version": "1",
+      "reuse_policy": "confirm",
+      "hint": null,
       "show_when": {
         "any": [
           {
@@ -121,16 +548,12 @@
             ]
           }
         ]
-      },
-      "reuse_key": "weight_loss.coreage.545",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
+      }
     },
     {
       "id": "ca_540",
       "source_question_id": "540",
-      "section_id": "treatment",
+      "section_id": "dose",
       "label": "Current Semaglutide Dosage",
       "type": "single_choice",
       "required": true,
@@ -160,6 +583,10 @@
           "label": "2.5 mg"
         }
       ],
+      "reuse_key": "weight_loss.coreage.540",
+      "reuse_version": "1",
+      "reuse_policy": "confirm",
+      "hint": null,
       "show_when": {
         "any": [
           {
@@ -177,16 +604,12 @@
             ]
           }
         ]
-      },
-      "reuse_key": "weight_loss.coreage.540",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
+      }
     },
     {
       "id": "ca_541",
       "source_question_id": "541",
-      "section_id": "treatment",
+      "section_id": "dose",
       "label": "Current Tirzepatide Dosage",
       "type": "single_choice",
       "required": true,
@@ -216,6 +639,10 @@
           "label": "15 mg"
         }
       ],
+      "reuse_key": "weight_loss.coreage.541",
+      "reuse_version": "1",
+      "reuse_policy": "confirm",
+      "hint": null,
       "show_when": {
         "any": [
           {
@@ -233,16 +660,12 @@
             ]
           }
         ]
-      },
-      "reuse_key": "weight_loss.coreage.541",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
+      }
     },
     {
       "id": "ca_542",
       "source_question_id": "542",
-      "section_id": "treatment",
+      "section_id": "dose",
       "label": "Units per week",
       "type": "single_choice",
       "required": true,
@@ -648,20 +1071,21 @@
           "label": "100"
         }
       ],
+      "reuse_key": "weight_loss.coreage.542",
+      "reuse_version": "1",
+      "reuse_policy": "confirm",
+      "hint": null,
+      "presentation": "select",
       "show_when": {
         "question_id": "ca_538",
         "operator": "equals",
         "value": "Yes"
-      },
-      "reuse_key": "weight_loss.coreage.542",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
+      }
     },
     {
       "id": "ca_582",
       "source_question_id": "582",
-      "section_id": "treatment",
+      "section_id": "experience",
       "label": "Date of Last Shot",
       "type": "single_choice",
       "required": true,
@@ -679,20 +1103,20 @@
           "label": "More than a month ago"
         }
       ],
+      "reuse_key": "weight_loss.coreage.582",
+      "reuse_version": "1",
+      "reuse_policy": "confirm",
+      "hint": null,
       "show_when": {
         "question_id": "ca_538",
         "operator": "equals",
         "value": "Yes"
-      },
-      "reuse_key": "weight_loss.coreage.582",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
+      }
     },
     {
       "id": "ca_583",
       "source_question_id": "583",
-      "section_id": "treatment",
+      "section_id": "experience",
       "label": "How many months have you been taking this medication?",
       "type": "single_choice",
       "required": true,
@@ -750,20 +1174,21 @@
           "label": "More than 12 months"
         }
       ],
+      "reuse_key": "weight_loss.coreage.583",
+      "reuse_version": "1",
+      "reuse_policy": "confirm",
+      "hint": null,
+      "presentation": "select",
       "show_when": {
         "question_id": "ca_538",
         "operator": "equals",
         "value": "Yes"
-      },
-      "reuse_key": "weight_loss.coreage.583",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
+      }
     },
     {
       "id": "ca_544",
       "source_question_id": "544",
-      "section_id": "treatment",
+      "section_id": "experience",
       "label": "Would you like to stay at the same dose or be increased?",
       "type": "single_choice",
       "required": true,
@@ -777,20 +1202,20 @@
           "label": "Increase the dose"
         }
       ],
+      "reuse_key": "weight_loss.coreage.544",
+      "reuse_version": "1",
+      "reuse_policy": "confirm",
+      "hint": null,
       "show_when": {
         "question_id": "ca_538",
         "operator": "equals",
         "value": "Yes"
-      },
-      "reuse_key": "weight_loss.coreage.544",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
+      }
     },
     {
       "id": "ca_622",
       "source_question_id": "622",
-      "section_id": "treatment",
+      "section_id": "priorities",
       "label": "Please select all conditions, preferences, or concerns that matter most to you regarding your treatment with a GLP1",
       "type": "multi_choice",
       "required": true,
@@ -831,375 +1256,15 @@
       "reuse_key": "weight_loss.coreage.622",
       "reuse_version": "1",
       "reuse_policy": "confirm",
-      "hint": null
-    },
-    {
-      "id": "ca_196",
-      "source_question_id": "196",
-      "section_id": "about",
-      "label": "First, we need to make sure we are licensed in your state",
-      "type": "single_choice",
-      "required": true,
-      "options": [
-        {
-          "value": "Alabama (AL)",
-          "label": "Alabama (AL)"
-        },
-        {
-          "value": "Alaska (AK)",
-          "label": "Alaska (AK)"
-        },
-        {
-          "value": "Arizona (AZ)",
-          "label": "Arizona (AZ)"
-        },
-        {
-          "value": "Arkansas (AR)",
-          "label": "Arkansas (AR)"
-        },
-        {
-          "value": "California (CA)",
-          "label": "California (CA)"
-        },
-        {
-          "value": "Colorado (CO)",
-          "label": "Colorado (CO)"
-        },
-        {
-          "value": "Connecticut (CT)",
-          "label": "Connecticut (CT)"
-        },
-        {
-          "value": "Delaware (DE)",
-          "label": "Delaware (DE)"
-        },
-        {
-          "value": "District of Columbia (DC)",
-          "label": "District of Columbia (DC)"
-        },
-        {
-          "value": "Florida (FL)",
-          "label": "Florida (FL)"
-        },
-        {
-          "value": "Georgia (GA)",
-          "label": "Georgia (GA)"
-        },
-        {
-          "value": "Hawaii (HI)",
-          "label": "Hawaii (HI)"
-        },
-        {
-          "value": "Idaho (ID)",
-          "label": "Idaho (ID)"
-        },
-        {
-          "value": "Illinois (IL)",
-          "label": "Illinois (IL)"
-        },
-        {
-          "value": "Indiana (IN)",
-          "label": "Indiana (IN)"
-        },
-        {
-          "value": "Iowa (IA)",
-          "label": "Iowa (IA)"
-        },
-        {
-          "value": "Kansas (KS)",
-          "label": "Kansas (KS)"
-        },
-        {
-          "value": "Kentucky (KY)",
-          "label": "Kentucky (KY)"
-        },
-        {
-          "value": "Louisiana (LA)",
-          "label": "Louisiana (LA)"
-        },
-        {
-          "value": "Maine (ME)",
-          "label": "Maine (ME)"
-        },
-        {
-          "value": "Maryland (MD)",
-          "label": "Maryland (MD)"
-        },
-        {
-          "value": "Massachusetts (MA)",
-          "label": "Massachusetts (MA)"
-        },
-        {
-          "value": "Michigan (MI)",
-          "label": "Michigan (MI)"
-        },
-        {
-          "value": "Minnesota (MN)",
-          "label": "Minnesota (MN)"
-        },
-        {
-          "value": "Mississippi (MS)",
-          "label": "Mississippi (MS)"
-        },
-        {
-          "value": "Missouri (MO)",
-          "label": "Missouri (MO)"
-        },
-        {
-          "value": "Montana (MT)",
-          "label": "Montana (MT)"
-        },
-        {
-          "value": "Nebraska (NE)",
-          "label": "Nebraska (NE)"
-        },
-        {
-          "value": "Nevada (NV)",
-          "label": "Nevada (NV)"
-        },
-        {
-          "value": "New Hampshire (NH)",
-          "label": "New Hampshire (NH)"
-        },
-        {
-          "value": "New Jersey (NJ)",
-          "label": "New Jersey (NJ)"
-        },
-        {
-          "value": "New Mexico (NM)",
-          "label": "New Mexico (NM)"
-        },
-        {
-          "value": "New York (NY)",
-          "label": "New York (NY)"
-        },
-        {
-          "value": "North Carolina (NC)",
-          "label": "North Carolina (NC)"
-        },
-        {
-          "value": "North Dakota (ND)",
-          "label": "North Dakota (ND)"
-        },
-        {
-          "value": "Ohio (OH)",
-          "label": "Ohio (OH)"
-        },
-        {
-          "value": "Oklahoma (OK)",
-          "label": "Oklahoma (OK)"
-        },
-        {
-          "value": "Oregon (OR)",
-          "label": "Oregon (OR)"
-        },
-        {
-          "value": "Pennsylvania (PA)",
-          "label": "Pennsylvania (PA)"
-        },
-        {
-          "value": "Rhode Island (RI)",
-          "label": "Rhode Island (RI)"
-        },
-        {
-          "value": "South Carolina (SC)",
-          "label": "South Carolina (SC)"
-        },
-        {
-          "value": "South Dakota (SD)",
-          "label": "South Dakota (SD)"
-        },
-        {
-          "value": "Tennessee (TN)",
-          "label": "Tennessee (TN)"
-        },
-        {
-          "value": "Texas (TX)",
-          "label": "Texas (TX)"
-        },
-        {
-          "value": "Utah (UT)",
-          "label": "Utah (UT)"
-        },
-        {
-          "value": "Vermont (VT)",
-          "label": "Vermont (VT)"
-        },
-        {
-          "value": "Virginia (VA)",
-          "label": "Virginia (VA)"
-        },
-        {
-          "value": "Washington (WA)",
-          "label": "Washington (WA)"
-        },
-        {
-          "value": "West Virginia (WV)",
-          "label": "West Virginia (WV)"
-        },
-        {
-          "value": "Wisconsin (WI)",
-          "label": "Wisconsin (WI)"
-        },
-        {
-          "value": "Wyoming (WY)",
-          "label": "Wyoming (WY)"
-        }
-      ],
-      "reuse_key": "weight_loss.coreage.196",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
-    },
-    {
-      "id": "ca_199",
-      "source_question_id": "199",
-      "section_id": "about",
-      "label": "What is your full name?",
-      "type": "text",
-      "required": true,
-      "reuse_key": "weight_loss.coreage.199",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
-    },
-    {
-      "id": "ca_571",
-      "source_question_id": "571",
-      "section_id": "about",
-      "label": "What is your physical address?",
-      "type": "textarea",
-      "required": true,
-      "reuse_key": "weight_loss.coreage.571",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
-    },
-    {
-      "id": "ca_200",
-      "source_question_id": "200",
-      "section_id": "about",
-      "label": "What is your email address?",
-      "type": "text",
-      "required": true,
-      "reuse_key": "weight_loss.coreage.200",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
-    },
-    {
-      "id": "ca_202",
-      "source_question_id": "202",
-      "section_id": "about",
-      "label": "Please enter the best phone number to reach you on just in case the doctor has any questions regarding your medical information.",
-      "type": "text",
-      "required": true,
-      "reuse_key": "weight_loss.coreage.202",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
-    },
-    {
-      "id": "ca_102",
-      "source_question_id": "102",
-      "section_id": "about",
-      "label": "What is your date of birth? (YYYY-MM-DD)",
-      "type": "text",
-      "required": true,
-      "reuse_key": "weight_loss.coreage.102",
-      "reuse_version": "1",
-      "reuse_policy": "stable",
-      "hint": null
-    },
-    {
-      "id": "ca_535",
-      "source_question_id": "535",
-      "section_id": "about",
-      "label": "What is your gender?",
-      "type": "single_choice",
-      "required": true,
-      "options": [
-        {
-          "value": "Male",
-          "label": "Male"
-        },
-        {
-          "value": "Female",
-          "label": "Female"
-        }
-      ],
-      "reuse_key": "weight_loss.coreage.535",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
-    },
-    {
-      "id": "ca_491",
-      "source_question_id": "491",
-      "section_id": "about",
-      "label": "Feet",
-      "type": "number",
-      "required": true,
-      "reuse_key": "weight_loss.coreage.491",
-      "reuse_version": "1",
-      "reuse_policy": "stable",
-      "hint": null
-    },
-    {
-      "id": "ca_492",
-      "source_question_id": "492",
-      "section_id": "about",
-      "label": "Inches",
-      "type": "number",
-      "required": true,
-      "reuse_key": "weight_loss.coreage.492",
-      "reuse_version": "1",
-      "reuse_policy": "stable",
-      "hint": null
-    },
-    {
-      "id": "ca_493",
-      "source_question_id": "493",
-      "section_id": "about",
-      "label": "Weight",
-      "type": "number",
-      "required": true,
-      "reuse_key": "weight_loss.coreage.493",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
-    },
-    {
-      "id": "ca_496",
-      "source_question_id": "496",
-      "section_id": "about",
-      "label": "Confirm your measurements",
-      "type": "multi_choice",
-      "required": true,
-      "options": [
-        {
-          "value": "Please confirm your height and weight are correct, as these are crucial to your doctor's prescription decision.",
-          "label": "Please confirm your height and weight are correct, as these are crucial to your doctor's prescription decision."
-        }
-      ],
-      "hint": null
-    },
-    {
-      "id": "ca_364",
-      "source_question_id": "364",
-      "section_id": "about",
-      "label": "We require that you provide a recent blood pressure measurement within the last six months.",
-      "type": "text",
-      "required": true,
-      "reuse_key": "weight_loss.coreage.364",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
+      "hint": null,
+      "exclusive_options": [
+        "None of these apply to me"
+      ]
     },
     {
       "id": "ca_459",
       "source_question_id": "459",
-      "section_id": "history",
+      "section_id": "health",
       "label": "Any medical conditions your doctor should know about?",
       "type": "single_choice",
       "required": true,
@@ -1221,10 +1286,14 @@
     {
       "id": "ca_467",
       "source_question_id": "467",
-      "section_id": "history",
+      "section_id": "health",
       "label": "Medical Conditions",
       "type": "textarea",
       "required": true,
+      "reuse_key": "weight_loss.coreage.467",
+      "reuse_version": "1",
+      "reuse_policy": "confirm",
+      "hint": null,
       "show_when": {
         "any": [
           {
@@ -1237,16 +1306,12 @@
             ]
           }
         ]
-      },
-      "reuse_key": "weight_loss.coreage.467",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
+      }
     },
     {
       "id": "ca_464",
       "source_question_id": "464",
-      "section_id": "history",
+      "section_id": "health",
       "label": "Are you taking any medications?",
       "type": "single_choice",
       "required": true,
@@ -1268,10 +1333,14 @@
     {
       "id": "ca_468",
       "source_question_id": "468",
-      "section_id": "history",
+      "section_id": "health",
       "label": "Current Medications",
       "type": "textarea",
       "required": true,
+      "reuse_key": "weight_loss.coreage.468",
+      "reuse_version": "1",
+      "reuse_policy": "confirm",
+      "hint": null,
       "show_when": {
         "any": [
           {
@@ -1284,16 +1353,12 @@
             ]
           }
         ]
-      },
-      "reuse_key": "weight_loss.coreage.468",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
+      }
     },
     {
       "id": "ca_395",
       "source_question_id": "395",
-      "section_id": "history",
+      "section_id": "allergies",
       "label": "Do you have any allergies or intolerances?",
       "type": "single_choice",
       "required": true,
@@ -1315,10 +1380,14 @@
     {
       "id": "ca_274",
       "source_question_id": "274",
-      "section_id": "history",
+      "section_id": "allergies",
       "label": "Allergies",
       "type": "textarea",
       "required": true,
+      "reuse_key": "weight_loss.coreage.274",
+      "reuse_version": "1",
+      "reuse_policy": "confirm",
+      "hint": null,
       "show_when": {
         "any": [
           {
@@ -1331,16 +1400,12 @@
             ]
           }
         ]
-      },
-      "reuse_key": "weight_loss.coreage.274",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
+      }
     },
     {
       "id": "ca_229",
       "source_question_id": "229",
-      "section_id": "history",
+      "section_id": "allergies",
       "label": "When was the last time you had an in person medical evaluation?",
       "type": "single_choice",
       "required": true,
@@ -1366,7 +1431,7 @@
     {
       "id": "ca_231",
       "source_question_id": "231",
-      "section_id": "history",
+      "section_id": "allergies",
       "label": "Have you had any lab tests completed within the last 6 months that you would like to share with your doctor?",
       "type": "single_choice",
       "required": true,
@@ -1430,9 +1495,21 @@
       "hint": null
     },
     {
+      "id": "ca_225",
+      "source_question_id": "225",
+      "section_id": "goals",
+      "label": "What is your goal weight?",
+      "type": "number",
+      "required": true,
+      "reuse_key": "weight_loss.coreage.225",
+      "reuse_version": "1",
+      "reuse_policy": "confirm",
+      "hint": null
+    },
+    {
       "id": "ca_217",
       "source_question_id": "217",
-      "section_id": "goals",
+      "section_id": "habits",
       "label": "Are you willing to reduce your caloric intake alongside medication?",
       "type": "single_choice",
       "required": true,
@@ -1454,10 +1531,14 @@
     {
       "id": "ca_396",
       "source_question_id": "396",
-      "section_id": "goals",
+      "section_id": "habits",
       "label": "Please provide details about why caloric restriction is not appropriate for you",
       "type": "textarea",
       "required": true,
+      "reuse_key": "weight_loss.coreage.396",
+      "reuse_version": "1",
+      "reuse_policy": "confirm",
+      "hint": null,
       "show_when": {
         "any": [
           {
@@ -1470,16 +1551,12 @@
             ]
           }
         ]
-      },
-      "reuse_key": "weight_loss.coreage.396",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
+      }
     },
     {
       "id": "ca_218",
       "source_question_id": "218",
-      "section_id": "goals",
+      "section_id": "habits",
       "label": "Are you willing to increase your physical activity alongside medication?",
       "type": "single_choice",
       "required": true,
@@ -1501,10 +1578,14 @@
     {
       "id": "ca_397",
       "source_question_id": "397",
-      "section_id": "goals",
+      "section_id": "habits",
       "label": "Please provide details about why physical activity is not appropriate for you.",
       "type": "textarea",
       "required": true,
+      "reuse_key": "weight_loss.coreage.397",
+      "reuse_version": "1",
+      "reuse_policy": "confirm",
+      "hint": null,
       "show_when": {
         "any": [
           {
@@ -1517,16 +1598,12 @@
             ]
           }
         ]
-      },
-      "reuse_key": "weight_loss.coreage.397",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
+      }
     },
     {
       "id": "ca_627",
       "source_question_id": "627",
-      "section_id": "goals",
+      "section_id": "reasons",
       "label": "We will consider you for treatment with a GLP1 if it is appropriate. Which reasons are you consulting for?",
       "type": "multi_choice",
       "required": true,
@@ -1561,18 +1638,6 @@
         }
       ],
       "reuse_key": "weight_loss.coreage.627",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
-    },
-    {
-      "id": "ca_225",
-      "source_question_id": "225",
-      "section_id": "goals",
-      "label": "What is your goal weight?",
-      "type": "number",
-      "required": true,
-      "reuse_key": "weight_loss.coreage.225",
       "reuse_version": "1",
       "reuse_policy": "confirm",
       "hint": null
@@ -1613,7 +1678,10 @@
       "reuse_key": "weight_loss.coreage.238",
       "reuse_version": "1",
       "reuse_policy": "confirm",
-      "hint": null
+      "hint": null,
+      "exclusive_options": [
+        "None of the below"
+      ]
     },
     {
       "id": "ca_239",
@@ -1687,7 +1755,10 @@
       "reuse_key": "weight_loss.coreage.239",
       "reuse_version": "1",
       "reuse_policy": "confirm",
-      "hint": null
+      "hint": null,
+      "exclusive_options": [
+        "NONE of the below"
+      ]
     },
     {
       "id": "ca_240",
@@ -1713,7 +1784,10 @@
       "reuse_key": "weight_loss.coreage.240",
       "reuse_version": "1",
       "reuse_policy": "confirm",
-      "hint": null
+      "hint": null,
+      "show_when": {
+        "any": []
+      }
     },
     {
       "id": "ca_241",
@@ -1722,23 +1796,13 @@
       "label": "Please tell the doctor more about your severe GI problems",
       "type": "textarea",
       "required": true,
-      "show_when": {
-        "any": [
-          {
-            "any": [
-              {
-                "question_id": "ca_239",
-                "operator": "equals",
-                "value": "History of severe GI disease (Ex: chrons disease, or ulcerative colits)"
-              }
-            ]
-          }
-        ]
-      },
       "reuse_key": "weight_loss.coreage.241",
       "reuse_version": "1",
       "reuse_policy": "confirm",
-      "hint": null
+      "hint": null,
+      "show_when": {
+        "any": []
+      }
     },
     {
       "id": "ca_242",
@@ -1750,7 +1814,10 @@
       "reuse_key": "weight_loss.coreage.242",
       "reuse_version": "1",
       "reuse_policy": "confirm",
-      "hint": null
+      "hint": null,
+      "show_when": {
+        "any": []
+      }
     },
     {
       "id": "ca_243",
@@ -1762,7 +1829,10 @@
       "reuse_key": "weight_loss.coreage.243",
       "reuse_version": "1",
       "reuse_policy": "confirm",
-      "hint": null
+      "hint": null,
+      "show_when": {
+        "any": []
+      }
     },
     {
       "id": "ca_247",
@@ -1774,7 +1844,10 @@
       "reuse_key": "weight_loss.coreage.247",
       "reuse_version": "1",
       "reuse_policy": "confirm",
-      "hint": null
+      "hint": null,
+      "show_when": {
+        "any": []
+      }
     },
     {
       "id": "ca_442",
@@ -1783,28 +1856,18 @@
       "label": "Please describe what type of liver disease/cirrhosis you have been diagnosed with:",
       "type": "textarea",
       "required": true,
-      "show_when": {
-        "any": [
-          {
-            "any": [
-              {
-                "question_id": "ca_239",
-                "operator": "equals",
-                "value": "Liver disease/cirrhosis"
-              }
-            ]
-          }
-        ]
-      },
       "reuse_key": "weight_loss.coreage.442",
       "reuse_version": "1",
       "reuse_policy": "confirm",
-      "hint": null
+      "hint": null,
+      "show_when": {
+        "any": []
+      }
     },
     {
       "id": "ca_248",
       "source_question_id": "248",
-      "section_id": "conditions",
+      "section_id": "family",
       "label": "Does anyone in your family have a history of...",
       "type": "multi_choice",
       "required": true,
@@ -1825,37 +1888,40 @@
       "reuse_key": "weight_loss.coreage.248",
       "reuse_version": "1",
       "reuse_policy": "confirm",
-      "hint": null
+      "hint": null,
+      "exclusive_options": [
+        "NONE of the below"
+      ]
     },
     {
       "id": "ca_249",
       "source_question_id": "249",
-      "section_id": "conditions",
+      "section_id": "family",
       "label": "Are you sure your family member has medullary thyroid cancer?",
       "type": "textarea",
       "required": true,
+      "reuse_key": "weight_loss.coreage.249",
+      "reuse_version": "1",
+      "reuse_policy": "confirm",
+      "hint": null,
       "show_when": {
         "any": [
           {
             "any": [
               {
                 "question_id": "ca_248",
-                "operator": "equals",
+                "operator": "contains",
                 "value": "Medullary thyroid cancer"
               }
             ]
           }
         ]
-      },
-      "reuse_key": "weight_loss.coreage.249",
-      "reuse_version": "1",
-      "reuse_policy": "confirm",
-      "hint": null
+      }
     },
     {
       "id": "ca_445",
       "source_question_id": "445",
-      "section_id": "conditions",
+      "section_id": "family",
       "label": "Do you have any of the following?",
       "type": "multi_choice",
       "required": true,
@@ -1880,12 +1946,15 @@
       "reuse_key": "weight_loss.coreage.445",
       "reuse_version": "1",
       "reuse_policy": "confirm",
-      "hint": null
+      "hint": null,
+      "exclusive_options": [
+        "NONE of the below"
+      ]
     },
     {
       "id": "ca_250",
       "source_question_id": "250",
-      "section_id": "conditions",
+      "section_id": "family",
       "label": "Do you have any of the following?",
       "type": "multi_choice",
       "required": true,
@@ -1914,29 +1983,30 @@
       "reuse_key": "weight_loss.coreage.250",
       "reuse_version": "1",
       "reuse_policy": "confirm",
-      "hint": null
+      "hint": null,
+      "exclusive_options": [
+        "NONE of the below"
+      ]
     },
     {
       "id": "ca_252",
       "source_question_id": "252",
-      "section_id": "conditions",
+      "section_id": "family",
       "label": "Please tell the doctor more:Please include any lab values you may know of such as:1) Creatinine (Cr)2) Creatinine Clearance (CrCl)3) Glomerular filtration rate (GFR)4) Or simply describe more about your kidney problems",
       "type": "textarea",
       "required": true,
-      "show_when": {
-        "question_id": "ca_250",
-        "operator": "notContains",
-        "value": "NONE of the below"
-      },
       "reuse_key": "weight_loss.coreage.252",
       "reuse_version": "1",
       "reuse_policy": "confirm",
-      "hint": null
+      "hint": null,
+      "show_when": {
+        "any": []
+      }
     },
     {
       "id": "ca_506",
       "source_question_id": "506",
-      "section_id": "preferences",
+      "section_id": "comfort",
       "label": "How sensitive are you to feelings of nausea/motion sickness 1-10 (10 is highly sensitive).",
       "type": "single_choice",
       "required": true,
@@ -1985,12 +2055,13 @@
       "reuse_key": "weight_loss.coreage.506",
       "reuse_version": "1",
       "reuse_policy": "confirm",
-      "hint": null
+      "hint": null,
+      "presentation": "select"
     },
     {
       "id": "ca_509",
       "source_question_id": "509",
-      "section_id": "preferences",
+      "section_id": "comfort",
       "label": "If your treatment made you significantly nauseated or caused other GI side effects would that impact your compliance with treatment and willingness to continue?",
       "type": "single_choice",
       "required": true,
@@ -2012,7 +2083,7 @@
     {
       "id": "ca_510",
       "source_question_id": "510",
-      "section_id": "preferences",
+      "section_id": "comfort",
       "label": "Approximately 40% of patients using commercially available GLP-1 treatments experience nausea. Is it important to you to minimize possible nausea and GI side effects during your treatment?",
       "type": "single_choice",
       "required": true,
@@ -2034,7 +2105,7 @@
     {
       "id": "ca_512",
       "source_question_id": "512",
-      "section_id": "preferences",
+      "section_id": "wellbeing",
       "label": "In any prior attempts to lose weight, do you feel you experienced loss of muscle as well?",
       "type": "single_choice",
       "required": true,
@@ -2056,7 +2127,7 @@
     {
       "id": "ca_514",
       "source_question_id": "514",
-      "section_id": "preferences",
+      "section_id": "wellbeing",
       "label": "Is losing weight while conserving/improving muscle mass important to you?",
       "type": "single_choice",
       "required": true,
@@ -2078,7 +2149,7 @@
     {
       "id": "ca_516",
       "source_question_id": "516",
-      "section_id": "preferences",
+      "section_id": "wellbeing",
       "label": "Have you ever been diagnosed as having anemia?",
       "type": "single_choice",
       "required": true,
@@ -2100,7 +2171,7 @@
     {
       "id": "ca_518",
       "source_question_id": "518",
-      "section_id": "preferences",
+      "section_id": "wellbeing",
       "label": "Have you ever had issues with fatigue or low energy?",
       "type": "single_choice",
       "required": true,
@@ -2122,7 +2193,7 @@
     {
       "id": "ca_520",
       "source_question_id": "520",
-      "section_id": "preferences",
+      "section_id": "wellbeing",
       "label": "Have you ever had issues with low vitamin levels or had to take a vitamin supplement?",
       "type": "single_choice",
       "required": true,
@@ -2255,6 +2326,7 @@
       "label": "Which question did you not understand?",
       "type": "textarea",
       "required": true,
+      "hint": null,
       "show_when": {
         "any": [
           {
@@ -2267,8 +2339,7 @@
             ]
           }
         ]
-      },
-      "hint": null
+      }
     },
     {
       "id": "ca_313",
@@ -2298,5 +2369,6 @@
       ],
       "hint": "I am the patient completing this form. I understand the questions and confirm that my answers are accurate and complete."
     }
-  ]
+  ],
+  "presentation_revision": 2
 }

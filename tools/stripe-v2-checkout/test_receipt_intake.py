@@ -30,6 +30,21 @@ class ReceiptIntakeTests(unittest.TestCase):
         self.assertEqual(actual.json()['current_step'],1)
         self.assertEqual(self.client.get('/api/v1/sites/site-b/portal/intakes/9001',headers=self.patient_headers).status_code,401)
 
+    def test_coreage_first_response_prefills_checkout_and_keeps_user_edits(self):
+        import os
+        from unittest.mock import patch
+        with patch.dict(os.environ, {'WEIGHT_LOSS_INTAKE_SOURCE':'coreage'}):
+            order, guest = self.receipt()
+            initial = self.service.initial_intake(order, guest)
+            self.assertEqual(initial['template']['version'], 'coreage-steps-2026-10-26-v2')
+            self.assertTrue(initial['answers']['ca_199'])
+            self.assertEqual(initial['answers']['ca_200'], json.loads(order['payload'])['customer']['email'])
+            self.assertTrue(initial['answers']['ca_196'].endswith(')'))
+            changed = self.service.modify_initial(order, IntakePatch(revision=initial['revision'], answers={'ca_202':'2025550199'}), guest)
+            reopened = self.service.initial_intake(order, guest)
+            self.assertEqual(reopened['answers']['ca_202'], '2025550199')
+            self.assertEqual(self.service.initial_intake(order, guest)['revision'], reopened['revision'])
+
     def test_submit_revision_and_required_answers(self):
         order,guest=self.receipt();self.service.initial_intake(order,guest)
         with self.assertRaises(HTTPException) as error:self.service.modify_initial(order,IntakeSubmit(revision=0),guest,True)

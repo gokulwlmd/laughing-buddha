@@ -4,8 +4,8 @@ const path=require('node:path');
 const idScript=fs.readFileSync(path.join(__dirname,'../member_portal/web/id-upload.js'),'utf8');
 const script=fs.readFileSync(path.join(__dirname,'../member_portal/web/post-checkout.js'),'utf8');
 const template={title:'Semaglutide health intake',version:'mock-care-1',sections:[{id:'health',title:'Your health',description:'Tell us about yourself.'},{id:'review',title:'Anything else?',description:'Review and finish.'}],questions:[{id:'allergies',section_id:'health',label:'Do you have any allergies?',type:'single_choice',required:true,options:[{value:'no',label:'No'},{value:'yes',label:'Yes'}]},{id:'details',section_id:'health',label:'Which allergies?',type:'textarea',required:true,show_if:{question_id:'allergies',equals:'yes'}},{id:'notes',section_id:'review',label:'Anything else to share?',type:'textarea',required:false}]};
-async function setup(page,accountOptions={}){let photoWrites=0;let identityWrites=0,identityVerified=!accountOptions.identity;let accountWrites=0;let draft={id:'i-1',revision:0,status:'draft',current_step:0,answers:accountOptions.answers||{},template:accountOptions.template||template};let patches=0;await page.route('https://shop.example/**',r=>r.fulfill({contentType:'text/html',body:'<html><head><meta charset="UTF-8"></head><body style="font:18px Arial;background:#f4f1ec;margin:40px"><wlmd-purchase-intake></wlmd-purchase-intake><script src="https://backend.example/portal-assets/post-checkout.js"></script></body></html>'}));await page.route('https://backend.example/portal-assets/post-checkout.js',r=>r.fulfill({contentType:'text/javascript',body:script}));await page.route('https://backend.example/portal-assets/id-upload.js',r=>r.fulfill({contentType:'text/javascript',headers:{'access-control-allow-origin':'https://shop.example'},body:idScript}));await page.route('https://backend.example/api/**',async r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers:{'access-control-allow-origin':'https://shop.example','access-control-allow-methods':'GET,POST,PATCH','access-control-allow-headers':'authorization,content-type'}});expect(r.request().headers().authorization).toBe('Bearer receipt-only-token');if(r.request().url().includes('/journey'))return r.fulfill({headers:{'access-control-allow-origin':'https://shop.example'},json:{id:'QA-1',product_name:'Semaglutide',intake_status:draft.status,journey:{title:draft.status==='submitted'?'Your intake is saved':'Your health intake is next',stages:[]}}});if(r.request().url().endsWith('/account')){if(r.request().method()==='POST'){accountWrites++;expect(r.request().postDataJSON()).toEqual({password:'Synthetic-password-123!'});if(accountOptions.fail)return r.fulfill({status:502,headers:{'access-control-allow-origin':'https://shop.example'},json:{detail:'Your purchase is saved. Please try account setup again.'}});}return r.fulfill({headers:{'access-control-allow-origin':'https://shop.example'},json:{state:accountWrites?'ready':accountOptions.state||'sign_in',provider:'sticky'}});}if(r.request().url().endsWith('/id-photo/reuse')){photoWrites++;identityVerified=true;return r.fulfill({headers:{'access-control-allow-origin':'https://shop.example'},json:{status:'uploaded',order_attached:true,saved:true,uploaded_at:'2026-10-24T00:00:00Z'}});}if(r.request().url().endsWith('/id-photo')){if(r.request().method()==='POST'){photoWrites++;if(accountOptions.photoFail)return r.fulfill({status:409,headers:{'access-control-allow-origin':'https://shop.example'},json:{detail:'We couldn’t confirm your upload. Retry your saved photo.'}});expect(typeof r.request().postDataJSON().file_contents).toBe('string');identityVerified=true;}return r.fulfill({headers:{'access-control-allow-origin':'https://shop.example'},json:{status:accountOptions.photoFail&&photoWrites&&!identityVerified?'needs_review':photoWrites?'uploaded':'needed',available:true,order_attached:!!photoWrites&&identityVerified,saved:!!photoWrites||!!accountOptions.savedPhoto,uploaded_at:'2026-10-24T00:00:00Z'}});}if(r.request().url().endsWith('/identity')){identityWrites++;expect(r.request().postDataJSON()).toEqual({last4:'1234'});identityVerified=!accountOptions.identityFail;return r.fulfill({status:identityVerified?200:409,headers:{'access-control-allow-origin':'https://shop.example'},json:identityVerified?{status:'verified'}:{detail:'We couldn’t confirm your identity. Please try again shortly.'}});}if(!identityVerified&&r.request().url().endsWith('/submit'))return r.fulfill({status:409,headers:{'access-control-allow-origin':'https://shop.example'},json:{detail:{code:'identity_verification_required',message:'Verify your identity to continue your intake.'}}});if(r.request().method()==='PATCH'){patches++;const body=r.request().postDataJSON();expect(body.revision).toBe(draft.revision);draft={...draft,...body,revision:draft.revision+1};}if(r.request().url().endsWith('/submit'))draft={...draft,status:'submitted',revision:draft.revision+1};await r.fulfill({headers:{'access-control-allow-origin':'https://shop.example'},json:draft});});await page.goto('https://shop.example/complete');await page.evaluate(async()=>{await customElements.whenDefined('wlmd-purchase-intake');await document.querySelector('wlmd-purchase-intake').configure({siteId:'fortifyhp',sessions:[{session_id:'owned-order',session_token:'receipt-only-token'}]});});return {draft:()=>draft,patches:()=>patches,accountWrites:()=>accountWrites,identityWrites:()=>identityWrites,photoWrites:()=>photoWrites};}
-test('shared intake saves draft, conditional questions and submits without login',async({page},info)=>{const state=await setup(page);await expect(page.getByRole('heading',{name:'Semaglutide health intake'})).toBeVisible();await expect(page.locator('input[type=password]')).toHaveCount(0);await page.getByRole('radio',{name:'Yes',exact:true}).check();await expect(page.getByRole('textbox',{name:'Which allergies?'})).toBeVisible();await page.getByRole('textbox',{name:'Which allergies?'}).fill('Synthetic QA only');await expect.poll(()=>state.draft().answers.details).toBe('Synthetic QA only');await page.getByRole('button',{name:'Continue',exact:true}).click();await expect(page.getByRole('textbox',{name:'Anything else to share?'})).toBeVisible();await page.screenshot({path:info.outputPath('shared-intake-desktop.png'),fullPage:true});await page.getByRole('button',{name:'Submit intake'}).click();await expect(page.getByText('Your intake has been submitted.',{exact:false})).toBeVisible();expect(state.draft().status).toBe('submitted');});
+async function setup(page,accountOptions={}){let photoWrites=0;let identityWrites=0,identityVerified=!accountOptions.identity;let accountWrites=0;let draft={id:'i-1',revision:0,status:'draft',current_step:0,answers:accountOptions.answers||{},template:accountOptions.template||template};let patches=0;await page.route('https://shop.example/**',r=>r.fulfill({contentType:'text/html',body:'<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="font:18px Arial;background:#f4f1ec;margin:40px"><wlmd-purchase-intake></wlmd-purchase-intake><script src="https://backend.example/portal-assets/post-checkout.js"></script></body></html>'}));await page.route('https://backend.example/portal-assets/post-checkout.js',r=>r.fulfill({contentType:'text/javascript',body:script}));await page.route('https://backend.example/portal-assets/id-upload.js',r=>r.fulfill({contentType:'text/javascript',headers:{'access-control-allow-origin':'https://shop.example'},body:idScript}));await page.route('https://backend.example/api/**',async r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers:{'access-control-allow-origin':'https://shop.example','access-control-allow-methods':'GET,POST,PATCH','access-control-allow-headers':'authorization,content-type'}});expect(r.request().headers().authorization).toBe('Bearer receipt-only-token');if(r.request().url().includes('/journey'))return r.fulfill({headers:{'access-control-allow-origin':'https://shop.example'},json:{id:'QA-1',product_name:'Semaglutide',intake_status:draft.status,journey:{title:draft.status==='submitted'?'Your intake is saved':'Your health intake is next',stages:[]}}});if(r.request().url().endsWith('/account')){if(r.request().method()==='POST'){accountWrites++;expect(r.request().postDataJSON()).toEqual({password:'Synthetic-password-123!'});if(accountOptions.fail)return r.fulfill({status:502,headers:{'access-control-allow-origin':'https://shop.example'},json:{detail:'Your purchase is saved. Please try account setup again.'}});}return r.fulfill({headers:{'access-control-allow-origin':'https://shop.example'},json:{state:accountWrites?'ready':accountOptions.state||'sign_in',provider:'sticky'}});}if(r.request().url().endsWith('/id-photo/reuse')){photoWrites++;identityVerified=true;return r.fulfill({headers:{'access-control-allow-origin':'https://shop.example'},json:{status:'uploaded',order_attached:true,saved:true,uploaded_at:'2026-10-24T00:00:00Z'}});}if(r.request().url().endsWith('/id-photo')){if(r.request().method()==='POST'){photoWrites++;if(accountOptions.photoFail)return r.fulfill({status:409,headers:{'access-control-allow-origin':'https://shop.example'},json:{detail:'We couldn’t confirm your upload. Retry your saved photo.'}});expect(typeof r.request().postDataJSON().file_contents).toBe('string');identityVerified=true;}return r.fulfill({headers:{'access-control-allow-origin':'https://shop.example'},json:{status:accountOptions.photoFail&&photoWrites&&!identityVerified?'needs_review':photoWrites?'uploaded':'needed',available:true,order_attached:!!photoWrites&&identityVerified,saved:!!photoWrites||!!accountOptions.savedPhoto,uploaded_at:'2026-10-24T00:00:00Z'}});}if(r.request().url().endsWith('/identity')){identityWrites++;expect(r.request().postDataJSON()).toEqual({last4:'1234'});identityVerified=!accountOptions.identityFail;return r.fulfill({status:identityVerified?200:409,headers:{'access-control-allow-origin':'https://shop.example'},json:identityVerified?{status:'verified'}:{detail:'We couldn’t confirm your identity. Please try again shortly.'}});}if(!identityVerified&&r.request().url().endsWith('/submit'))return r.fulfill({status:409,headers:{'access-control-allow-origin':'https://shop.example'},json:{detail:{code:'identity_verification_required',message:'Verify your identity to continue your intake.'}}});if(r.request().method()==='PATCH'){patches++;const body=r.request().postDataJSON();expect(body.revision).toBe(draft.revision);draft={...draft,...body,revision:draft.revision+1};}if(r.request().url().endsWith('/submit'))draft={...draft,status:'submitted',revision:draft.revision+1};await r.fulfill({headers:{'access-control-allow-origin':'https://shop.example'},json:draft});});await page.goto('https://shop.example/complete');await page.evaluate(async()=>{await customElements.whenDefined('wlmd-purchase-intake');await document.querySelector('wlmd-purchase-intake').configure({siteId:'fortifyhp',sessions:[{session_id:'owned-order',session_token:'receipt-only-token'}]});});return {draft:()=>draft,patches:()=>patches,accountWrites:()=>accountWrites,identityWrites:()=>identityWrites,photoWrites:()=>photoWrites};}
+test('shared intake saves draft, conditional questions and submits without login',async({page},info)=>{const state=await setup(page);await expect(page.getByRole('heading',{name:'Your health'})).toBeVisible();await expect(page.locator('input[type=password]')).toHaveCount(0);await page.getByRole('radio',{name:'Yes',exact:true}).check();await expect(page.getByRole('textbox',{name:'Which allergies?'})).toBeVisible();await page.getByRole('textbox',{name:'Which allergies?'}).fill('Synthetic QA only');await expect.poll(()=>state.draft().answers.details).toBe('Synthetic QA only');await page.getByRole('button',{name:'Continue',exact:true}).click();await expect(page.getByRole('textbox',{name:'Anything else to share?'})).toBeVisible();await page.screenshot({path:info.outputPath('shared-intake-desktop.png'),fullPage:true});await page.getByRole('button',{name:'Submit intake'}).click();await expect(page.getByText('Your intake has been submitted.',{exact:false})).toBeVisible();expect(state.draft().status).toBe('submitted');});
 test('required answers and mobile reflow',async({page},info)=>{await page.setViewportSize({width:390,height:844});await setup(page);await page.getByRole('button',{name:'Continue',exact:true}).click();await expect(page.getByText('Please answer this question.')).toBeVisible();await page.getByRole('radio',{name:'No',exact:true}).check();await page.getByRole('button',{name:'Continue',exact:true}).click();await expect(page.getByRole('button',{name:'Submit intake'})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:info.outputPath('shared-intake-mobile.png'),fullPage:true});});
 
 test('set Sticky password without email while intake stays usable',async({page},info)=>{
@@ -30,7 +30,7 @@ test('password mismatch and provider error preserve purchase and intake',async({
  await page.getByLabel('Choose a password').fill('Synthetic-password-123!');await page.getByLabel('Confirm password',{exact:true}).fill('Synthetic-password-123!');
  await page.getByRole('button',{name:'Save portal password'}).click();
  await expect(page.getByText('Your purchase is saved. Please try account setup again.')).toBeVisible();
- await expect(page.getByRole('heading',{name:'Semaglutide health intake'})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Your health'})).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:info.outputPath('sticky-password-mobile.png'),fullPage:true});
 });
@@ -65,7 +65,7 @@ for(const width of [1440,390])test(`IDENTITY shared purchase intake verification
  await page.screenshot({path:info.outputPath('identity-checkout-'+width+'.png'),fullPage:true});
  await page.getByLabel('Last 4 digits of your SSN').fill('1234');
  await page.getByRole('button',{name:'Verify & finish intake'}).click();
- await expect(page.getByRole('heading',{name:'Semaglutide health intake'})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Your intake is saved'})).toBeVisible();
  expect(state.identityWrites()).toBe(1);
  await expect(page.locator('#identity-last4')).toHaveCount(0);
  expect(await page.evaluate(()=>JSON.stringify({...localStorage,...sessionStorage}))).not.toContain('1234');
@@ -86,12 +86,12 @@ test('IDPHOTO shared checkout accepts photo without SSN and preserves intake flo
  const data=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=600;c.height=400;const ctx=c.getContext('2d');ctx.fillStyle='#aaa';ctx.fillRect(0,0,600,400);return c.toDataURL('image/png').split(',')[1];});
  await page.getByLabel('Upload ID',{exact:true}).setInputFiles({name:'synthetic.png',mimeType:'image/png',buffer:Buffer.from(data,'base64')});
  await page.getByRole('button',{name:'Upload this photo',exact:true}).click();
- await expect(page.getByRole('heading',{name:'Semaglutide health intake'})).toBeVisible();expect(state.identityWrites()).toBe(0);await expect.poll(()=>state.photoWrites()).toBe(1);
+ await expect(page.getByRole('heading',{name:'Your intake is saved'})).toBeVisible();expect(state.identityWrites()).toBe(0);await expect.poll(()=>state.photoWrites()).toBe(1);
 });
 
 test('IDPHOTO saved photo attaches automatically for the next intake without asking again',async({page})=>{
  const state=await setup(page,{identity:true,savedPhoto:true});await reachIdentity(page);
- await expect(page.getByRole('heading',{name:'Semaglutide health intake'})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Your intake is saved'})).toBeVisible();
  expect(state.identityWrites()).toBe(0);await expect.poll(()=>state.photoWrites()).toBe(1);
  await expect(page.getByLabel('Upload ID',{exact:true})).toHaveCount(0);
 });
@@ -105,7 +105,7 @@ test('IDPHOTO uncertain upload offers an explicit retry with the saved photo',as
  await expect(page.getByRole('button',{name:'Retry saved photo',exact:true})).toBeVisible();
  expect(state.photoWrites()).toBe(1);
  await page.getByRole('button',{name:'Retry saved photo',exact:true}).click();
- await expect(page.getByRole('heading',{name:'Semaglutide health intake'})).toBeVisible();expect(state.photoWrites()).toBe(2);
+ await expect(page.getByRole('heading',{name:'Your intake is saved'})).toBeVisible();expect(state.photoWrites()).toBe(2);
 });
 
 async function reachIdentity(page){
@@ -115,13 +115,13 @@ async function reachIdentity(page){
  await page.getByRole('button',{name:'Submit intake',exact:true}).click();
 }
 
-test('expanded weight-loss form saves through seven sections then verifies identity last',async({page},info)=>{
+test('expanded weight-loss form saves through visible steps then verifies identity last',async({page},info)=>{
  await page.setViewportSize({width:390,height:844});
  const expanded=JSON.parse(fs.readFileSync(path.join(__dirname,'../member_portal/weight_loss_questions.json'),'utf8'));
  const answers=Object.fromEntries(expanded.questions.map(q=>[q.id,q.type==='number'?68:q.options?(q.type==='multi_choice'?[q.options.find(o=>/none/i.test(o.value))?.value||q.options[0].value]:q.options.find(o=>/^no\b/i.test(o.value))?.value||q.options[0].value):'Synthetic QA only']));
  const state=await setup(page,{template:expanded,answers,identity:true});
  await expect(page.getByLabel('Last 4 digits of your SSN')).toHaveCount(0);
- for(let i=0;i<expanded.sections.length-1;i++)await page.getByRole('button',{name:'Continue',exact:true}).click();
+ for(let i=0;i<expanded.sections.length;i++){if(state.draft().current_step===expanded.sections.length-1)break;const before=state.draft().current_step;await page.getByRole('button',{name:'Continue',exact:true}).click();await expect.poll(()=>state.draft().current_step).toBeGreaterThan(before);}
  await page.getByRole('button',{name:'Submit intake',exact:true}).click();
  await expect(page.getByRole('heading',{name:'One last step: verify your identity'})).toBeVisible();
  await page.getByLabel('Last 4 digits of your SSN').fill('1234');await page.getByRole('button',{name:'Verify & finish intake'}).click();
@@ -143,7 +143,7 @@ test('optional offer shows explicit price and does not submit another purchase a
  expect(purchases).toBe(0);await page.getByRole('button',{name:'Buy for $1.00'}).click();
  await expect(page.getByText('We’re confirming this payment.',{exact:false})).toBeVisible();
  await expect(page.getByRole('button',{name:'Buy for $1.00'})).toHaveCount(0);expect(purchases).toBe(1);
- await expect(page.getByRole('heading',{name:'Semaglutide health intake'})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Your health'})).toBeVisible();
 });
 
 // Real component, isolated transport: every cart item keeps its own receipt and
@@ -221,4 +221,39 @@ for(const scenario of ['partial','expired'])test(`${scenario} account handoff pr
  expect(hash.has('handoff')).toBe(false);
  expect(JSON.parse(hash.get('invites'))).toEqual(['synthetic-invitation-0','synthetic-invitation-1']);
  expect(state.portalCalls.sort()).toEqual([0,1]);
+});
+
+for(const width of [1440,390,320])test(`CoreAge short steps and checkout reuse at ${width}px`,async({page},info)=>{
+ await page.setViewportSize({width,height:900});
+ const form=JSON.parse(fs.readFileSync(path.join(__dirname,'../member_portal/weight_loss_questions.json'),'utf8'));
+ const answers={ca_196:'California (CA)',ca_199:'Synthetic Patient',ca_571:'1 Example St, Test City, CA 90001',ca_200:'patient@example.test',ca_202:'2025550100'};
+ form.questions.forEach(q=>{if(answers[q.id])Object.assign(q,{reuse_status:'stable',prefill_source:'checkout',saved_value:answers[q.id]});});
+ const state=await setup(page,{template:form,answers});
+ await expect(page.getByRole('heading',{name:'Thank you. Your payment is confirmed.'})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Confirm your details'})).toBeVisible();
+ await expect(page.getByText('From your checkout',{exact:false})).toHaveCount(5);
+ await page.getByText('Change saved answer',{exact:true}).first().click();
+ await expect(page.getByRole('combobox',{name:'State where you live'})).toHaveValue('California (CA)');
+ await page.getByRole('combobox',{name:'State where you live'}).selectOption('New York (NY)');
+ await expect.poll(()=>state.draft().answers.ca_196).toBe('New York (NY)');
+ await page.screenshot({path:info.outputPath('thank-you-'+width+'.png'),fullPage:true});
+ await page.getByRole('button',{name:'Continue',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'About you'})).toBeVisible();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.screenshot({path:info.outputPath('intake-step-'+width+'.png'),fullPage:true});
+});
+test('CoreAge medication branches, long dropdown and empty-step skipping',async({page})=>{
+ const form=JSON.parse(fs.readFileSync(path.join(__dirname,'../member_portal/weight_loss_questions.json'),'utf8'));
+ form.sections=form.sections.filter(s=>['treatment','dose','experience','review'].includes(s.id));
+ form.questions=form.questions.filter(q=>form.sections.some(s=>s.id===q.section_id));
+ await setup(page,{template:form});
+ await page.locator('#q-ca_538-0').check();await page.locator('#q-ca_545-0').check();
+ await page.getByRole('button',{name:'Continue',exact:true}).click();
+ await expect(page.getByText('Current Tirzepatide Dosage',{exact:true})).toBeVisible();
+ await expect(page.getByText('Current Semaglutide Dosage',{exact:true})).toHaveCount(0);
+ await expect(page.getByRole('combobox',{name:'Units per week'})).toBeVisible();
+ await page.getByRole('button',{name:'Back',exact:true}).click();
+ await page.locator('#q-ca_538-1').check();await page.locator('#q-ca_585-0').check();
+ await page.getByRole('button',{name:'Continue',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Review & finish'})).toBeVisible();
 });

@@ -152,6 +152,10 @@ class IntakeQuestion(BaseModel):
     options: list[QuestionOption] | None = None
     show_if: QuestionCondition | None = None
     show_when: dict | None = None
+    presentation: str | None = None
+    input_type: str | None = None
+    prefill_source: str | None = None
+    exclusive_options: list[str] | None = None
     help: str | None = None
     sample: AnswerValue | None = None
     reuse_key: str | None = None
@@ -310,8 +314,8 @@ def matches_condition(condition, answers):
     if operator == 'isEmpty': return actual in (None, '', [])
     if actual in (None, '', []): return False
     if operator == 'isFilled': return True
-    if operator == 'equals': return actual == expected
-    if operator == 'notEquals': return actual != expected
+    if operator == 'equals': return expected in actual if isinstance(actual, list) else actual == expected
+    if operator == 'notEquals': return expected not in actual if isinstance(actual, list) else actual != expected
     if operator == 'contains': return expected in actual
     if operator == 'notContains': return expected not in actual
     return False
@@ -347,6 +351,8 @@ def clean_answers(template, incoming):
             valid = False
         if not valid:
             raise HTTPException(422, 'Invalid answer for intake question: ' + key)
+        if kind == 'multi_choice' and len(value) > 1 and any(v in (question.get('exclusive_options') or []) for v in value):
+            raise HTTPException(422, 'Choose none or specific answers, not both: ' + key)
         cleaned[key] = value.strip() if isinstance(value, str) else value
     return cleaned
 

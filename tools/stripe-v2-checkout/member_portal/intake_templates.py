@@ -92,7 +92,7 @@ def get_template(template_id, *, sku, kind='initial'):
                          sample='MOCK TEST: End-to-end portal verification only.', required=False),
             ],
         }
-    result.update(id=f'{template_id}-{sku}-{kind}-mock', version='coreage-reference-2026-10-26' if result.get('source_url') else 'mock-care-1',
+    result.update(id=f'{template_id}-{sku}-{kind}-mock', version=result.get('version', 'coreage-reference-2026-10-26') if result.get('source_url') else 'mock-care-1',
                   title=f'{name} '+('health intake' if kind == 'initial' else 'check-in'),
                   demo=True, mock=True, sku=sku, product_name=name, kind=kind,
                   description='Mock questions for testing this care journey. The medical intake provider is not connected; these answers are not sent to clinicians.')
