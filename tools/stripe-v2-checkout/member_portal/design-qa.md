@@ -4,7 +4,7 @@ Final result: passed.
 
 See [the full scope, feature map and QA record](../../../docs/PORTAL_DESIGN_REFRESH.md).
 
-Reference: selected action-first design, `prototypes/patient-portal-option-1/design/reference.png`.
+Reference: selected action-first design, the original local design prototype (archived outside versioned source).
 In-app browser comparison: `/private/tmp/portal-design-review/comparison.png` (reference left, implementation right, 1487 × 1058 per side).
 Other captures: `home-desktop.png`, `home-mobile.png`, `orders-desktop.png` in that private local directory; these contain isolated fixture data only.
 Automated final screenshots: `../qa/results/final-visual/`, and the retained-filter regression result in `../qa/results/final-home-filter/`.

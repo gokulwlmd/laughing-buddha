@@ -1,5 +1,13 @@
 # Member portal backed by Sticky
 
+This document includes the initial implementation record. For current behavior,
+start with [Sticky membership](../../../docs/STICKY_MEMBER_PASSWORDS.md),
+[intake reuse and refill windows](../../../docs/INTAKE_REUSE_AND_REFILL_WINDOWS.md),
+[native early renewals](../../../docs/NATIVE_EARLY_RENEWALS.md), and
+[the portal refill correction](../../../docs/PORTAL_REFILL_CORRECTION_2026-10-26.md).
+Site configuration and current capability responses determine what is available.
+Dated preview results below are historical evidence, not deployment instructions.
+
 The portal reads real Sticky orders and subscriptions through the checkout
 application's existing server-side credentials. It never seeds customer orders.
 The older `patient_demo` app remains an offline UI fixture; it is not the member
@@ -22,8 +30,10 @@ order source. Its questionnaire adapter is reused until the intake API arrives.
 Typing an email or order ID is never proof of ownership. Owner-issued invitations
 are bound to one verified order/customer/site, expire after one hour and are
 single-use. Existing members must sign in before claiming another invited order.
-Passwords use scrypt; session and invitation tokens are stored hashed. Accounts
-are separate per site. Owner role switching is not available to patients.
+Sticky mode delegates passwords and membership to Sticky; it does not fall back
+to a local password when Sticky rejects authentication. Offline compatibility
+fixtures use scrypt. Session and invitation tokens are stored hashed; provider
+session secrets are encrypted. Account records and order grants are separate per site. Owner role switching is not available to patients.
 
 ## Orders and subscriptions
 
@@ -65,7 +75,9 @@ push events remain separate integration work.
 
 The dedicated Refills screen groups each treatment purchase independently and
 shows its remaining included claims and next action. Claiming and completing a
-check-in stay explicit per-order actions. A paid-plan link is a separate purchase.
+check-in stay explicit per-order actions. Paid renewals and plan replacements
+have separate eligibility and confirmation flows in `renewals.py` and `upgrades.py`;
+do not treat every next-supply selection as an additional subscription.
 
 The doctor-chat section has a private account-backed draft composer while the
 medical messaging adapter is disconnected. `GET /messages/draft` returns
@@ -138,11 +150,11 @@ injected offline Sticky adapter. That fixture is test-only and cannot call the
 external gateway. Preserve the original Fly volume and inspect pending payment
 forms before restarting its one-worker checkout process.
 
-Private preview status and validation: see `../member-portal-preview.json`.
-The current preview uses the real database through a localhost tunnel. Sign
-into `/portal-admin/master-therapy-test-422` with the existing owner account.
+The original private-preview record is in `../member-portal-preview.json`.
+It describes an earlier environment, not the current local setup. Use isolated
+synthetic fixtures from the [development guide](../../../docs/LOCAL_DEVELOPMENT.md).
 Patient accounts are enrolled from an owned receipt or an owner-issued invite.
-The public checkout and API processes have not yet received this release.
+Verify the deployed image separately from source readiness.
 
 ## Product intakes and care timeline
 
@@ -189,12 +201,13 @@ Simulated submissions cannot qualify a later non-test entitlement.
 
 The current requested sequence is **initial intake → claim an included shipment
 → complete that shipment's fresh check-in**. A 12-month / 360-day term with four
-shipments opens its three included claims on days **80, 170 and 260**, ten days
-before the original day-90/180/270 shipment anchors. A six-month / 180-day term
-opens its single included claim on day 80. One- and three-month terms have the
+shipments with a 20-day claim window opens its three included claims on days
+**70, 160 and 250**, before the original day-90/180/270 shipment anchors. A
+six-month / 180-day term opens its single included claim on day 70. One- and three-month terms have the
 purchase intake and no additional included shipment. Master policy fields
 `included_refills_enabled` and `claim_window_days` control the claim feature;
-the default claim window is ten days. These care settings never rewrite paid
+the default claim window is 20 days. Follow the purchased SKU policy and care
+plan rather than assuming these example durations apply to every therapy. These care settings never rewrite paid
 billing terms or turn a one-time SKU into a subscription.
 
 The server requires the initial intake and any required earlier claimed-shipment

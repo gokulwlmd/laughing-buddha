@@ -1,57 +1,46 @@
-# GitHub collaboration and Fly staging
+# Collaboration and releases
 
-Work from separate local clones and feature branches, open pull requests, and merge after review and passing tests. GitHub is the shared code and decision history. As explicitly requested on 22 October 2026, the existing live Fly app is the shared product workspace. The synthetic staging workflow below remains available but is optional; do not make it a prerequisite for ordinary product work. Preserve the live database and payment records during updates.
+Use feature branches and reviewed pull requests. Repository cleanup, passing tests and merging a PR do not deploy an application or authorize changes to GitHub access, production data or provider configuration.
 
-## Branch and review workflow
+## Shared code
 
-```sh
-git switch main
-git pull --ff-only
-git switch -c codex/describe-the-change
-# Implement and run the documented tests.
-git add <specific-files>
-git commit -m 'Describe the resulting behavior'
-git push -u origin HEAD
-```
+The active application lives under `tools/stripe-v2-checkout`. Follow [Contributing](../CONTRIBUTING.md) and [local development](LOCAL_DEVELOPMENT.md). Stage specific files and preserve unrelated changes in a shared checkout.
 
-Open a PR into `main`. The **Tests / Backend and browser tests** job runs without payment credentials on every PR and pushes to `main` or `codex/**`. Review the behavior, QA evidence and affected links before merging. Two collaborators were already visible in GitHub access settings during setup; no new invitation or access change was needed.
+The [Tests workflow](../.github/workflows/tests.yml) runs on pull requests and configured branch pushes. It uses synthetic/fake providers rather than live payment credentials. Check the actual GitHub branch protections, required reviews and environment settings before relying on them; these settings are not enforced merely by a Markdown file.
 
-`main` now has a GitHub branch protection rule requiring a pull request, one approval and the `Backend and browser tests` check from GitHub Actions. Force pushes and branch deletion remain disallowed. The standard administrator bypass setting remains unchanged. Branch protection is a GitHub setting, not something a committed workflow enforces. Avoid approving your own change as a substitute for collaborator review.
+## Fly staging
 
-## Isolated staging configuration
+[Deploy Fly staging](../.github/workflows/fly-staging.yml) is a manual `workflow_dispatch` workflow. It runs verification before deploying the selected revision, using the GitHub `staging` environment and `FLY_STAGING_API_TOKEN` secret. The token must be scoped to the staging app.
 
-`tools/stripe-v2-checkout/fly.staging.toml` targets `wlmd-checkout-staging-0f89b1bb`, using its own `staging_data` volume and synthetic catalog. `fly.toml` still targets the existing live app and remains unchanged.
+`fly.staging.toml` targets a separate app and `staging_data` volume. Synthetic mode blocks payment authorization. Never supply live customer databases, invitations or provider credentials to this environment. Check existing infrastructure and credentials instead of blindly recreating them.
 
-Staging uses `CHECKOUT_ENVIRONMENT=staging` and forces payment authorization off. Its adapter never contacts Sticky or Stripe. Do not copy live secrets, customer data, invitations or the production database. Staging has its own owner setup; the operator retrieves that URL privately using Fly SSH and the owner creates their own account.
-
-Initial infrastructure, if not already provisioned:
-
-```sh
-flyctl auth whoami
-flyctl apps create wlmd-checkout-staging-0f89b1bb --org personal
-flyctl volumes create staging_data --app wlmd-checkout-staging-0f89b1bb --region iad --size 1 --yes
-flyctl ips allocate-v6 --app wlmd-checkout-staging-0f89b1bb
-flyctl ips allocate-v4 --shared --app wlmd-checkout-staging-0f89b1bb
-```
-
-Check existing resources first; do not repeat creation blindly or replace the live infrastructure. Keep one staging worker and one machine because SQLite and payment intent handling are not designed for horizontal scaling. Staging can stop while idle. Volume storage remains billable while the app is stopped.
-
-Staging was provisioned and deployed on 22 October 2026. Hosted health, private admin access and tested asset hashes passed. See [the non-secret deployment record](../tools/stripe-v2-checkout/staging-deployment.json). The owner has completed staging account setup. Use the existing staging account; do not recreate or seed it.
-
-## Manual deployment button
-
-In GitHub, configure an environment named **staging** and its secret **FLY_STAGING_API_TOKEN**, using a Fly deploy token scoped exclusively to the staging app. The staging environment and this secret were created and their presence verified on 22 October 2026. No secret value is stored in this repository. A local Fly login is not automatically a GitHub Actions secret. Supply the token directly to GitHub Secrets; never commit it or paste it in chat. Use a short expiry and renew deliberately. Do not use the live app's deploy token or an account-wide token.
-
-After the workflow has been merged into the default branch, open **Actions → Deploy Fly staging → Run workflow** and select the branch to test. Deployment runs only on this manual action. It first runs the backend/browser suite, checks the isolated config, deploys with one machine, then checks `/health` for `synthetic=true`, `payments_blocked=true` and `authorization_contract_verified=false`. Tests and deployments report the selected Git commit in GitHub Actions history.
-
-For a first operator deployment before the button is available:
+Read-only configuration checks, from the repository root:
 
 ```sh
 .venv/bin/python scripts/check_staging.py
-cd tools/stripe-v2-checkout
-flyctl deploy --config fly.staging.toml --remote-only --ha=false --strategy immediate --yes
+.venv/bin/python scripts/check_staging.py --health
 ```
 
-From the root, run `.venv/bin/python scripts/check_staging.py --health` after deployment. This workflow never deploys `fly.toml` or restarts the live machine. Production requires its separate payment-state checks and deployment procedure.
+The first checks the committed app/volume/environment separation. The second also checks the hosted health response and therefore needs network access. It does not deploy or submit payment.
 
-Fly recommends app-scoped tokens for CI: [Fly access tokens](https://fly.io/docs/security/tokens/). GitHub environments can restrict deployments and protect secrets: [GitHub deployment environments](https://docs.github.com/en/actions/concepts/workflows-and-actions/deployment-environments).
+## Shared live Fly application
+
+The current shared product environment is `wlmd-stripe-test-0f89b1bb`; its historical name does not make its payments synthetic. The repository has no automatic live deployment on merge.
+
+An authorized release operator should:
+
+1. Choose the reviewed source revision and run relevant checks. Inspect the build inputs; do not package unrelated local experiments or AWS adaptations accidentally.
+2. Inspect active payment operations, storage capacity and current release identity. Back up persistent databases and private keys without putting them in Git or build artifacts.
+3. Build a reviewed image and record its immutable digest and rollback image. Preserve the existing app, volume and account records.
+4. Deploy during an appropriate window, then verify health, authentication boundaries, asset/source identity and record preservation. Routine smoke tests must not charge, retry payments or create provider orders.
+5. Record sanitized evidence and any remaining limitations. A healthy process is not full checkout or clinical integration verification.
+
+The current Fly deployment uses one machine/worker and local persistent SQLite state. Do not scale it horizontally without changing its coordination/storage design. Preserve uncertain payment attempts, databases and private account keys across restarts.
+
+For implementation details, consult [capture setup reuse](CAPTURE_SETUP_REUSE_2026-10-26.md), [Fly operations](../tools/stripe-v2-checkout/FLY.md), and dated release evidence such as [payment confirmation timing](PAYMENT_CONFIRMATION_TIMING_2026-10-26.md). Older provisioning commands and environment-specific paths are historical; inspect current resources before using them.
+
+## AWS target
+
+AWS/MySQL and native Python 3.9 compatibility work is a separate migration target. This cleanup branch does not add those packages or release them through the Fly workflow. Validate schema compatibility, credentials, route prefixes, TLS and process isolation for that target before claiming it is ready. Do not stop unrelated services or import a data package as a side effect of a code release.
+
+See [the AWS plan](AWS_PLATFORM_PLAN.md). Historical setup instructions must be checked against the target environment; an already-running server needs an update procedure, not first-install commands.

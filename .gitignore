@@ -14,3 +14,32 @@ playwright-report/
 tools/stripe-v2-checkout/.state/
 tools/stripe-v2-checkout/qa/node_modules/
 tools/stripe-v2-checkout/qa/results/
+
+# Local research, generated review artifacts and reversible cleanup backups.
+/.local-archive/
+/outputs/
+/prototypes/
+*.orig
+*.rej
+*~
+node_modules/
+vendor/
+dist/
+.coverage
+.coverage.*
+htmlcov/
+
+# Runtime data and credentials must never be distributed with source.
+*.env
+!*.env.example
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.key
+*.pem
+*.p12
+*.pfx
+admin-setup-token
+access-token
+*.har

@@ -1,36 +1,45 @@
 # WLMD Core
 
-Master SKU catalog, branded campaign setup, and Sticky.io Stripe Connect v2 checkout administration.
+WLMD Core is a shared backend for branded treatment catalogs, checkout, post-purchase intake and member portals. FortifyHP is one connected storefront. Each site has its own branding, catalog mappings and patient access boundaries; Sticky.io supplies order and subscription records, Stripe Connect v2 handles card payment through Sticky, and WLMD adapters connect identity and care workflows.
 
-The current application lives in [`tools/stripe-v2-checkout`](tools/stripe-v2-checkout). It uses FastAPI, SQLite, and a browser-based admin panel, with Stripe Elements handling card entry. It is deployed on Fly.io.
-
-## Continue development
-
-- [Sanitized project handoff](docs/PROJECT_HANDOFF.md) and [decision record](docs/DECISIONS.md)
-- [Local development with synthetic data](docs/LOCAL_DEVELOPMENT.md)
-- [GitHub collaboration and manual Fly staging](docs/COLLABORATION.md)
-
-The everyday admin starts with **Sites** and **Checkout Templates**. Add a site to prepare branded therapy checkouts from predefined plans and master SKUs in one reviewed setup. Detailed catalog and billing tools remain under Advanced settings.
-
-## Current workflows
-
-- Group master SKUs by therapy and treatment, with editable categories, product duration, and purchase options.
-- Define duration purchase options, assign matching SKUs, and build branded checkouts showing each treatment’s price.
-- Offer one-time purchases and subscriptions together or with separate prices.
-- Configure fixed prepaid test plans with an upfront price, delivery interval, and completion after the selected number of cycles.
-- Assign master presets to existing or new brand campaigns after preview and approval.
-- Manage branded public/private checkout links, grouped by category.
-
-The project remains an integration harness. Medication fulfillment, trial flows, and other unverified payment configurations retain the limitations described in the application documentation.
+The active application is [`tools/stripe-v2-checkout/`](tools/stripe-v2-checkout/). Its directory name is historical. It contains the shared application, not a disposable checkout experiment.
 
 ## Start here
 
-- [Application setup and payment architecture](tools/stripe-v2-checkout/README.md)
-- [Therapy and multi-SKU checkout setup](docs/THERAPY_PLAN_CHECKOUTS.md)
-- [Admin workflows and supported features](tools/stripe-v2-checkout/ADMIN.md)
-- [Fly deployment and persistent-state requirements](tools/stripe-v2-checkout/FLY.md)
-- [Deployment version and verification evidence](tools/stripe-v2-checkout/deployment.json)
-- [QA baseline](docs/QA_REPORT.md), [combined purchase choices](docs/COMBINED_PURCHASE_OPTIONS_QA.md), and [category dropdown](docs/CATEGORY_DROPDOWN_QA.md)
-- [Reusable project skills](.agents/skills)
+- **Develop locally:** [Local development](docs/LOCAL_DEVELOPMENT.md) — synthetic data, no provider credentials required.
+- **Make a change:** [Contributing](CONTRIBUTING.md) — review, tests and release boundaries.
+- **Handle sensitive data:** [Security](SECURITY.md) — credentials, patient information and private reports.
+- **Deploy:** [Collaboration and releases](docs/COLLABORATION.md) — Fly staging, live release responsibilities and AWS status.
 
-Credentials are supplied through environment variables or Fly secrets. Runtime databases, private invitations, installed dependencies, and generated browser artifacts are excluded from version control. Test fixtures use synthetic credentials and fake payment providers.
+## Repository map
+
+| Path | Responsibility |
+| --- | --- |
+| [`tools/stripe-v2-checkout/app.py`](tools/stripe-v2-checkout/app.py) | FastAPI application and checkout/payment lifecycle |
+| [`tools/stripe-v2-checkout/admin.py`](tools/stripe-v2-checkout/admin.py), [`web/`](tools/stripe-v2-checkout/web/) | Site and master catalog administration; hosted checkout assets |
+| [`tools/stripe-v2-checkout/demo/`](tools/stripe-v2-checkout/demo/) | **Active** site checkout API, publication registry and checkout sessions, alongside older demo assets |
+| [`tools/stripe-v2-checkout/member_portal/`](tools/stripe-v2-checkout/member_portal/) | Member accounts, orders, intake, refills and provider adapters |
+| [`tools/stripe-v2-checkout/patient_demo/`](tools/stripe-v2-checkout/patient_demo/) | Synthetic preview and question-template code still imported by the application |
+| [`tools/stripe-v2-checkout/qa/`](tools/stripe-v2-checkout/qa/) | Browser fixtures and automated checks |
+| [`scripts/`](scripts/) | Repository, staging and operational checks |
+| [`docs/`](docs/), [`.agents/skills/`](.agents/skills/) | Feature decisions, dated verification evidence and integration procedures |
+
+Do not delete or rename a directory based on “demo” or “test” in its name. Trace imports, routes and packaging first. The separate Lovable storefront is not fully represented by this repository's hosted UI files.
+
+## Environments and data
+
+The current shared live application runs on **Fly.io**, using Python 3.12, FastAPI and persistent SQLite databases. Local development uses isolated synthetic data. The optional Fly staging workflow also uses synthetic mode with payments blocked.
+
+AWS/MySQL migration is a separate workstream; see the AWS plan below. Compatibility packages being prepared elsewhere are not included in this cleanup branch. Do not replace the Fly database or deploy an AWS package as part of an ordinary code cleanup.
+
+Catalog browsing uses local publications and scoped snapshots. Payment totals, authorization, capture and order reconciliation retain their provider checks. A fast catalog response is not evidence that a charge succeeded.
+
+## Working references
+
+- [Admin workflows](tools/stripe-v2-checkout/ADMIN.md)
+- [Capture setup reuse](docs/CAPTURE_SETUP_REUSE_2026-10-26.md)
+- [Site API performance](docs/SITE_API_SPEED.md)
+- [Payment confirmation timing](docs/PAYMENT_CONFIRMATION_TIMING_2026-10-26.md)
+- [AWS migration plan](docs/AWS_PLATFORM_PLAN.md)
+
+Dated feature reports and older module READMEs record the implementation at that time. Use the current source, tests and verified release record together when deciding what is available. Test counts, infrastructure settings and release images in historical reports are not current guarantees.

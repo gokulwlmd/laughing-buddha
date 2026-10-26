@@ -52,7 +52,7 @@ This task does not create Sticky products, payment offers, subscriptions or orde
 - Authenticated `GET /api/admin/catalog-review` returns the review records.
 - The master catalog has a searchable, collapsed clarification list. It has no
   activation button and no path from a review draft into a checkout selector.
-- `outputs/catalog-review-20261026/Master-catalog-review.xlsx` provides an overview,
+- The generated private catalog-review workbook (excluded from source control) provides an overview,
   new finalized recipes, clarification questions with editable answer cells, and
   existing source rows. Spreadsheet answers do not automatically activate anything.
 

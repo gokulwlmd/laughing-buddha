@@ -1,72 +1,58 @@
-# Sticky Stripe Connect v2 campaign/SKU checkout
+# Shared checkout and member platform
 
-A private integration harness deployed at `https://wlmd-stripe-test-0f89b1bb.fly.dev`. It resolves any campaign/SKU accessible to the Sticky API and accepts card details only through Stripe Elements. This is separate from the planned production application.
+This is the active WLMD Core application. The directory name comes from its original Stripe Connect v2 integration; it now contains site administration, master therapies, checkout APIs, post-purchase intake and member portals.
 
-## Links and configuration
+Start with the repository [overview](../../README.md), [local development](../../docs/LOCAL_DEVELOPMENT.md), [contribution guide](../../CONTRIBUTING.md) and [security practices](../../SECURITY.md). Development uses synthetic providers and isolated state. Never copy a hosted environment file or customer database into a development session.
 
-Use `/checkout/{campaign_id}/{url_encoded_sku}`. The original example is:
+## Application map
 
-`https://wlmd-stripe-test-0f89b1bb.fly.dev/checkout/422/WLMD-CORE-2USD-0f89b1bb`
+| Module | Responsibility |
+| --- | --- |
+| `app.py`, `catalog.py` | Checkout lifecycle, provider validation, attempt state and reconciliation |
+| `admin.py` | Owner authentication, admin views and catalog management |
+| `master.py`, `plans.py`, `sites.py`, `commerce_admin.py` | Master templates, site configuration, purchase options, prices and coupons |
+| `publication_snapshot.py`, `demo/` | Published site catalogs, public APIs and checkout sessions; these are runtime dependencies |
+| `member_portal/` | Site-bound accounts, order grants, intake, identity, refills and provider adapters |
+| `patient_demo/` | Synthetic preview and question-template dependencies still used by the application |
+| `web/`, `member_portal/web/` | Hosted UI and shared frontend assets |
+| `test_*.py`, `qa/` | Offline backend and browser verification |
 
-The existing private invitation signs the owner into the host; links require that access cookie. To sign in directly on another campaign/SKU page, append `?access=INVITATION` using the existing private token, without saving it in source or documentation. The app exchanges it for an HttpOnly Secure cookie and removes it from the URL. Do not log query strings or share invitation tokens publicly. `/` redirects to the original example. Campaign/SKU links stay reusable: a new visitor gets a fresh checkout; a returning browser sees its current attempt or receipt. A completed receipt has a **Start another purchase** button, which creates a separate attempt with a new intent when the customer proceeds to payment. The original receipt stays stored.
+Do not remove versioned browser assets or rename modules without tracing imports, routes and Docker packaging. Older open checkout pages can still reference older assets. The external Lovable storefront is maintained separately.
 
-The server reads the campaign's offers, fetches only their candidate products, matches the exact SKU, and presents configured offer/product/billing-model choices. Duplicate SKU records remain distinct choices. It reads the campaign's Stripe Link gateway mapping and verifies provider 250; it never changes campaign settings or substitutes gateway 254 for unrelated campaigns. Countries, shipping, gateway currency and positive order totals come from Sticky.
+## Entry points
 
-Supported payments are standard one-time and day-based recurring offers, quantity one, with one address used for billing and shipping. Recurring billing needs explicit consent. Other accessible offers remain visible but payment is blocked if they require unsupported trial, prepaid, series, seasonal, bundle, variant or custom-schedule selections. Delayed capture and capture-on-shipment profiles are blocked. Supported two-decimal currencies: USD, EUR, GBP, CAD, AUD, NZD, CHF. A valid campaign/SKU alone does not establish payment eligibility.
+- `/admin`: owner administration. Customer checkout access does not grant admin access.
+- `/plans/{site_id}` and `/c/{choice_id}`: published plan selection and checkout links.
+- `/api/v1/sites/{site_id}/…`: site-scoped checkout APIs. Use the generated contract for the configured site and current source for request details.
+- `/portal/{site_id}`: branded member portal with server-enforced site and order ownership.
+- `/health`: process health and selected configuration flags; it does not establish successful settlement or full provider readiness.
 
-## Pricing and payment boundary
+The older private `/checkout/{campaign_id}/{sku}` route remains an integration entry point. Its invitation mechanism is not the access model for public storefronts. Never publish private invitation or owner setup tokens.
 
-`/api/quote` calls Sticky `POST /api/v2/order_total/calculate` with the configured offer, model, quantity, shipping selection, billing location and `use_tax_provider: 1`. No price override is supplied. Ten-minute quotes and configuration fingerprints are stored server-side and revalidated before authorization and capture. The browser cannot submit an amount, gateway, arbitrary product or PaymentIntent.
+## Payment and persistence contract
 
-Authorization uses explicit billing/shipping fields, `forceGatewayId` and **`auth_amount`** in currency units. Sticky returns the client secret and matching `transactionID`/`transId`. Stripe.js confirms this intent, including its frontend challenge, with the campaign/SKU page as the HTTPS return URL. Capture uses Sticky `new_order`, `creditCardType: stripe_link`, `tranType: Capture`, and that server-stored `transactionId`. No independent Stripe charge or custom line-price override is created. Read-back must confirm the expected approved order and amount before completion is recorded.
+Sticky's configured Stripe Connect v2 gateway owns payment authorization and capture. The browser uses the provider-hosted card interface; this backend must never receive raw card numbers or CVV. Provider secrets remain server-side. Supported plans must pass the current configuration, quote and ownership checks; a catalog listing alone does not establish payment eligibility.
 
-No Stripe private key is needed for this flow. The gateway's publishable key is public; gateway OAuth/access/refresh tokens remain in Sticky. The harness does not independently retrieve PaymentIntents server-side. Additional Sticky response 101 completion, webhooks, refunds, subscription management, and clinical/refill orchestration are not implemented. Such results are held for reconciliation rather than reported as paid.
+Catalog reads use local publications and scoped snapshots. Payment totals and financial transitions retain authoritative provider validation. The browser cannot choose an arbitrary amount, gateway or payment intent. Uncertain results remain durable and require reconciliation; they must not cause an automatic replacement charge.
 
-## Install and validate
+Fly uses SQLite under `CHECKOUT_STATE_DIR` and one machine/worker. Coordination locks and parts of payment readiness remain process-local. A restart can affect unfinished payment forms. Preserve databases, keys and unresolved attempts; never clear an uncertain result merely to let a customer retry. Inspect the deployed recovery behavior before planning a restart.
 
-From this directory:
+See [capture setup reuse](../../docs/CAPTURE_SETUP_REUSE_2026-10-26.md) and [site API performance](../../docs/SITE_API_SPEED.md). These explain which reads are cached and which payment checks must remain authoritative.
 
-```sh
-python3 -m venv /workspace/.venvs/stripe-v2-checkout
-/workspace/.venvs/stripe-v2-checkout/bin/python -m pip install -r requirements-dev.txt
-/workspace/.venvs/stripe-v2-checkout/bin/python -m unittest -v test_checkout test_admin test_qa test_master test_brands
-node --check web/app.js
-node --check web/admin.js
-node --check web/brand-design.js
-npm --cache /workspace/.cache/npm --prefix qa ci --ignore-scripts
-/workspace/.venvs/stripe-v2-checkout/bin/python qa/run.py
-```
+## Feature references
 
-144 backend tests and 62 Chromium browser scenarios are verified without real payment or Sticky configuration writes. Browser cases use a fake Sticky service and Stripe.js contract stub; see [the QA report](../../docs/QA_REPORT.md). The backend tests make no external requests. They include buying twice through the same link with distinct intents/orders, preserving the first receipt, repeat-click idempotency, persistence, independent first visits, and rejecting stale tabs or replacement of an unresolved attempt. They cover campaign access, exact and duplicate SKU resolution, configured selections, authoritative prices/taxes, changed configuration, recurring consent, secret/card-data boundaries, session isolation, legacy receipt migration, repeated capture and uncertain/3DS holds.
+- [Owner administration](ADMIN.md)
+- [Therapy purchase options](../../docs/THERAPY_PLAN_CHECKOUTS.md)
+- [Brand prices and coupons](../../docs/BRAND_COMMERCE.md)
+- [Member portal](member_portal/README.md)
+- [Sticky membership and password setup](../../docs/STICKY_MEMBER_PASSWORDS.md)
+- [Shared post-checkout intake](../../docs/SHARED_POST_CHECKOUT_INTAKE.md)
+- [SKU refill policy](../../docs/STICKY_REFILL_SKU_CONTRACT.md)
 
-## Start and persist
+Dated reports describe what was verified at that time. They are not a guarantee that every optional capability is enabled for every site. In particular, a rendered control does not establish a connected provider operation; read capability responses and integration limits.
 
-Reuse `STICKY_API_USERNAME` and `STICKY_API_PASSWORD` secure bindings scoped to `whitelabelmd.sticky.io`.
+## Validation and release
 
-```sh
-CHECKOUT_AUTHORIZATION_VERIFIED=1 /workspace/.venvs/stripe-v2-checkout/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8000 --workers 1 --no-access-log --no-proxy-headers
-```
+Follow [local development](../../docs/LOCAL_DEVELOPMENT.md) for reproducible setup and focused or full test commands. Backend/browser fixtures use controlled providers. Sticky Dry Run order tests still create provider records and need explicit authorization for their scope. A browser stub is not a live payment verification.
 
-`CHECKOUT_PUBLIC_URL` must be a working HTTPS origin before card entry. `/health` checks startup. Do not send cloud loopback links to the owner. See [FLY.md](FLY.md) for hosting updates and existing deployed secrets/resources.
-
-SQLite `checkouts` and the invitation live in `CHECKOUT_STATE_DIR` (`/data` on Fly). The original singleton `purchase` table is preserved and migrated into the legacy checkout. All campaign/SKU attempts use browser-specific cookies and durable rows. `POST /api/new-purchase` requires private access, CSRF/origin validation and a completed previous attempt. Its durable `purchase_successors` mapping makes double clicks and response retries return one successor. Pending or uncertain attempts cannot be replaced. Requests carry `X-Checkout-Attempt`; stale tabs are rejected before they can act on a different purchase. Never delete/reset an attempt after an uncertain response. Atomic state transitions prevent automatic repeat authorizations/captures. Use one machine and worker because client secrets exist only in process memory. A browser refresh calls POST /api/resume to restore the same cached authorization, contact and selection after checking the configuration fingerprint; it cannot create a replacement intent. Reconcile any open authorization before restarting; a restart loses its in-memory secret and leaves the attempt held for reconciliation.
-
-Hosted verification of the reusable link passed: the prior receipt stayed intact, a fresh attempt quoted USD 2.00, repeated start requests reused that attempt, and stale-tab requests returned 409. No additional live authorization or capture was submitted. See `deployment.json` for the image and validation metadata.
-
-## Original payment evidence
-
-The owner reported the $2 checkout working; its durable state recorded captured order **505015**. Read-back on 2026-10-21 confirmed USD 2.00, campaign 422, product 54537, offer 706, billing model 2, gateway 254 and non-recurring quantity one. Sticky then returned status **6** with blank transaction/auth IDs. That later status has not been mapped authoritatively; current processor settlement is not independently verified. The existing receipt remains preserved, and no follow-up charge or refund has been submitted.
-
-Read the reusable [checkout skill](../../.agents/skills/stickyio-stripe-checkout/SKILL.md) for the exact API and deployment workflow.
-
-## Owner admin
-
-The owner admin is served at `/admin`. See [ADMIN.md](ADMIN.md) for first-owner setup, email/password sign-in, brand/SKU/offer/link controls, explicit change approval, tests and current limits. Customer checkout access never grants admin access.
-
-The admin includes versioned **Master SKUs** at `/admin#master` for assigning preset SKU/offer/billing configurations to campaigns. See [the master SKU guide](../../docs/master-sku-setup.md) for the first TIRZ-1M preset and test-campaign rollout workflow.
-
-Fixed-term prepaid test plans are supported: [setup, verified orders and limits](../../docs/research/sticky-prepaid-quarterly-shipments.md). The native four-order test sequence is separate from the offline suite; no real processor payment was submitted.
-
-## Therapy plan selection
-
-Use Therapies → Purchase options to define duration plans and assign matching SKUs. Build a brand checkout from one option or several; customers see each treatment’s price, choose a duration and SKU, then a configured payment choice. See [the owner workflow](../../docs/THERAPY_PLAN_CHECKOUTS.md). Configuration still requires owner preview and approval; no example SKU prices are automatically created.
+Use [collaboration and releases](../../docs/COLLABORATION.md) and [Fly operations](FLY.md) for deployment. AWS/MySQL compatibility work is a separate target. A passing local suite or a GitHub merge does not deploy either environment. Historical release images in `deployment.json` must be compared with the actual deployed image and newer release evidence before rollback or release decisions.
