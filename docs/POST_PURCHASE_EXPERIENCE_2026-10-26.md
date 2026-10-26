@@ -1,5 +1,7 @@
 # Shared post-purchase experience — 26 October 2026
 
+Follow-up: [multi-product recovery, release verification and remaining card-update dependency](POST_PURCHASE_QA_2026-10-26.md).
+
 ## Implemented contract
 
 - The shared storefront component saves health answers before identity verification. Both ordinary and care-checkpoint APIs enforce SSN verification or an attached ID photo at final submission, including when a caller bypasses the UI.

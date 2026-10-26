@@ -437,7 +437,7 @@ class MemberService:
         # A single-use, site-bound handoff keeps the Sticky token and password
         # server-side. The browser never puts a reusable session in a URL.
         token = secrets.token_urlsafe(32)
-        expires = self.clock() + 1800
+        expires = min(self.clock() + 1800, datetime.fromisoformat(auth['expires_at'].replace('Z', '+00:00')).timestamp())
         with self.db() as db:
             db.execute('INSERT INTO member_identity_sessions VALUES(?,?,?)',
                 (digest('handoff:' + token), self.identity.encrypt(encoded({'purpose': 'portal_handoff', 'site_id': site_id, 'auth': auth})), expires))

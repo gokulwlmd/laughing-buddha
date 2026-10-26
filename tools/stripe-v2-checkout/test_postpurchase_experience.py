@@ -22,6 +22,13 @@ class HandoffTests(StickyMembershipTests):
     def test_revoked_session_rejects_handoff(self):
         token=self.setup()['portal_handoff'];self.remote.active=False
         with self.assertRaises(HTTPException):self.service.consume_handoff('site-a',token)
+    def test_handoff_expiration_does_not_outlive_sticky_session(self):
+        from datetime import datetime, timezone
+        self.setup()
+        expires=self.service.clock()+90
+        self.remote.members[self.email()]['identity']['token_expires_at']=datetime.fromtimestamp(expires,timezone.utc).isoformat()
+        result=self.setup()
+        self.assertEqual(datetime.fromisoformat(result['handoff_expires_at'].replace('Z','+00:00')).timestamp(),expires)
 
 class QuestionnaireTests(unittest.TestCase):
     def test_reference_schema_preserves_branches_without_ssn(self):

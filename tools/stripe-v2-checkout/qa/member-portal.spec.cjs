@@ -165,8 +165,8 @@ test('MEMBER-07 owner session never exposes staff controls on a patient route',a
 async function patientData(page,suffix,site='site-a'){
   return page.evaluate(async({suffix,site})=>{const auth=JSON.parse(sessionStorage.getItem('member-portal-session:site-a'));const response=await fetch(`/api/v1/sites/${site}/portal${suffix}`,{headers:{Authorization:`Bearer ${auth.access_token}`}});return{status:response.status,body:await response.json()};},{suffix,site});
 }
-async function finishCareForm(page,taskId){
-  const form=(await patientData(page,`/orders/9001/care-tasks/${taskId}/intake`)).body;
+async function finishCareForm(page,taskId,identityLast=false){
+  const form=(await patientData(page,taskId?`/orders/9001/care-tasks/${taskId}/intake`:'/intakes/9001')).body;
   for(const section of form.template.sections){
     await expect(page.locator('.intake-card h2')).toHaveText(section.title);
     for(const question of form.template.questions.filter(item=>item.section_id===section.id)){
@@ -178,7 +178,9 @@ async function finishCareForm(page,taskId){
     }
     const next=page.getByRole('button',{name:'Save & continue',exact:true});if(await next.count())await next.click();
   }
-  await page.getByRole('button',{name:/^Submit (intake|check-in)$/}).click();await expect(page.locator('.submitted-hero')).toBeVisible();
+  await page.getByRole('button',{name:/^Submit (intake|check-in)$/}).click();
+  if(identityLast)await expect(page.getByRole('heading',{name:'Verify your identity',exact:true})).toBeVisible();
+  else await expect(page.locator('.submitted-hero')).toBeVisible();
 }
 
 test.describe('Configured 12-month care journey',()=>{
@@ -191,7 +193,7 @@ test.describe('Configured 12-month care journey',()=>{
     for(const width of [1440,390]){await page.setViewportSize({width,height:1000});await page.screenshot({path:testInfo.outputPath(`care-start-${width}.png`),fullPage:true});}await page.setViewportSize({width:1440,height:1000});
     await timeline.getByRole('button',{name:'Start intake',exact:true}).click();await finishCareForm(page,'initial');
     const initial=(await patientData(page,'/orders/9001/care-tasks/initial/intake')).body;expect(initial.answers.weight_goals).toBe('INITIAL QA ONLY');const intakeIds=new Set([initial.id]);
-    await page.getByRole('button',{name:'Back to my care plan',exact:true}).click();await expect(timeline.locator('[data-care-day="0"]')).toContainText('Complete');await orders(page);await expect(page.locator('#order-9001')).not.toContainText('Next eligible date:');await expect(page.locator('#order-9001')).toContainText('View your intake and refill schedule.');await expect(page.locator('#order-9001 [data-stage="payment"]')).toHaveAttribute('data-state','complete');await expect(page.locator('#order-9001 [data-stage="intake"]')).toHaveAttribute('data-state','complete');await expect(page.locator('#order-9001 [data-stage="review"]')).toHaveAttribute('data-state','unconfirmed');await expect(page.locator('#order-9001 [data-stage="prescription"],#order-9001 [data-stage="shipping"]')).toHaveCount(2);await page.getByRole('button',{name:'Medical intake',exact:true}).click();
+    await page.getByRole('button',{name:'See my next steps',exact:true}).click();await expect(timeline.locator('[data-care-day="0"]')).toContainText('Complete');await orders(page);await expect(page.locator('#order-9001')).not.toContainText('Next eligible date:');await expect(page.locator('#order-9001')).toContainText('View your intake and refill schedule.');await expect(page.locator('#order-9001 [data-stage="payment"]')).toHaveAttribute('data-state','complete');await expect(page.locator('#order-9001 [data-stage="intake"]')).toHaveAttribute('data-state','complete');await expect(page.locator('#order-9001 [data-stage="review"]')).toHaveAttribute('data-state','unconfirmed');await expect(page.locator('#order-9001 [data-stage="prescription"],#order-9001 [data-stage="shipping"]')).toHaveCount(2);await page.getByRole('button',{name:'Medical intake',exact:true}).click();
     const admin=await page.context().newPage();await admin.goto(member.origin+'/portal-admin/site-a');
     async function simulate(day){await admin.locator('[data-action="care-simulation"][data-order="9001"]').click();await admin.locator('#care-simulation-day').selectOption(String(day));await admin.getByRole('button',{name:'Apply timeline preview',exact:true}).click();await expect(admin.getByRole('dialog')).toHaveCount(0);
       if(day===80){let release,observed;const gate=new Promise(resolve=>release=resolve),requested=new Promise(resolve=>observed=resolve),url='**/api/v1/sites/site-a/portal/orders';await page.route(url,async route=>{observed();await gate;await route.continue();});await page.reload();await requested;try{await expect(page.getByRole('button',{name:'Medical intake',exact:true})).toBeDisabled();}finally{release();}await expect(page.locator('.welcome-card')).toBeVisible();await page.unroute(url);}else await page.reload();await expect(page.locator('.welcome-card')).toBeVisible();await page.getByRole('button',{name:'Medical intake',exact:true}).click();await patientCopy(page);}
@@ -201,7 +203,7 @@ test.describe('Configured 12-month care journey',()=>{
       const care=(await patientData(page,'/orders/9001/care-plan')).body;const claimed=care.tasks.find(item=>item.id===`checkin-${day}`);expect(claimed.claim.status).toBe('claimed');expect(claimed.claim.order_id).toBe(childId);expect(claimed.claim.amount).toBe('0.00');
       const fresh=(await patientData(page,`/orders/9001/care-tasks/checkin-${day}/intake`)).body;expect(fresh.answers).toEqual({});expect(intakeIds.has(fresh.id)).toBe(false);intakeIds.add(fresh.id);await expect(page.locator('[data-question="weight_progress"]')).toHaveValue('');
       if(day===90){await page.locator('[data-question="weight_progress"]').fill('REFILL 1 DRAFT ONLY');await expect(page.locator('#save-status')).toHaveText('Saved');await page.reload();await expect(page.locator('.welcome-card')).toBeVisible();await page.getByRole('button',{name:'Medical intake',exact:true}).click();await task.getByRole('button',{name:'Continue form',exact:true}).click();await expect(page.locator('[data-question="weight_progress"]')).toHaveValue('REFILL 1 DRAFT ONLY');}
-      await finishCareForm(page,`checkin-${day}`);await page.getByRole('button',{name:'Back to my care plan',exact:true}).click();await expect(timeline).toHaveCount(1);await expect(task).toContainText('Complete');await expect(task).toContainText(`Refill order ${childId}`);await expect(task.getByRole('button',{name:'Claim included refill',exact:true})).toHaveCount(0);
+      await finishCareForm(page,`checkin-${day}`);await page.getByRole('button',{name:'See my next steps',exact:true}).click();await expect(timeline).toHaveCount(1);await expect(task).toContainText('Complete');await expect(task).toContainText(`Refill order ${childId}`);await expect(task.getByRole('button',{name:'Claim included refill',exact:true})).toHaveCount(0);
       const stats=await(await page.request.get(member.origin+'/__member_qa')).json();expect(stats.calls['POST /api/v1/order_force_bill']).toBe(day/90);expect(stats.native_orders.filter(order=>order.id!=='9001').every(order=>order.total==='0.00')).toBe(true);
     }
     expect(intakeIds.size).toBe(4);const retained=(await patientData(page,'/orders/9001/care-tasks/initial/intake')).body;expect(retained.answers).toEqual(initial.answers);expect(retained.status).toBe('submitted');expect((await patientData(page,'/orders/9001/care-plan','site-b')).status).toBe(401);
@@ -513,11 +515,13 @@ for(const width of [1440,390])test(`IDENTITY account settings and intake at ${wi
   await reflow(page,width);await page.screenshot({path:info.outputPath(`identity-account-needed-${width}.png`),fullPage:true});
   await page.getByRole('button',{name:'Medical intake',exact:true}).click();
   await page.getByRole('button',{name:'Start intake',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'Verify your identity',exact:true})).toBeVisible();
+  await expect(page.locator('#intake-form')).toBeVisible();
+  await expect(page.getByLabel('Last 4 digits of your SSN')).toHaveCount(0);
+  await finishCareForm(page,null,true);
   await expect(page.locator('#intake-form')).toHaveCount(0);
   await page.getByLabel('Last 4 digits of your SSN').fill('1234');
-  await page.getByRole('button',{name:'Verify & continue to intake',exact:true}).click();
-  await expect(page.locator('#intake-form')).toBeVisible();
+  await page.getByRole('button',{name:'Verify & finish intake',exact:true}).click();
+  await expect(page.locator('.submitted-hero')).toBeVisible();
   await page.getByRole('button',{name:'Account settings',exact:true}).click();
   await expect(page.getByText("You're verified. You're all set.",{exact:true})).toBeVisible();
   await expect(page.locator('#identity-last4')).toHaveCount(0);
@@ -529,6 +533,9 @@ for(const width of [1440,390])test(`IDENTITY account settings and intake at ${wi
 for(const width of [1440,390])test(`IDPHOTO upload alternative resumes intake at ${width}px`,async({page,member},info)=>{
  await page.setViewportSize({width,height:1000});await enroll(page,member);await page.request.post(member.origin+'/__member_identity');
  await page.getByRole('button',{name:'Medical intake',exact:true}).click();await page.getByRole('button',{name:'Start intake',exact:true}).click();
+ await expect(page.locator('#intake-form')).toBeVisible();
+ await expect(page.getByLabel('Upload ID',{exact:true})).toHaveCount(0);
+ await finishCareForm(page,null,true);
  await expect(page.getByLabel('Upload ID',{exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Take photo of ID',exact:true})).toBeVisible();
  const data=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=800;c.height=500;const x=c.getContext('2d');x.fillStyle='#e4e7e4';x.fillRect(0,0,800,500);x.fillStyle='#333';x.font='24px sans-serif';x.fillText('SYNTHETIC UI TEST - NOT AN ID',100,250);return c.toDataURL('image/png').split(',')[1];});
@@ -536,7 +543,7 @@ for(const width of [1440,390])test(`IDPHOTO upload alternative resumes intake at
  await expect(page.getByRole('img',{name:/Your selected ID photo/})).toBeVisible();
  await page.screenshot({path:info.outputPath('id-photo-preview-'+width+'.png'),fullPage:true});
  await page.getByRole('button',{name:'Upload this photo',exact:true}).click();
- await expect(page.locator('#intake-form')).toBeVisible();
+ await expect(page.locator('.submitted-hero')).toBeVisible();
  await page.getByRole('button',{name:'Account settings',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Your ID photo is saved'})).toBeVisible();
  await expect(page.getByText('Your ID photo is on file.',{exact:true})).toBeVisible();
@@ -553,7 +560,7 @@ test.describe('Source-defined wellness refills',()=>{
     const timeline=page.locator('[data-care-order="9001"]');
     await expect(timeline).toContainText('No refill check-in is required');
     await timeline.getByRole('button',{name:'Start intake',exact:true}).click();await finishCareForm(page,'initial');
-    await page.getByRole('button',{name:'Back to my care plan',exact:true}).click();
+    await page.getByRole('button',{name:'See my next steps',exact:true}).click();
     const admin=await page.context().newPage();await admin.goto(member.origin+'/portal-admin/site-a');
     await admin.locator('[data-action="care-simulation"][data-order="9001"]').click();
     await admin.locator('#care-simulation-day').selectOption('80');

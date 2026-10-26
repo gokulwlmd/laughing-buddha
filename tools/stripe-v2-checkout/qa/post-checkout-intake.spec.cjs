@@ -145,3 +145,80 @@ test('optional offer shows explicit price and does not submit another purchase a
  await expect(page.getByRole('button',{name:'Buy for $1.00'})).toHaveCount(0);expect(purchases).toBe(1);
  await expect(page.getByRole('heading',{name:'Semaglutide health intake'})).toBeVisible();
 });
+
+// Real component, isolated transport: every cart item keeps its own receipt and
+// intake even when an ancillary read or another item's account setup fails.
+async function setupCart(page,{failJourney=false,failSecondAccount=false,expiredHandoff=false}={}){
+ const drafts=['first','second'].map(id=>({id,revision:0,status:'draft',current_step:0,answers:{allergies:'no'},template}));
+ const accountCalls=[],portalCalls=[];
+ let failed=false;
+ await page.route('https://shop.example/**',r=>r.fulfill({contentType:'text/html',body:'<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="font:18px Arial;margin:16px"><wlmd-purchase-intake></wlmd-purchase-intake><script src="https://backend.example/portal-assets/post-checkout.js"></script></body></html>'}));
+ await page.route('https://backend.example/portal-assets/post-checkout.js',r=>r.fulfill({contentType:'text/javascript',body:script}));
+ await page.route('https://backend.example/portal/**',r=>r.fulfill({contentType:'text/html',body:'<h1>Member portal destination</h1>'}));
+ await page.route('https://backend.example/api/**',async r=>{
+  const headers={'access-control-allow-origin':'https://shop.example','access-control-allow-methods':'GET,POST,PATCH','access-control-allow-headers':'authorization,content-type'};
+  if(r.request().method()==='OPTIONS')return r.fulfill({headers});
+  const url=new URL(r.request().url()),i=url.pathname.includes('/first/')?0:1;
+  expect(r.request().headers().authorization).toBe('Bearer '+['first-receipt','second-receipt'][i]);
+  const send=(json,status=200)=>r.fulfill({headers,json,status});
+  if(url.pathname.endsWith('/account')){
+   if(r.request().method()==='GET')return send({state:'set_password'});
+   accountCalls.push(i);expect(r.request().postDataJSON()).toEqual({password:'Synthetic-password-123!'});
+   if(failSecondAccount&&i===1&&!failed){failed=true;return send({detail:'Connecting this product failed. Please try again.'},503);}
+   return send({state:'ready',portal_handoff:'synthetic-handoff-'+i,handoff_expires_at:new Date(Date.now()+(expiredHandoff?-60000:1800000)).toISOString()});
+  }
+  if(url.pathname.endsWith('/portal')){portalCalls.push(i);return send({site_id:'fortifyhp',enrollment_url:`https://backend.example/portal/fortifyhp#invite=synthetic-invitation-${i}`});}
+  if(url.pathname.endsWith('/journey'))return failJourney?send({detail:'Status unavailable'},503):send({id:i+1,product_name:['Semaglutide','Metformin'][i],intake_status:drafts[i].status,journey:{title:'Order received',stages:[]}});
+  if(url.pathname.endsWith('/offers'))return send({offers:[]});
+  if(r.request().method()==='PATCH'){expect(r.request().postDataJSON().revision).toBe(drafts[i].revision);Object.assign(drafts[i],r.request().postDataJSON(),{revision:drafts[i].revision+1});}
+  if(url.pathname.endsWith('/submit')){drafts[i].status='submitted';drafts[i].revision++;}
+  return send(drafts[i]);
+ });
+ await page.goto('https://shop.example/complete');
+ await page.evaluate(async()=>{await customElements.whenDefined('wlmd-purchase-intake');await document.querySelector('wlmd-purchase-intake').configure({siteId:'fortifyhp',sessions:[{session_id:'first',session_token:'first-receipt'},{session_id:'second',session_token:'second-receipt'}]});});
+ return {drafts,accountCalls,portalCalls};
+}
+async function saveCartPassword(page){
+ await page.getByLabel('Choose a password').fill('Synthetic-password-123!');
+ await page.getByLabel('Confirm password',{exact:true}).fill('Synthetic-password-123!');
+ await page.getByRole('button',{name:'Save portal password',exact:true}).click();
+}
+test('multi-product completion survives failed status reads and offers the remaining intake only',async({page},info)=>{
+ await page.setViewportSize({width:390,height:844});
+ const state=await setupCart(page,{failJourney:true});
+ for(let i=0;i<2;i++){
+  await page.getByRole('button',{name:'Continue',exact:true}).click();
+  await page.getByRole('button',{name:'Submit intake',exact:true}).click();
+  await expect(page.getByText(`${i+1} of 2 complete`,{exact:true})).toBeVisible();
+  if(i===0)await page.getByRole('button',{name:'Finish another product’s intake'}).click();
+ }
+ await expect(page.getByRole('button',{name:'Finish another product’s intake'})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Go to my care plan →'})).toBeVisible();
+ expect(state.drafts.map(d=>d.status)).toEqual(['submitted','submitted']);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.screenshot({path:info.outputPath('multi-product-complete-mobile.png'),fullPage:true});
+});
+test('partial account setup retries only the missing receipt then uses the verified handoff',async({page})=>{
+ const state=await setupCart(page,{failSecondAccount:true});
+ await saveCartPassword(page);
+ await expect(page.getByText('Your password is saved. Enter the same password',{exact:false})).toBeVisible();
+ await saveCartPassword(page);
+ await expect(page.getByRole('heading',{name:'Your portal password is saved'})).toBeVisible();
+ expect(state.accountCalls).toEqual([0,1,1]);
+ expect(await page.evaluate(()=>JSON.stringify({...localStorage,...sessionStorage}))).not.toContain('Synthetic-password');
+ await page.getByRole('button',{name:'Open member portal',exact:true}).click();
+ await expect(page).toHaveURL('https://backend.example/portal/fortifyhp#handoff=synthetic-handoff-1');
+ expect(state.portalCalls).toEqual([]);
+});
+for(const scenario of ['partial','expired'])test(`${scenario} account handoff preserves all purchased receipts for portal sign-in`,async({page})=>{
+ const state=await setupCart(page,{failSecondAccount:scenario==='partial',expiredHandoff:scenario==='expired'});
+ await saveCartPassword(page);
+ if(scenario==='partial')await expect(page.getByRole('alert')).toContainText('Connecting this product failed');
+ else await expect(page.getByText('use your password to open your member portal.',{exact:false})).toBeVisible();
+ await page.getByRole('button',{name:'Open member portal',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Member portal destination'})).toBeVisible();
+ const hash=new URLSearchParams(new URL(page.url()).hash.slice(1));
+ expect(hash.has('handoff')).toBe(false);
+ expect(JSON.parse(hash.get('invites'))).toEqual(['synthetic-invitation-0','synthetic-invitation-1']);
+ expect(state.portalCalls.sort()).toEqual([0,1]);
+});
