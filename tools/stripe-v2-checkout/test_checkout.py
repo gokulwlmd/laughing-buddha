@@ -17,15 +17,18 @@ class FakeSticky:
         self.calls=[];self.reads=[];self.fail_authorize=False;self.capture_code='100';self.total='2.00'
         self.secret_intent='pi_owned123';self.order_total='2.00';self.link_gateway=254;self.archived=False;self.missing=False;self.duplicate=False
         self.recurring=False;self.prepaid=False;self.key='pi_owned123';self.tax_provider=0
+    def offer(self):
+        return {'id':706,'name':'Configured offer','is_prepaid':int(self.prepaid),
+            'products':[{'id':54537}]+([{'id':54538}] if self.duplicate else []),
+            'billing_models':[{'id':2,'name':'One time'}]+([{'id':3,'name':'30 days','days':30,'type':{'id':1}}] if self.recurring else [])}
     def detail(self,path):
         self.reads.append(path)
+        if path=='/api/v2/offers/706':return self.offer()
         if '/campaigns/' in path:
             return {'name':'Any brand','is_active':1,'is_archived':0,'gateway_id':99,'tax_provider_id':self.tax_provider,
                 'payment_methods':[{'value':'visa'},{'value':'stripe_link'},{'value':'master'}],
                 'alternative_payments':[{'payment_method':'stripe_link','provider':{'id':self.link_gateway,'account_id':250}}],
-                'offers':[{'id':706,'name':'Configured offer','is_prepaid':int(self.prepaid),
-                    'products':[{'id':54537}]+([{'id':54538}] if self.duplicate else []),
-                    'billing_models':[{'id':2,'name':'One time'}]+([{'id':3,'name':'30 days','days':30,'type':{'id':1}}] if self.recurring else [])}],
+                'offers':[self.offer()],
                 'shipping_profiles':[{'id':2,'name':'Free shipping'}],'countries':[{'iso_2':'US','name':'United States'}]}
         if '/products/' in path:
             return {'id':int(path.split('/')[-1]),'name':'SKU product','sku':'OTHER' if self.missing else SKU,

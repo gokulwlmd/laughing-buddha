@@ -1,5 +1,8 @@
 """Explicit SKU bindings for mock intake/check-in content, not clinical rules."""
 from copy import deepcopy
+import os
+import json
+from pathlib import Path
 from patient_demo.provider import get_template as initial_template, question, YES_NO
 
 PRODUCTS = {
@@ -18,7 +21,8 @@ SKU_BINDINGS = {
 
 
 def binding_for_sku(sku):
-    return deepcopy(SKU_BINDINGS.get(sku))
+    from catalog_refill_policies import source_binding
+    return deepcopy(SKU_BINDINGS.get(sku) or source_binding(sku))
 
 
 def get_template(template_id, *, sku, kind='initial'):
@@ -27,7 +31,20 @@ def get_template(template_id, *, sku, kind='initial'):
         raise ValueError('No mock intake is assigned to this product')
     name = binding['product_name']
     if kind == 'initial':
-        result = initial_template(template_id)
+        if template_id in ('hair-growth', 'nad-plus', 'glutathione', 'premature-ejaculation', 'performance-anxiety', 'sleep', 'skin-care', 'womens-sexual-health', 'erectile-dysfunction', 'hrt', 'trt', 'longevity'):
+            from patient_demo.provider import COMMON
+            result = {'sections': [
+                {'id': 'goals', 'title': 'Your treatment', 'description': 'Tell us what brought you here.'},
+                {'id': 'health', 'title': 'Health background', 'description': 'Review your current health information.'},
+                {'id': 'review', 'title': 'Review & submit', 'description': 'Check your answers before submitting.'}],
+                'questions': [question('treatment_goals', 'goals', f'What would you like to discuss about {name}?'),
+                    question('previous_treatment', 'goals', f'Have you used {name} before?', 'single_choice', 'no', options=YES_NO),
+                    question('previous_treatment_details', 'goals', 'Tell us about your previous treatment and experience.',
+                        show_if={'question_id': 'previous_treatment', 'equals': 'yes'}), *deepcopy(COMMON)]}
+        elif template_id == 'weight-loss' and os.environ.get('WEIGHT_LOSS_INTAKE_SOURCE') == 'coreage':
+            result = json.loads((Path(__file__).parent / 'weight_loss_questions.json').read_text())
+        else:
+            result = initial_template(template_id)
         result['questions'] = [q for q in result['questions'] if q['id'] != 'demo_confirmation']
     else:
         specific = {
@@ -50,7 +67,7 @@ def get_template(template_id, *, sku, kind='initial'):
                 question('pt141_progress', 'progress', 'Have your sexual health concerns changed since your last check-in?',
                          sample='MOCK TEST: No real health information supplied.'),
             ],
-        }[template_id]
+        }.get(template_id, [question('treatment_progress', 'progress', f'What would you like to discuss about your experience with {name}?')])
         result = {
             'sections': [
                 {'id': 'progress', 'title': 'Your progress', 'description': 'Tell us how things have been going.'},
@@ -75,7 +92,7 @@ def get_template(template_id, *, sku, kind='initial'):
                          sample='MOCK TEST: End-to-end portal verification only.', required=False),
             ],
         }
-    result.update(id=f'{template_id}-{sku}-{kind}-mock', version='mock-care-1',
+    result.update(id=f'{template_id}-{sku}-{kind}-mock', version=result.get('version', 'coreage-reference-2026-10-26') if result.get('source_url') else 'mock-care-1',
                   title=f'{name} '+('health intake' if kind == 'initial' else 'check-in'),
                   demo=True, mock=True, sku=sku, product_name=name, kind=kind,
                   description='Mock questions for testing this care journey. The medical intake provider is not connected; these answers are not sent to clinicians.')

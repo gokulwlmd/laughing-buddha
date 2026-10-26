@@ -28,6 +28,53 @@ If access is missing, distinguish an unset binding, a network-proxy denial, HTTP
 
 ## Inspect the catalog
 
+### New master therapies: base and `-SUB` pairs
+
+For this platform's new master-therapy recipes, the owner's purchase convention
+is **base SKU = full-term upfront, one-time, no renewal** and **the exact base
+SKU plus `-SUB` = full-term upfront, recurring**. Build both for every approved
+medication/form/strength/quantity/duration combination unless the owner explicitly
+limits the purchase types. Do not copy a reference storefront's subscription-only
+catalog over this convention. Do not invent a second product variant just to
+represent purchase type in the customer selector.
+
+- For the approved 1/3/6/12-month recipes, renew `-SUB` after 30/90/180/360 days.
+  Never turn an upfront six-month term into six monthly charges.
+- Keep delivery and billing separate. A base SKU can have multiple included
+  $0 shipments and still have no paid renewal. Both members of a newly created
+  pair start with the same approved product identity and delivery schedule;
+  preserve exact source rules rather than inheriting another therapy's rules.
+- Show **One-time / Subscription** in the preview, resolve each to its exact
+  SKU, and update renewal disclosures when switching. Keep existing prices
+  editable; do not invent a subscription discount.
+- Before marking setup complete, validate both stored contracts and preview
+  resolution for every combination. Use
+  `tools/stripe-v2-checkout/catalog_contracts.py:validate_purchase_pairs` for
+  paired planning drafts; ED regression coverage is `test_ed_master.py`.
+  88 ED product combinations require **176 master SKUs**, not 88 recurring
+  records with base names.
+- This rule governs new paired recipes. Do not rename or rewrite legacy Sticky
+  offers, assigned products, or existing subscriptions to enforce it. Corrections
+  must check actual assignments and preserve customer records and owner edits.
+
+### Site publication: both purchase options
+
+The owner's 26 October 2026 clarification extends purchase pairing through site
+deployment: every finalized paired medication/form/strength/quantity/duration
+must expose **One-time and Subscription** in the site's API and customer selector.
+Having both SKUs only in the master catalog is insufficient. Verify both exact
+site/campaign mappings, upfront amounts, renewal disclosures and delivery rules
+before calling that product's site setup complete. A request to start with a
+duration (for example, "12-month NAD+") does not limit purchase type unless the
+owner explicitly says so. Keep genuinely one-time source packs/labs and unresolved
+variants outside this pairing rule; do not invent a recurring contract for them.
+
+Existing partial test publications are incomplete setups to correct during the
+authorized site rollout, not defaults for future sites. Preserve existing orders,
+subscriptions and brand prices when adding the missing counterpart. FortifyHP's
+12-month NAD+ currently lacks its one-time publication; this recorded requirement
+does not itself mean that provider mapping or publication has been performed.
+
 1. Read the relevant product and offer, then their campaign and billing models as needed.
 2. Trace the relationship explicitly: **SKU → Sticky product ID → offer ID → campaign ID**, with the selected billing-model ID. A SKU can occur on several distinct product records across brand-named offers.
 3. Prefer a known product ID or a narrowed offer's product list. Inspect candidate product records to confirm an exact SKU. Do not assume a product-name match proves the SKU or that the first match is unique.

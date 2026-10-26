@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -12,7 +13,7 @@ import sqlite3
 import threading
 import time
 from functools import wraps
-from catalog import CatalogError, resolve, quote
+from catalog import CatalogError, CouponError, CampaignSnapshots, AuthorizationCampaignReuse, RoutingHints, resolve, quote
 from prepaid import order_terms_match
 from admin import Admin, branding as brand_presentation
 from dataclasses import dataclass
@@ -40,6 +41,31 @@ class NoRedirect(urlrequest.HTTPRedirectHandler):
 
 class Sticky:
     def call(self, method, path, body=None):
+        # Fixed operation labels only: never log request bodies, identifiers,
+        # credentials, customer data or provider error text.
+        operation = next((label for suffix, label in (
+            ('/authorize_payment', 'authorize'), ('/new_order', 'create_order'),
+            ('/order_view', 'verify_order'), ('/order_total/calculate', 'calculate_total'),
+        ) if path.endswith(suffix)), None)
+        if operation is None and method == 'GET':
+            operation = next((label for prefix, label in (
+                ('/api/v2/campaigns/', 'campaign'), ('/api/v2/offers/', 'offer'),
+                ('/api/v2/products/', 'product'),
+                ('/api/v2/providers/payment/profiles/', 'gateway'),
+            ) if path.startswith(prefix)), None)
+        started = time.monotonic()
+        outcome = 'error'
+        try:
+            result = self._call(method, path, body)
+            outcome = 'response'
+            return result
+        finally:
+            if operation:
+                logging.getLogger('uvicorn.error').info(
+                    'sticky_timing operation=%s duration_ms=%.1f outcome=%s',
+                    operation, (time.monotonic() - started) * 1000, outcome)
+
+    def _call(self, method, path, body=None):
         if not path.startswith('/api/') or '?' in path:
             raise StickyError('Unexpected API path')
         username = os.environ.get('STICKY_API_USERNAME')
@@ -135,6 +161,7 @@ class QuoteRequest(BaseModel):
     selection: str = Field(max_length=80)
     shipping_id: int | None = Field(default=None, gt=0)
     dollar_test: bool = False
+    coupon_code: str = Field(default='', max_length=30, pattern=r'^[A-Za-z0-9_% .-]*$')
 
 
 class AuthorizeRequest(BaseModel):
@@ -239,10 +266,16 @@ def create_app(settings=None, sticky=None):
         invite_path.chmod(0o600)
     invite = invite_path.read_text().strip()
     cached = {}  # Client secrets remain in memory, never in source, DB, or logs.
+    routing_hints = RoutingHints()
+    campaign_snapshots = CampaignSnapshots(api)
+    capture_campaigns = AuthorizationCampaignReuse()
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.store = store
     app.state.settings = cfg
     app.state.invite = invite
+    app.state.routing_hints = routing_hints
+    app.state.campaign_snapshots = campaign_snapshots
+    app.state.capture_campaigns = capture_campaigns
     admin = Admin(store,cfg,api,invite,ROUTE_LOCK)
     if cfg.synthetic:
         from synthetic import seed_demo
@@ -311,10 +344,33 @@ def create_app(settings=None, sticky=None):
             raise HTTPException(409, 'This tab refers to another purchase. Reload the checkout before continuing.')
         return key, row
 
-    def catalog(req, legacy=False):
+    def catalog(req, legacy=False, preview=False, campaign_snapshot=None, remember_campaign=None):
         if req.query_params.get('link_id'):
             link, brand = admin.link_access(req)
-            c = resolve(api, *context(req), allowed_keys=None if legacy else link['options'])
+            allowed = None if legacy else link['options']
+            cache_key = (*context(req), tuple(sorted(allowed or [])))
+            campaign, sku = context(req)
+            def read_campaign(fresh):
+                if campaign_snapshot is not None:
+                    return campaign_snapshot
+                value = campaign_snapshots.read(campaign, fresh=fresh)
+                if fresh and remember_campaign is not None:
+                    remember_campaign.update(snapshot=value, checked_at=capture_campaigns.clock())
+                return value
+            def read_catalog(fresh):
+                return resolve(api, campaign, sku, allowed_keys=allowed, gateway_hint=routing_hints.get(cache_key) if allowed else None,
+                               campaign_loader=(lambda: read_campaign(fresh)) if allowed else None,
+                               fresh_offers=bool(allowed))
+            try:
+                c = read_catalog(fresh=not preview)
+            except CatalogError:
+                if not preview or not allowed:
+                    raise
+                # A newly published choice may not exist in the short snapshot.
+                # Refresh setup once rather than making it wait for expiry.
+                c = read_catalog(fresh=True)
+            routing_hints.remember(cache_key, c.get("gatewayId"))
+            # Local publication/access restrictions are checked on every request.
             return admin.filter_catalog(c,link,brand)
         return resolve(api, *context(req))
 
@@ -350,7 +406,8 @@ def create_app(settings=None, sticky=None):
 
     @app.middleware('http')
     async def headers(req, call_next):
-        if req.headers.get('content-length', '0').isdigit() and int(req.headers.get('content-length', '0')) > 16384:
+        from member_portal.upload_limits import is_id_upload
+        if not is_id_upload(req.url.path) and req.headers.get('content-length', '0').isdigit() and int(req.headers.get('content-length', '0')) > 16384:
             return JSONResponse({'detail': 'Request too large'}, status_code=413)
         response = await call_next(req)
         response.headers['Cache-Control'] = 'no-store'
@@ -459,7 +516,7 @@ def create_app(settings=None, sticky=None):
     def configuration(req: Request):
         access(req)
         _, row = session(req)
-        c = catalog(req)
+        c = catalog(req, preview=True)
         ready = bool(cfg.public_url and cfg.authorization_verified and not c['blockedReason'])
         return {k: c[k] for k in ('campaignId','campaignName','sku','options','shipping','countries','currency','publishableKey')} | {
             'csrfToken': admin.checkout_csrf(admin.link(req.query_params['link_id'])[0]) if req.query_params.get('link_id') else csrf(), 'branding': c.get('branding'), 'checkoutTitle': c.get('checkoutTitle'), 'ready': ready, 'blockedReason': c['blockedReason'] or ('' if ready else 'The secure checkout connection is still being configured.'),
@@ -481,8 +538,15 @@ def create_app(settings=None, sticky=None):
     def serialized(fn):
         @wraps(fn)
         def locked(*args, **kwargs):
+            started = time.monotonic()
             with ROUTE_LOCK:
-                return fn(*args, **kwargs)
+                acquired = time.monotonic()
+                try:
+                    return fn(*args, **kwargs)
+                finally:
+                    logging.getLogger('uvicorn.error').info(
+                        'checkout_timing operation=%s wait_ms=%.1f duration_ms=%.1f',
+                        fn.__name__, (acquired-started)*1000, (time.monotonic()-acquired)*1000)
         return locked
 
     @app.post('/api/new-purchase')
@@ -507,22 +571,28 @@ def create_app(settings=None, sticky=None):
         return response
 
     @app.post('/api/quote')
-    @serialized
     def calculate(body: QuoteRequest, req: Request):
         access(req, True)
         key, row = session(req)
         if row['status'] != 'new':
             raise HTTPException(409, 'An existing payment must be reconciled before changing this checkout')
-        c = catalog(req)
+        c = catalog(req, preview=not body.dollar_test)
         if body.dollar_test:
             if not dollar_test_available(admin,req,c):
                 raise HTTPException(403, '$1 testing is not enabled for this checkout')
             c = test_catalog(c)
-        q = quote(api, c, body.selection, body.shipping_id, body.contact.model_dump())
+        try:
+            q = quote(api, c, body.selection, body.shipping_id, body.contact.model_dump(), body.coupon_code.strip())
+        except CouponError as exc:
+            raise HTTPException(422, str(exc)) from None
         q.update({'id': secrets.token_urlsafe(24), 'expires': time.time()+600})
-        if not store.claim('new','new',key,quote=json.dumps(q),contact=json.dumps(body.contact.model_dump())):
-            raise HTTPException(409, 'Checkout state changed')
-        return {k:q[k] for k in ('id','amount','currency','option','total')}
+        # Read-only Sticky calculations can overlap across cart items. Keep
+        # the final quote/contact write mutually exclusive with authorization
+        # so a concurrent quote cannot change contact beneath an active intent.
+        with ROUTE_LOCK:
+            if not store.claim('new','new',key,quote=json.dumps(q),contact=json.dumps(body.contact.model_dump())):
+                raise HTTPException(409, 'Checkout state changed')
+        return {k:q[k] for k in ('id','amount','currency','option','total','coupon','discountAmount','subtotalAmount','renewalPrice') if k in q}
 
     @app.post('/api/authorize')
     @serialized
@@ -541,13 +611,14 @@ def create_app(settings=None, sticky=None):
         if q['option']['recurring'] and not body.recurring_consent:
             raise HTTPException(422, 'Accept the displayed recurring billing terms to continue')
         contact = json.loads(row['contact'])
-        c = catalog(req, legacy=q.get('catalogVersion',1)!=2)
+        verified_campaign = {}
+        c = catalog(req, legacy=q.get('catalogVersion',1)!=2, remember_campaign=verified_campaign)
         if q.get('option',{}).get('dollarTest'):
             if not dollar_test_available(admin,req,c):
                 raise HTTPException(409, '$1 testing was disabled. Review a fresh total before paying.')
             c = test_catalog(c)
-        current = quote(api,c,q['selection'],q['shippingId'],contact)
-        if any(current[k] != q[k] for k in ('amount','currency','fingerprint','option')):
+        current = quote(api,c,q['selection'],q['shippingId'],contact,q.get('coupon',{}).get('code',''))
+        if any(current.get(k) != q.get(k) for k in ('amount','currency','fingerprint','option','coupon','renewalPrice')):
             raise HTTPException(409, 'Campaign configuration or price changed. Review a fresh quote.')
         if not store.claim('new', 'authorization_pending', key, quote=json.dumps(q | {'consented_at':time.time(),'recurring_consent':body.recurring_consent})):
             raise HTTPException(409, 'A payment attempt already exists')
@@ -560,7 +631,11 @@ def create_app(settings=None, sticky=None):
         if not isinstance(intent, str) or intent != token.split('_secret_')[0]:
             raise StickyError('Sticky returned inconsistent payment identifiers. The attempt is held for review.')
         store.claim('authorization_pending', 'awaiting_card', key, intent_id=intent)
-        cached[key] = {'clientSecret': token, 'intentId': intent, 'amount':q['amount'], 'currency':q['currency']}
+        if verified_campaign:
+            capture_campaigns.remember(key, q['campaignId'], q['id'], intent,
+                                       verified_campaign['snapshot'], verified_campaign['checked_at'])
+        cached[key] = {'clientSecret': token, 'intentId': intent, 'amount':q['amount'], 'currency':q['currency'],
+                       'publishableKey': c['publishableKey']}
         return cached[key]
 
     @app.post('/api/resume')
@@ -572,11 +647,12 @@ def create_app(settings=None, sticky=None):
         key, row = session(req)
         if row['status'] != 'awaiting_card' or key not in cached:
             raise HTTPException(409, 'This payment needs review before continuing. Please contact support; do not start another payment.')
+        capture_campaigns.discard(key)  # A resumed form requires full capture validation.
         q=json.loads(row['quote'])
         c=catalog(req, legacy=q.get('catalogVersion',1)!=2)
         if c['fingerprint']!=q['fingerprint'] or c['blockedReason']:
             raise HTTPException(409, 'The payment configuration changed. Please contact support before continuing.')
-        return cached[key] | {'contact':json.loads(row['contact']),'option':q['option']}
+        return cached[key] | {'publishableKey':c['publishableKey'],'contact':json.loads(row['contact']),'option':q['option']} | {k:q[k] for k in ('coupon','renewalPrice','discountAmount','subtotalAmount') if k in q}
 
     @app.post('/api/capture')
     @serialized
@@ -590,10 +666,18 @@ def create_app(settings=None, sticky=None):
             return {'status':'captured','orderId':row['order_id'],'amount':q['amount']}
         if row['status'] != 'awaiting_card' or not row.get('intent_id'):
             raise HTTPException(409, 'No capturable payment is available. Check its status before retrying.')
-        c = catalog(req, legacy=q.get('catalogVersion',1)!=2)
-        if q.get('option',{}).get('dollarTest'):c = test_catalog(c)
-        current = quote(api,c,q['selection'],q['shippingId'],json.loads(row['contact'])) if not c['blockedReason'] else None
-        if not current or any(current[k] != q[k] for k in ('fingerprint','amount','currency','option')):
+        # Reuse only this authorization's recent campaign setup once. All
+        # selected offer/product/gateway/price reads below remain live.
+        setup = capture_campaigns.consume(key, q.get('campaignId'), q.get('id'), row['intent_id'])
+        def capture_quote(snapshot=None):
+            c = catalog(req, legacy=q.get('catalogVersion',1)!=2, campaign_snapshot=snapshot)
+            if q.get('option',{}).get('dollarTest'):c = test_catalog(c)
+            return quote(api,c,q['selection'],q['shippingId'],json.loads(row['contact']),q.get('coupon',{}).get('code','')) if not c['blockedReason'] else None
+        current = capture_quote(setup['snapshot'] if setup else None)
+        # Slow downstream reads must not extend the authorization setup window.
+        if setup and capture_campaigns.clock() >= setup['expires']:
+            current = capture_quote()
+        if not current or any(current.get(k) != q.get(k) for k in ('fingerprint','amount','currency','option','coupon','renewalPrice')):
             raise HTTPException(409, 'Campaign configuration or price changed; reconcile this authorization before capture')
         if not store.claim('awaiting_card', 'capture_pending', key):
             raise HTTPException(409, 'Capture is already in progress')
@@ -609,6 +693,8 @@ def create_app(settings=None, sticky=None):
             payload['offers'][0].update(price=option['testUnitPrice'],preserve_price=1)
         if q['shippingId'] is not None:
             payload['shippingId'] = q['shippingId']
+        if q.get('coupon'):
+            payload['promoCode'] = q['coupon']['code']
         # Only the explicitly enabled, server-calculated $1 test path overrides
         # price. It preserves that same price for subscription renewals.
         obj = api.call('POST','/api/v1/new_order',payload)
@@ -631,6 +717,15 @@ def create_app(settings=None, sticky=None):
             str(products[0].get('is_recurring')) == ('1' if option['recurring'] else '0'))
         if option.get('prepaidCycles'):valid=valid and order_terms_match(products[0],option['prepaidCycles'],option.get('renewal',False)) if valid else False
         renews_payment = option.get('renewal', False) if option.get('prepaidCycles') else option['recurring']
+        if valid and q.get('coupon'):
+            try:
+                # Sticky retains the coupon separately from the subscription's
+                # base product price. Verify that the captured order owns the
+                # exact validated lifetime/initial-only coupon and discount.
+                valid = (str(order.get('coupon_id')) == str(q['coupon']['profileId']) and
+                    Decimal(str(order.get('coupon_discount_amount'))) == Decimal(q['discountAmount']) / 100)
+            except Exception:
+                valid = False
         if valid and option.get('dollarTest') and renews_payment:
             # A correct initial total alone does not prove that the subscription
             # retained the agreed testing price. Sticky reports the full prepaid
@@ -658,6 +753,83 @@ def create_app(settings=None, sticky=None):
     @app.post('/api/portal-enrollment')
     def portal_enrollment(body: CaptureRequest, req: Request):
         return members.receipt_invite(member_receipt(req))
+    from member_portal.upsells import PostPurchaseOffers, BuyOffer
+    postpurchase = PostPurchaseOffers(members)
+    postpurchase.attach_admin(app)
+
+    @app.get('/api/post-checkout-offers')
+    def receipt_offers(req: Request, placement: str = 'thank_you'):
+        return postpurchase.offers(member_receipt(req, mutation=False), placement)
+
+    @app.post('/api/post-checkout-offers')
+    @serialized
+    def buy_receipt_offer(body: BuyOffer, req: Request):
+        return postpurchase.buy(member_receipt(req), body, req.client.host if req.client else '127.0.0.1')
+
+    from patient_demo.app import IntakePatch, IntakeSubmit
+
+    from member_portal.app import ReceiptEnrollment
+
+    @app.get('/api/post-checkout-journey')
+    def receipt_journey(req: Request, refresh: bool = False):
+        return members.receipt_journey(member_receipt(req, mutation=False), refresh=refresh)
+
+    @app.get('/api/post-checkout-account')
+    def receipt_account(req: Request):
+        return members.receipt_account(member_receipt(req, mutation=False))
+
+    @app.post('/api/post-checkout-account')
+    def setup_receipt_account(body: ReceiptEnrollment, req: Request):
+        return members.receipt_account(member_receipt(req), body.password)
+
+    from member_portal.upload_limits import IDUploadBodyLimit
+    from member_portal.id_uploads import IDPhotoInput
+    app.add_middleware(IDUploadBodyLimit)
+
+    @app.get('/api/post-checkout-id-photo')
+    def receipt_id_photo(req: Request):
+        order, patient = members.receipt_order(member_receipt(req, mutation=False))
+        return members.id_uploads.status(order, patient)
+
+    @app.post('/api/post-checkout-id-photo')
+    def upload_receipt_id_photo(body: IDPhotoInput, req: Request):
+        order, patient = members.receipt_order(member_receipt(req))
+        return members.id_uploads.upload(order, patient, body)
+
+    @app.post('/api/post-checkout-id-photo/reuse')
+    def reuse_receipt_id_photo(req: Request):
+        order, patient = members.receipt_order(member_receipt(req))
+        return members.id_uploads.upload(order, patient)
+
+    from member_portal.wlmd import IdentityInput
+
+    @app.get('/api/post-checkout-identity')
+    def receipt_identity(req: Request):
+        order, patient = members.receipt_order(member_receipt(req, mutation=False))
+        return members.identity_checks.status(order, patient)
+
+    @app.post('/api/post-checkout-identity')
+    def verify_receipt_identity(body: IdentityInput, req: Request):
+        order, patient = members.receipt_order(member_receipt(req))
+        return members.identity_checks.verify(order, patient, body)
+
+    @app.get('/api/post-checkout-intake')
+    def receipt_intake(req: Request):
+        order, patient = members.receipt_order(member_receipt(req, mutation=False))
+        return members.initial_intake(order, patient)
+
+    @app.patch('/api/post-checkout-intake')
+    def save_receipt_intake(body: IntakePatch, req: Request):
+        order, patient = members.receipt_order(member_receipt(req))
+        return members.modify_initial(order, body, patient)
+
+    @app.post('/api/post-checkout-intake/submit')
+    def submit_receipt_intake(body: IntakeSubmit, req: Request):
+        order, patient = members.receipt_order(member_receipt(req))
+        return members.modify_initial(order, body, patient, True)
+    if os.environ.get('SITE_API_MANIFEST'):
+        from demo.runtime import install_site_api
+        install_site_api(app)
     app.mount('/assets', StaticFiles(directory=HERE / 'web'), name='assets')
     return app
 

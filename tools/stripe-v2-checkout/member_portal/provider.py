@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 import re
 import time
+from external_fulfillment import fortifyhp_order_scope, fortifyhp_prepaid_supported
 
 US_REGIONS = frozenset('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY AS GU MP PR VI AA AE AP'.split())
 ADDRESS_FIELDS = {'first_name': ('shipping_first_name', 64), 'last_name': ('shipping_last_name', 64),
@@ -259,7 +260,7 @@ class StickyOrderProvider:
             result_products.append({'product_id': pid, 'sku': sku, 'name': text(product.get('name')) or sku,
                 'subscription_id': sid, 'is_recurring': recurring, 'on_hold': held,
                 'billing_status': billing, 'next_billing_date': bill_date, 'next_cycle_date': cycle_date,
-                'quantity': quantity, 'prepaid': prepaid, 'is_shippable': flag(product.get('is_shippable')),
+                'quantity': quantity, 'prepaid': prepaid, 'in_trial': flag(product.get('is_in_trial')), 'is_shippable': flag(product.get('is_shippable')),
                 'billing_model_id': model_id, 'billing_interval_days': interval_days,
                 'offer_id': offer_id,
                 'stop_after_next_cycle': flag(product.get('is_terminal'))})
@@ -289,7 +290,7 @@ class StickyOrderProvider:
         return {'id': actual_id, 'campaign_id': campaign, 'customer_id': customer_id,
             'contact_id': identifier(raw.get('contact_id'), 'contact ID', optional=True),
             'customer': {'name': ' '.join(filter(None, [text(raw.get('first_name'), 64), text(raw.get('last_name'), 64)])),
-                         'email': text(raw.get('email_address'), 254)},
+                         'email': text(raw.get('email_address'), 254), 'phone': text(raw.get('phone'), 40)},
             'products': result_products, 'payment_status': payment, 'fulfillment_status': shipping,
             'total': total, 'currency': self._currency(raw, gateway), 'created_at': text(raw.get('time_stamp'), 32) or None,
             'order_status': order_status if order_status.isdigit() else 'unknown', 'gateway_id': gateway,
@@ -344,6 +345,12 @@ class StickyOrderProvider:
         root_id = original['ancestor_id'] or original['id']
         original_line = original['products'][0]
         renews = original_line['prepaid']['renews']
+        # A shipped/posted earlier order remains the paid entitlement for an
+        # included cycle. Only the explicitly acknowledged FortifyHP scope can
+        # use this production path; fresh catalog proof is still mandatory.
+        external = (original_line['is_shippable'] is True and original['test_order'] is False
+                    and original['currency'] == 'USD'
+                    and fortifyhp_order_scope(original['campaign_id'], original['gateway_id'], original_line['sku']))
         def check_order(order, cycle):
             if (order['payment_status'] != 'paid' or len(order['products']) != 1
                     or not original['currency'] or order['currency'] != original['currency']
@@ -353,15 +360,16 @@ class StickyOrderProvider:
                 raise ProviderRejected('The order does not establish this paid subscription term')
             line = order['products'][0]
             if (any(line[k] != v for k, v in expected.items()) or line['sku'] != original_line['sku']
-                    or line['quantity'] != 1 or line['is_shippable'] is not False
+                    or line['quantity'] != 1 or line['is_shippable'] is not external
                     or line['prepaid'] != {'current_cycle': cycle, 'total_cycles': shipment_count, 'renews': renews}
                     or order['shipping_amount'] != '0.00' or order['tax_amount'] != '0.00'
-                    or order['fulfillment_status'] != 'not_shippable'
-                    or order['shipping_date'] or order['tracking_number']
-                    or order['fulfillment_posted'] != 0
+                    or (not external and (order['fulfillment_status'] != 'not_shippable'
+                        or order['shipping_date'] or order['tracking_number'] or order['fulfillment_posted'] != 0))
+                    or (external and (order['fulfillment_status'] == 'not_shippable'
+                        or order['fulfillment_posted'] not in (0, 1, 2)))
                     or (cycle > 1 and order['shipping_id'] not in (None, original['shipping_id']))
                     or (cycle > 1 and order['total'] != '0.00')):
-                raise ProviderRejected('Only an isolated, included zero-dollar prepaid cycle is supported')
+                raise ProviderRejected('The included zero-dollar prepaid cycle could not be verified')
         check_order(original, 1)
         current, cycle, seen = source, target_cycle - 1, set()
         if _allow_child and source['child_ids']:
@@ -394,7 +402,7 @@ class StickyOrderProvider:
         return {'source': source, 'original': original, 'scope': scope, 'expected': expected,
                 'start': start, 'next_date': next_date, 'following': following, 'renews': renews,
                 'check_order': check_order, 'target_cycle': target_cycle, 'shipment_count': shipment_count,
-                'interval': shipment_interval_days}
+                'interval': shipment_interval_days, 'external_fulfillment': external}
 
     def _included_capability(self, context):
         source, original = context['source'], context['original']
@@ -436,14 +444,17 @@ class StickyOrderProvider:
         if any(identifier(actual) != expected for actual, expected in ids):
             raise ProviderRejected('The included-cycle configuration changed')
         integrations = ('fulfillment_id', 'tax_provider_id', 'email_provider_id', 'membership_provider_id', 'postback_profiles')
-        if (flag(product.get('is_shippable')) is not False or flag(product.get('taxable', product.get('is_taxable'))) is not False
+        external = context['external_fulfillment']
+        if (flag(product.get('is_shippable')) is not external or flag(product.get('taxable', product.get('is_taxable'))) is not False
                 or product.get('sku') != line['sku'] or flag(campaign.get('is_active')) is not True
                 or flag(campaign.get('is_archived')) is not False
                 or any(campaign.get(k) not in (None, 0, '0', []) for k in integrations)
                 or amount(shipping.get('amount_recurring')) != '0.00'
                 or any(shipping.get(key) is not None and amount(shipping[key]) != '0.00'
                        for key in ('threshold_amount', 'threshold_charge_amount'))):
-            raise ProviderRejected('Claims require a non-shippable, non-taxable campaign without external integrations or recurring shipping fees')
+            raise ProviderRejected('The non-taxable prepaid setup, provider configuration and free recurring shipping must be verified')
+        if external and not fortifyhp_prepaid_supported(campaign, product, offer):
+            raise ProviderRejected('This product is outside the acknowledged external-fulfillment prepaid setup')
         from prepaid import cycles_for, renewal_for
         try:
             configured_cycles, configured_renewal = cycles_for(offer), renewal_for(offer)
@@ -470,7 +481,8 @@ class StickyOrderProvider:
         return {'available': True, 'source_order_id': source['id'], 'term_order_id': original['id'],
                 'subscription_id': line['subscription_id'], 'target_cycle': context['target_cycle'],
                 'amount': '0.00', 'currency': source['currency'], 'next_cycle_date': context['next_date'],
-                'following_cycle_date': context['following'], 'mode': 'isolated_nonshippable'}
+                'following_cycle_date': context['following'],
+                'mode': 'external_sticky_orders' if external else 'isolated_nonshippable'}
 
     def included_cycle_capability(self, order_id, **scope):
         """Fresh read-only capability proof; never call from a task-list render."""

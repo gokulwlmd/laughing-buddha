@@ -85,6 +85,23 @@ class MemberPortalTests(unittest.TestCase):
         self.assertEqual(self.client.post('/api/admin/sites/site-b/portal/sync', json={'order_ids': ['9001']}, headers=self.owner_headers).status_code, 409)
         self.assertFalse(any(path in ('/api/v1/new_order', '/api/v1/authorize_payment') for _, path, _ in self.fake.calls))
 
+    def test_one_time_order_internal_id_is_not_a_subscription(self):
+        self.service.sync('site-a', '9001')
+        row = self.service.order_record('site-a', '9001')
+        raw, snapshot = json.loads(row['payload']), json.loads(row['snapshot'])
+        line = raw['products'][0]
+        line.update(is_recurring=False, billing_status='inactive', billing_model_id='2', next_billing_date=None)
+        snapshot['quote_option']['recurring'] = False
+        self.service.save_order('site-a', '9001', row['customer_id'], row['attempt_id'], row['therapy_id'], row['sku'], snapshot, raw)
+        public = self.service.order_public(self.service.order_record('site-a', '9001'))
+        self.assertEqual(public['subscriptions'], [])
+        # A stopped recurring plan remains visible; it must not become a sale.
+        snapshot['quote_option']['recurring'] = True
+        line['billing_model_id'] = '3'
+        self.service.save_order('site-a', '9001', row['customer_id'], row['attempt_id'], row['therapy_id'], row['sku'], snapshot, raw)
+        public = self.service.order_public(self.service.order_record('site-a', '9001'))
+        self.assertEqual(public['subscriptions'][0]['status'], 'inactive')
+
     def test_enrollment_is_single_use_and_site_scoped_without_email_order_search(self):
         token, auth = self.enroll()
         self.assertEqual(auth['patient']['email'], 'sample@example.invalid')

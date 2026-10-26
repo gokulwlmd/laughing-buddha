@@ -151,7 +151,20 @@ class IntakeQuestion(BaseModel):
     required: bool
     options: list[QuestionOption] | None = None
     show_if: QuestionCondition | None = None
+    show_when: dict | None = None
+    presentation: str | None = None
+    input_type: str | None = None
+    prefill_source: str | None = None
+    exclusive_options: list[str] | None = None
+    help: str | None = None
     sample: AnswerValue | None = None
+    reuse_key: str | None = None
+    reuse_version: str | None = None
+    reuse_policy: Literal['stable', 'confirm', 'verified', 'never'] | None = None
+    reuse_max_age_days: int | None = None
+    reuse_status: Literal['stable', 'confirm', 'verified'] | None = None
+    saved_value: AnswerValue | None = None
+    saved_at: float | None = None
 
 
 class IntakeTemplate(BaseModel):
@@ -291,9 +304,27 @@ def token_digest(value):
     return hashlib.sha256(value.encode()).hexdigest()
 
 
+def matches_condition(condition, answers):
+    if 'all' in condition:
+        return all(matches_condition(c, answers) for c in condition['all'])
+    if 'any' in condition:
+        return any(matches_condition(c, answers) for c in condition['any'])
+    actual = answers.get(condition.get('question_id'))
+    operator, expected = condition.get('operator'), condition.get('value')
+    if operator == 'isEmpty': return actual in (None, '', [])
+    if actual in (None, '', []): return False
+    if operator == 'isFilled': return True
+    if operator == 'equals': return expected in actual if isinstance(actual, list) else actual == expected
+    if operator == 'notEquals': return expected not in actual if isinstance(actual, list) else actual != expected
+    if operator == 'contains': return expected in actual
+    if operator == 'notContains': return expected not in actual
+    return False
+
+
 def visible(question, answers):
     condition = question.get('show_if')
-    return not condition or answers.get(condition['question_id']) == condition['equals']
+    return (not condition or answers.get(condition['question_id']) == condition['equals']) and (
+        not question.get('show_when') or matches_condition(question['show_when'], answers))
 
 
 def clean_answers(template, incoming):
@@ -320,6 +351,8 @@ def clean_answers(template, incoming):
             valid = False
         if not valid:
             raise HTTPException(422, 'Invalid answer for intake question: ' + key)
+        if kind == 'multi_choice' and len(value) > 1 and any(v in (question.get('exclusive_options') or []) for v in value):
+            raise HTTPException(422, 'Choose none or specific answers, not both: ' + key)
         cleaned[key] = value.strip() if isinstance(value, str) else value
     return cleaned
 

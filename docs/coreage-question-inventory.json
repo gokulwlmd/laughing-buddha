@@ -1,0 +1,1206 @@
+{
+  "source_url": "https://www.coreagerx.com/onboarding/",
+  "questions": [
+    {
+      "source_id": "343",
+      "label": "__intake_class",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "188",
+      "label": "tracking_unid",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "584",
+      "label": "site_id",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "498",
+      "label": "order_id",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "503",
+      "label": "caller_page",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "504",
+      "label": "therapy",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "97",
+      "label": "domain",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "189",
+      "label": "telehealth",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "190",
+      "label": "privacyPolicy",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "192",
+      "label": "rootDomain",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "191",
+      "label": "terms",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "580",
+      "label": "med",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "566",
+      "label": "__current_level",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "551",
+      "label": "__best_level",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "538",
+      "label": "Are you CURRENTLY taking any PRESCRIPTION medications for weight loss?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "585",
+      "label": "Confirm that you're not currently taking any prescription medications",
+      "type": "control_checkbox",
+      "included": true
+    },
+    {
+      "source_id": "556",
+      "label": "is_current_glp1-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "545",
+      "label": "What PRESCRIPTION medication are you taking for weight loss?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "560",
+      "label": "current_glp1",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "563",
+      "label": "current_glp1-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "557",
+      "label": "semataken-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "558",
+      "label": "tirztaken-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "568",
+      "label": "Oral Tirzepatide Dosage",
+      "type": "control_dropdown",
+      "included": false
+    },
+    {
+      "source_id": "569",
+      "label": "Oral Semaglutide Dosage",
+      "type": "control_dropdown",
+      "included": false
+    },
+    {
+      "source_id": "542",
+      "label": "Units per week",
+      "type": "control_dropdown",
+      "included": true
+    },
+    {
+      "source_id": "543",
+      "label": "DEPRECATED: Date of Last Shot",
+      "type": "control_datetime",
+      "included": false
+    },
+    {
+      "source_id": "582",
+      "label": "Date of Last Shot",
+      "type": "control_dropdown",
+      "included": true
+    },
+    {
+      "source_id": "541",
+      "label": "Current Tirzepatide Dosage",
+      "type": "control_dropdown",
+      "included": true
+    },
+    {
+      "source_id": "540",
+      "label": "Current Semaglutide Dosage",
+      "type": "control_dropdown",
+      "included": true
+    },
+    {
+      "source_id": "583",
+      "label": "How many months have you been taking this medication?",
+      "type": "control_dropdown",
+      "included": true
+    },
+    {
+      "source_id": "544",
+      "label": "Would you like to stay at the same dose or be increased?",
+      "type": "control_dropdown",
+      "included": true
+    },
+    {
+      "source_id": "565",
+      "label": "is_increase_level",
+      "type": "control_number",
+      "included": false
+    },
+    {
+      "source_id": "619",
+      "label": "best_level_formatter",
+      "type": "control_widget",
+      "included": false
+    },
+    {
+      "source_id": "620",
+      "label": "__best_level_formatted",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "598",
+      "label": "max_level",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "599",
+      "label": "max_level_formatted",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "600",
+      "label": "stfw_ max_level_formatted",
+      "type": "control_widget",
+      "included": false
+    },
+    {
+      "source_id": "602",
+      "label": "What would you like to do?",
+      "type": "control_radio",
+      "included": false
+    },
+    {
+      "source_id": "609",
+      "label": "__upgrade_order_level",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "603",
+      "label": "best_level_calc",
+      "type": "control_calculation",
+      "included": false
+    },
+    {
+      "source_id": "616",
+      "label": "best_level_calc_bridge",
+      "type": "control_calculation",
+      "included": false
+    },
+    {
+      "source_id": "615",
+      "label": "best_level_calc_bridge",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "604",
+      "label": "max_level_calc",
+      "type": "control_calculation",
+      "included": false
+    },
+    {
+      "source_id": "612",
+      "label": "__best_level_plus_1",
+      "type": "control_calculation",
+      "included": false
+    },
+    {
+      "source_id": "613",
+      "label": "__best_level_plus_2",
+      "type": "control_calculation",
+      "included": false
+    },
+    {
+      "source_id": "606",
+      "label": "term",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "607",
+      "label": "upgradeLink",
+      "type": "control_calculation",
+      "included": false
+    },
+    {
+      "source_id": "287",
+      "label": "Take a picture of your current prescription/medication (OPTIONAL):",
+      "type": "control_text",
+      "included": false
+    },
+    {
+      "source_id": "288",
+      "label": "",
+      "type": "control_radio",
+      "included": false
+    },
+    {
+      "source_id": "554",
+      "label": "File Upload",
+      "type": "control_fileupload",
+      "included": false
+    },
+    {
+      "source_id": "555",
+      "label": "Take Photo",
+      "type": "control_widget",
+      "included": false
+    },
+    {
+      "source_id": "546",
+      "label": "Please acknowledge the below",
+      "type": "control_checkbox",
+      "included": false
+    },
+    {
+      "source_id": "559",
+      "label": "prescription_available-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "622",
+      "label": "Please select all conditions, preferences, or concerns that matter most to you regarding your treatment with a GLP1",
+      "type": "control_checkbox",
+      "included": true
+    },
+    {
+      "source_id": "196",
+      "label": "First, we need to make sure we are licensed in your state",
+      "type": "control_dropdown",
+      "included": true
+    },
+    {
+      "source_id": "199",
+      "label": "What is your full name?",
+      "type": "control_fullname",
+      "included": true
+    },
+    {
+      "source_id": "571",
+      "label": "What is your physical address?",
+      "type": "control_address",
+      "included": true
+    },
+    {
+      "source_id": "200",
+      "label": "What is your email address?",
+      "type": "control_email",
+      "included": true
+    },
+    {
+      "source_id": "201",
+      "label": "",
+      "type": "control_checkbox",
+      "included": false
+    },
+    {
+      "source_id": "591",
+      "label": "To complete your medical visit, we require you to send us a short 5 sec video to introduce you to your doctor. Your doctor will not be able to evaluate your treatment until this is completed.",
+      "type": "control_radio",
+      "included": false
+    },
+    {
+      "source_id": "586",
+      "label": "AV recorded video",
+      "type": "control_widget",
+      "included": false
+    },
+    {
+      "source_id": "592",
+      "label": "AV uploaded video",
+      "type": "control_fileupload",
+      "included": false
+    },
+    {
+      "source_id": "593",
+      "label": "Don't worry {fullName:first}, we're going to solve this. Please explain the technical issue you're having before you can proceed.",
+      "type": "control_textarea",
+      "included": false
+    },
+    {
+      "source_id": "587",
+      "label": "fileUpload_AV_MSSG",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "202",
+      "label": "Please enter the best phone number to reach you on just in case the doctor has any questions regarding your medical information.",
+      "type": "control_phone",
+      "included": true
+    },
+    {
+      "source_id": "203",
+      "label": "Can we also send you text messages about your prescription including tracking information and refill information?",
+      "type": "control_radio",
+      "included": false
+    },
+    {
+      "source_id": "204",
+      "label": "",
+      "type": "control_checkbox",
+      "included": false
+    },
+    {
+      "source_id": "102",
+      "label": "What is your date of birth?",
+      "type": "control_birthdate",
+      "included": true
+    },
+    {
+      "source_id": "118",
+      "label": "today",
+      "type": "control_datetime",
+      "included": false
+    },
+    {
+      "source_id": "119",
+      "label": "age",
+      "type": "control_calculation",
+      "included": false
+    },
+    {
+      "source_id": "409",
+      "label": "Phone Number",
+      "type": "control_phone",
+      "included": false
+    },
+    {
+      "source_id": "535",
+      "label": "What is your gender?",
+      "type": "control_dropdown",
+      "included": true
+    },
+    {
+      "source_id": "491",
+      "label": "Feet",
+      "type": "control_textbox",
+      "included": true
+    },
+    {
+      "source_id": "492",
+      "label": "Inches",
+      "type": "control_textbox",
+      "included": true
+    },
+    {
+      "source_id": "497",
+      "label": "Height (Inches)",
+      "type": "control_calculation",
+      "included": false
+    },
+    {
+      "source_id": "493",
+      "label": "Weight",
+      "type": "control_textbox",
+      "included": true
+    },
+    {
+      "source_id": "495",
+      "label": "BMI",
+      "type": "control_calculation",
+      "included": false
+    },
+    {
+      "source_id": "496",
+      "label": "",
+      "type": "control_checkbox",
+      "included": true
+    },
+    {
+      "source_id": "364",
+      "label": "We require that you provide a recent blood pressure measurement within the last six months.",
+      "type": "control_textbox",
+      "included": true
+    },
+    {
+      "source_id": "459",
+      "label": "Any medical conditions your doctor should know about?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "467",
+      "label": "Medical Conditions",
+      "type": "control_textarea",
+      "included": true
+    },
+    {
+      "source_id": "464",
+      "label": "Are you taking any medications?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "468",
+      "label": "Current Medications",
+      "type": "control_textarea",
+      "included": true
+    },
+    {
+      "source_id": "395",
+      "label": "Do you have any allergies or intolerances?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "274",
+      "label": "Allergies",
+      "type": "control_textarea",
+      "included": true
+    },
+    {
+      "source_id": "215",
+      "label": "Are you here to be evaluated for weight loss?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "216",
+      "label": "Have you ever attempted to lose weight in a weight management program?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "469",
+      "label": "triedWeightMgmtProgram-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "217",
+      "label": "Are you willing to reduce your caloric intake alongside medication?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "470",
+      "label": "reason_notCalorieIntake-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "396",
+      "label": "Please provide details about why caloric restriction is not appropriate for you",
+      "type": "control_textarea",
+      "included": true
+    },
+    {
+      "source_id": "218",
+      "label": "Are you willing to increase your physical activity alongside medication?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "397",
+      "label": "Please provide details about why physical activity is not appropriate for you.",
+      "type": "control_textarea",
+      "included": true
+    },
+    {
+      "source_id": "472",
+      "label": "reason_notPhysicalActivity-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "627",
+      "label": "We will consider you for treatment with a GLP1 if it is appropriate. Which reasons are you consulting for?",
+      "type": "control_checkbox",
+      "included": true
+    },
+    {
+      "source_id": "225",
+      "label": "What is your goal weight?",
+      "type": "control_number",
+      "included": true
+    },
+    {
+      "source_id": "561",
+      "label": "What is your goal weight?",
+      "type": "control_number",
+      "included": false
+    },
+    {
+      "source_id": "229",
+      "label": "When was the last time you had an in person medical evaluation?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "389",
+      "label": "lastMedicalEval-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "231",
+      "label": "Have you had any lab tests completed within the last 6 months that you would like to share with your doctor?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "234",
+      "label": "",
+      "type": "control_radio",
+      "included": false
+    },
+    {
+      "source_id": "235",
+      "label": "Take a live picture",
+      "type": "control_widget",
+      "included": false
+    },
+    {
+      "source_id": "236",
+      "label": "Select multiple files or drag and drop them here",
+      "type": "control_fileupload",
+      "included": false
+    },
+    {
+      "source_id": "238",
+      "label": "Do you have any of the following?",
+      "type": "control_checkbox",
+      "included": true
+    },
+    {
+      "source_id": "424",
+      "label": "haveConditionsListed-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "163",
+      "label": "none_1",
+      "type": "control_calculation",
+      "included": false
+    },
+    {
+      "source_id": "239",
+      "label": "Do you have any of the following?",
+      "type": "control_checkbox",
+      "included": true
+    },
+    {
+      "source_id": "425",
+      "label": "haveListedSerious-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "240",
+      "label": "Are you sure you have Type 1 Diabetes?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "474",
+      "label": "sureType1Diabetes-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "241",
+      "label": "Please tell the doctor more about your severe GI problems",
+      "type": "control_textarea",
+      "included": true
+    },
+    {
+      "source_id": "242",
+      "label": "Are you sure it is medullary thyroid cancer?",
+      "type": "control_textarea",
+      "included": true
+    },
+    {
+      "source_id": "426",
+      "label": "historyMedullaryDetails-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "245",
+      "label": "Please tell the doctor: 1) What kind of bariatric surgery or other GI surgery 2) What year and month this surgery was performed 3) Any complications or continued problems you have had",
+      "type": "control_text",
+      "included": false
+    },
+    {
+      "source_id": "243",
+      "label": "Please tell the doctor1)What kind of bariatric surgery or other GI surgery2)What year and month this surgery was performed3)Any complications or continued problems you have had",
+      "type": "control_textarea",
+      "included": true
+    },
+    {
+      "source_id": "246",
+      "label": "Please tell the doctor: 1) What type of gallbladder problems you are currently having 2) Has your gallbladder been surgically removed?",
+      "type": "control_text",
+      "included": false
+    },
+    {
+      "source_id": "247",
+      "label": "Please tell the doctor...1)What type of gallbladder problems you are currently having2)Has your gallbladder been surgically removed?",
+      "type": "control_textarea",
+      "included": true
+    },
+    {
+      "source_id": "427",
+      "label": "gallbladder_details-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "442",
+      "label": "Please describe what type of liver disease/cirrhosis you have been diagnosed with:",
+      "type": "control_textarea",
+      "included": true
+    },
+    {
+      "source_id": "443",
+      "label": "liverDetails-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "166",
+      "label": "none_2",
+      "type": "control_calculation",
+      "included": false
+    },
+    {
+      "source_id": "248",
+      "label": "Does anyone in your family have a history of...",
+      "type": "control_checkbox",
+      "included": true
+    },
+    {
+      "source_id": "476",
+      "label": "familyHistorySerious-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "249",
+      "label": "Are you sure your family member has medullary thyroid cancer?",
+      "type": "control_textarea",
+      "included": true
+    },
+    {
+      "source_id": "428",
+      "label": "familyMedullaryDetails-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "167",
+      "label": "none_3",
+      "type": "control_calculation",
+      "included": false
+    },
+    {
+      "source_id": "446",
+      "label": "Do you have any of the following? If you have any of the following you should not take semaglutide with B12 (cyanocobalamin).",
+      "type": "control_text",
+      "included": false
+    },
+    {
+      "source_id": "445",
+      "label": "Do you have any of the following?",
+      "type": "control_checkbox",
+      "included": true
+    },
+    {
+      "source_id": "479",
+      "label": "q_contra_conditions-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "447",
+      "label": "none_5",
+      "type": "control_calculation",
+      "included": false
+    },
+    {
+      "source_id": "250",
+      "label": "Do you have any of the following?",
+      "type": "control_checkbox",
+      "included": true
+    },
+    {
+      "source_id": "480",
+      "label": "q_conditions_kidney-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "251",
+      "label": "Please tell the doctor more and include any lab values you may know of such as: Creatinine (Cr) Creatinine Clearance (CrCl) Glomerular filtration rate (GFR) Or simply describe more about your kidney problems",
+      "type": "control_text",
+      "included": false
+    },
+    {
+      "source_id": "252",
+      "label": "Please tell the doctor more:Please include any lab values you may know of such as:1) Creatinine (Cr)2) Creatinine Clearance (CrCl)3) Glomerular filtration rate (GFR)4) Or simply describe more about your kidney problems",
+      "type": "control_textarea",
+      "included": true
+    },
+    {
+      "source_id": "429",
+      "label": "kidneyLabDetails-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "307",
+      "label": "none_4",
+      "type": "control_calculation",
+      "included": false
+    },
+    {
+      "source_id": "451",
+      "label": "Please read the following about all GLP-1s",
+      "type": "control_radio",
+      "included": false
+    },
+    {
+      "source_id": "625",
+      "label": "Please type your full legal name to proceed",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "562",
+      "label": "glp1_consent",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "481",
+      "label": "glp1_consent-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "254",
+      "label": "Would you like a prescription of nausea medication to be sent to your local pharmacy?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "629",
+      "label": "Please select all conditions, preferences, or concerns that matter most to you regarding your treatment with a GLP1",
+      "type": "control_checkbox",
+      "included": false
+    },
+    {
+      "source_id": "630",
+      "label": "vitamin_history",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "631",
+      "label": "exp_fatigue",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "641",
+      "label": "anemia_history",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "632",
+      "label": "muscle_focus",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "633",
+      "label": "muscle_loss",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "634",
+      "label": "nausea_experience",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "635",
+      "label": "treatment_compliance",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "636",
+      "label": "nausea_priority",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "637",
+      "label": "injection_control",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "638",
+      "label": "personalized_dosage",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "639",
+      "label": "personalized_dosing_freq",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "640",
+      "label": "fatigue_status",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "574",
+      "label": "Please review the Florida Bill of Rights for Weight Loss",
+      "type": "control_widget",
+      "included": false
+    },
+    {
+      "source_id": "483",
+      "label": "flor",
+      "type": "control_radio",
+      "included": false
+    },
+    {
+      "source_id": "500",
+      "label": "Please review the Florida Bill of Rights for Weight Loss:",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "485",
+      "label": "reviewedFL_BOR-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "506",
+      "label": "How sensitive are you to feelings of nausea/motion sickness 1-10 (10 is highly sensitive).",
+      "type": "control_scale",
+      "included": true
+    },
+    {
+      "source_id": "509",
+      "label": "If your treatment made you significantly nauseated or caused other GI side effects would that impact your compliance with treatment and willingness to continue?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "510",
+      "label": "Approximately 40% of patients using commercially available GLP-1 treatments experience nausea. Is it important to you to minimize possible nausea and GI side effects during your treatment?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "512",
+      "label": "In any prior attempts to lose weight, do you feel you experienced loss of muscle as well?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "514",
+      "label": "Is losing weight while conserving/improving muscle mass important to you?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "516",
+      "label": "Have you ever been diagnosed as having anemia?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "518",
+      "label": "Have you ever had issues with fatigue or low energy?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "520",
+      "label": "Have you ever had issues with low vitamin levels or had to take a vitamin supplement?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "522",
+      "label": "Would you like to have control over how forcefully and fast the medication is injected?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "524",
+      "label": "During your weight loss journey would you like your doctor to be able to tailor your dosage to your personalized needs and goals?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "526",
+      "label": "During your weight loss journey, would you like your doctor to be able to tailor your dosing frequency to your personalized needs and goals?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "140",
+      "label": "Did you understand all the questions which were asked?",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "141",
+      "label": "Which question did you not understand?",
+      "type": "control_textarea",
+      "included": true
+    },
+    {
+      "source_id": "378",
+      "label": "whichQuestion-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "455",
+      "label": "GLP-1 Risks Acknowledgement:",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "259",
+      "label": "Please provide a current (Head-to-toe) FULL body clothed photo of yourself",
+      "type": "control_radio",
+      "included": false
+    },
+    {
+      "source_id": "407",
+      "label": "Why is this required?",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "391",
+      "label": "Customer understands FullBody photo will be needed",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "499",
+      "label": "__flags_requireimage-fullbody",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "315",
+      "label": "Take Photo",
+      "type": "control_widget",
+      "included": false
+    },
+    {
+      "source_id": "316",
+      "label": "File Upload",
+      "type": "control_fileupload",
+      "included": false
+    },
+    {
+      "source_id": "410",
+      "label": "To verify your identity, please select one of the verification methods below.",
+      "type": "control_radio",
+      "included": false
+    },
+    {
+      "source_id": "412",
+      "label": "Take ID Photo",
+      "type": "control_widget",
+      "included": false
+    },
+    {
+      "source_id": "411",
+      "label": "ID Upload",
+      "type": "control_fileupload",
+      "included": false
+    },
+    {
+      "source_id": "590",
+      "label": "Last 4 digits of Social Security Number",
+      "type": "control_widget",
+      "included": false
+    },
+    {
+      "source_id": "550",
+      "label": "Last 4 digits of Social Security Number",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "572",
+      "label": "vouchIsMatch",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "573",
+      "label": "vouchId",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "312",
+      "label": "Here's your first message to your doctor. Please introduce yourself and feel free to:",
+      "type": "control_text",
+      "included": false
+    },
+    {
+      "source_id": "313",
+      "label": "Here's your first message to your doctor. Please introduce yourself and feel free to: -Ask any questions you have - List any medical problem you have which were not discussed above-Include anything else you would like the doctor to know.",
+      "type": "control_textarea",
+      "included": true
+    },
+    {
+      "source_id": "413",
+      "label": "Patient_Message_To_Doctor-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "145",
+      "label": "Please acknowledge that you understand and agree to the following: I have filled out a medical intake form that will be used by a board certified physician that is licensed in my state to make a medical treatment plan for me. I understand all the questions that have been asked of me. The information that I have provided is accurate and complete. I am the patient who is consenting to be evaluated for treatment.",
+      "type": "control_text",
+      "included": false
+    },
+    {
+      "source_id": "172",
+      "label": "",
+      "type": "control_checkbox",
+      "included": false
+    },
+    {
+      "source_id": "146",
+      "label": "I acknowledge and agree to the above",
+      "type": "control_radio",
+      "included": true
+    },
+    {
+      "source_id": "159",
+      "label": "acknowledge-IMP",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "211",
+      "label": "sku",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "434",
+      "label": "__flags_labsch",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "435",
+      "label": "__flags_kidney",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "436",
+      "label": "__flags_ongoingwt",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "439",
+      "label": "__flags_compound",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "440",
+      "label": "__flags_branded",
+      "type": "control_textbox",
+      "included": false
+    },
+    {
+      "source_id": "610",
+      "label": "",
+      "type": "control_widget",
+      "included": false
+    }
+  ],
+  "note": "Reference inventory only. Provider tracking/calculations, duplicate alternatives, marketing consents, medical consent documents and upload/video widgets require separate adapter configuration; identity uses our existing final-step SSN/ID integration. No source scripts or patient data copied."
+}

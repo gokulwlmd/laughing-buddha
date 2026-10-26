@@ -29,7 +29,7 @@ class Treatment(Form):
 class Therapy(Form):
     id:str=Field(pattern=r'^[a-z0-9][a-z0-9-]{0,60}$')
     name:str=Field(min_length=1,max_length=100)
-    treatments:list[Treatment]=Field(min_length=1,max_length=20)
+    treatments:list[Treatment]=Field(min_length=1,max_length=256)
     enabled:bool=True
     @field_validator('treatments')
     @classmethod
@@ -41,7 +41,7 @@ class PurchaseOption(Form):
     name:str=Field(min_length=1,max_length=100)
     therapy_id:str=Field(min_length=1,max_length=61)
     duration_months:int=Field(ge=1,le=36,strict=True)
-    skus:list[str]=Field(default_factory=list,max_length=20)
+    skus:list[str]=Field(default_factory=list,max_length=256)
     payment_types:list[str]=Field(min_length=1,max_length=3)
     enabled:bool=True
     @field_validator('skus','payment_types')
@@ -73,7 +73,7 @@ class PlanCheckout(Form):
     visibility:str=Field(pattern=r'^(public|private)$')
     enabled:bool=True
     purchase_option_ids:list[str]=Field(default_factory=list,max_length=20)
-    entries:list[PlanEntry]=Field(default_factory=list,max_length=100)
+    entries:list[PlanEntry]=Field(default_factory=list,max_length=1000)
     @field_validator('entries')
     @classmethod
     def unique(cls,items):
@@ -210,7 +210,7 @@ class PlanCatalog:
                 raise HTTPException(422,'Select purchase options for this checkout')
             elif any(e.get('purchase_option_id') for e in data['entries']):
                 raise HTTPException(422,'Select saved purchase options before assigning their choices')
-            if len(data['entries'])>100:raise HTTPException(422,'Choose at most 100 SKU alternatives per checkout')
+            if len(data['entries'])>1000:raise HTTPException(422,'Choose at most 1000 SKU alternatives per checkout')
             for entry in data['entries']:
                 master=self.get('master',entry['sku'])
                 if not master:raise HTTPException(422,'Save this master SKU first: '+entry['sku'])
@@ -263,6 +263,9 @@ class PlanCatalog:
                 options=[{k:o[k] for k in ('key','recurring','days','basePrice','blockedReason','prepaidCycles','upfrontPrice','renewal','renewalDays') if k in o} for o in c['options'] if o['key'] in child['options'] and not o['blockedReason']]
                 if c['blockedReason'] or not options:raise ValueError('Not ready')
                 item.update(available=True,reason='',currency=c['currency'],options=options)
+                mapped=self.master_for(entry['sku'],plan['brand_id'],plan['campaign_id'])
+                item['productSetup']=mapped.get('product_setup') or {}
+                if mapped.get('storefront_identity'):item['storefrontIdentity']=mapped['storefront_identity']
             except (HTTPException,CatalogError,ValueError):pass
             entries.append(item)
         return {'id':plan['id'],'title':plan['title'],'paymentTestOnly':bool(plan.get('payment_test_only')),'therapy':therapy['name'],'treatments':therapy['treatments'],'branding':branding(brand),'entries':entries,'purchaseOptions':[{'id':p['id'],'name':p['name'],'durationMonths':p['duration_months']} for p in plan.get('purchase_options',[])]}

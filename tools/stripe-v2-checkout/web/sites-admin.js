@@ -55,6 +55,7 @@ function templatePayload(draft=false){
 }
 function newSite(s={}){
  const f=$('site-form');f.reset();creatingSiteBrand=!s.id;newSiteBrandId='brand-'+crypto.randomUUID().slice(0,12);f.elements.id.value=s.id||'site-'+crypto.randomUUID().slice(0,12);f.elements.name.value=s.name||'';
+ f.elements.wlmd_site_id.value=s.wlmd_site_id||'';f.elements.wlmd_site_id.readOnly=!!s.wlmd_site_id;
  f.elements.brand_id.value=s.brand_id||'';f.elements.campaign_id.value=s.campaign_id||'';f.elements.connection.value=s.id?'existing':'new';f.elements.brand_id.disabled=!!s.id;f.elements.connection.disabled=!!s.id;f.elements.campaign_id.disabled=!!s.id;
  $('site-brand-options').hidden=!!s.id;$('site-mode').textContent=s.id?'Update site checkouts':'Add a site';$('site-editor').hidden=false;$('site-customizer').hidden=true;
  $('site-form').querySelector('button[type=submit]').textContent=s.id?'Review checkout updates →':'Review and create site →';siteConnection();siteDefaults();renderSiteBrand();setSiteStep(s.id?2:1);$('site-editor').scrollIntoView({block:'start'});
@@ -71,7 +72,7 @@ function renderSiteBrand(){
  $('site-brand-note').textContent=creatingSiteBrand?'Your name, logo and color will appear on every checkout.':b?'Uses '+b.name+'’s logo, colors and support details.':'';
 }
 function setSiteStep(step){siteStep=step;$('site-step-identity').hidden=step!==1;$('site-step-checkouts').hidden=step!==2;$('site-step-label').textContent=step===1?'1 · YOUR SITE':'2 · INCLUDED CHECKOUTS';$('site-identity-summary').textContent=$('site-form').elements.name.value+' · '+(creatingSiteBrand?'New branding':state.brands.find(b=>b.id===$('site-brand').value)?.name||'');}
-function sitePayload(){const f=$('site-form'),data={id:f.elements.id.value,name:f.elements.name.value,brand_id:creatingSiteBrand?newSiteBrandId:f.elements.brand_id.value,remember_connection:f.elements.remember_connection.checked};
+function sitePayload(){const f=$('site-form'),data={id:f.elements.id.value,name:f.elements.name.value,brand_id:creatingSiteBrand?newSiteBrandId:f.elements.brand_id.value,remember_connection:f.elements.remember_connection.checked,wlmd_site_id:f.elements.wlmd_site_id.value.trim()||null};
  if(f.elements.connection.value==='existing')data.campaign_id=Number(f.elements.campaign_id.value);else {data.campaign_name=f.elements.name.value;data.routing_template_id=Number(f.elements.routing_template_id.value);}
  if(creatingSiteBrand)data.new_brand={id:newSiteBrandId,name:f.elements.brand_name.value||f.elements.name.value,logo_url:f.elements.logo_url.value,color:f.elements.color.value,support_email:f.elements.support_email.value};return data;
 }
@@ -111,6 +112,8 @@ function renderSites(){
  if(p)action(actions,'Edit checkout',()=>openSiteCustomizer(site,row));else action(actions,'Fix template',()=>{page('templates');newTemplate(templates.find(t=>t.id===row.template_id));});
  checkout.append(actions);e.append(checkout);}
  action(e,site.checkouts.some(c=>c.update_available)?'Review template updates':site.checkouts.some(c=>c.status==='incomplete')?'Check setup':'Update checkouts',()=>newSite(site));
+ action(e,'Post-purchase offers',()=>openPostPurchase(site));
+ action(e,'Prices & coupons',()=>openCommerce(site.brand_id,site.campaign_id));
  action(e,'Edit branding',()=>{page('brands');fill('brand-form',b);});return e;
  },'Your sites will appear here. Add a site to prepare its branded checkouts.');
 }
@@ -167,3 +170,20 @@ function renderSkeletonContract(){
 function skeletonPrice(product){const m=(state.masters||[]).find(m=>m.sku===product.sku);return m?catalogPrice(m):new Intl.NumberFormat('en',{style:'currency',currency:product.currency}).format(Number(product.price))+' starter upfront price';}
 
 function skeletonShipments(p){const c=(state.masters||[]).find(m=>m.sku===p.sku)?.planning_contract||p;return c.shipments_per_term?c.shipments_per_term+' shipments per term'+(c.shipment_interval?' · Every '+c.shipment_interval+' days':' · Set interval'):'Shipment count to be set';}
+
+async function openPostPurchase(site){
+ try{
+  const data=await api('sites/'+encodeURIComponent(site.id)+'/postpurchase');
+  const dialog=element('dialog');dialog.style.cssText='width:min(680px,94vw);max-height:85vh;overflow:auto;border:1px solid #ddd;border-radius:20px;padding:28px';
+  dialog.append(element('h2','Post-purchase offers · '+site.name),element('p','Choose up to three optional products. Customers see the exact total and must choose to buy. Their original order is unchanged.'),element('p',data.notice));
+  const form=element('form');form.method='dialog';const toggle=(label,name,checked)=>{const row=element('label',undefined,'choice'),input=element('input');input.type='checkbox';input.name=name;input.checked=checked;row.append(input,document.createTextNode(' '+label));form.append(row);return input;};
+  const enabled=toggle('Enable post-purchase offers','enabled',data.settings.enabled);form.append(element('h3','Where to show them'));
+  const placements=['thank_you','before_intake','after_intake'].map((p,i)=>[p,toggle(['Thank-you page','Before the health intake','After intake completion'][i],p,data.settings.placements.includes(p))]);
+  form.append(element('h3','Available one-time products'));
+  const plans=data.plans.map(p=>[p.plan_id,toggle(p.product_name+' · '+p.plan_name+' · '+p.currency+' '+p.total,p.plan_id,data.settings.plan_ids.includes(p.plan_id))]);
+  const feedback=element('p');feedback.setAttribute('role','status');form.append(feedback);
+  const buttons=element('div',undefined,'actions'),save=element('button','Save offer settings'),close=element('button','Cancel');close.type='button';close.onclick=()=>{dialog.close();dialog.remove();};buttons.append(save,close);form.append(buttons);
+  form.onsubmit=async e=>{e.preventDefault();save.disabled=true;try{await api('sites/'+encodeURIComponent(site.id)+'/postpurchase',{enabled:enabled.checked,placements:placements.filter(([,n])=>n.checked).map(([id])=>id),plan_ids:plans.filter(([,n])=>n.checked).map(([id])=>id)});dialog.close();dialog.remove();message('Post-purchase offer settings saved.');}catch(error){feedback.textContent=error.message;}finally{save.disabled=false;}};
+  dialog.append(form);document.body.append(dialog);dialog.showModal();
+ }catch(error){message(error.message,true);}
+}

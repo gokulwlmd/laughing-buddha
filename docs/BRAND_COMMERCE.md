@@ -1,0 +1,140 @@
+# Brand coupon creation and price management
+
+Implemented 24 October 2026. Entry point: Admin → Prices & coupons, or
+Sites → Prices & coupons. This release has not been deployed to Fly.
+
+## Owner workflow
+
+Select a brand and one of its assigned campaigns. Prices list only its managed
+offerings. Edit the whole upfront amount for prepaid plans, review, then approve.
+This creates replacement Sticky products/offers, updates the affected checkout
+choices and records a scoped replacement for the public API publication. Existing
+customers/subscriptions retain their original products, prices and agreements.
+Master prices and other brands are unchanged. Existing billing and delivery
+configuration is retained by the price-only endpoint.
+
+Create a percentage coupon with a code, 1–99% discount, first-payment-only or
+continuing renewal applicability, expiration date/timezone, maximum uses and
+optional per-customer limit (0 = unlimited). Each separate cart order counts as
+a use. Expiration is the start of the selected date, in its selected timezone;
+expiration of new redemptions does not remove an already-applied lifetime discount.
+Shipping and tax remain calculated by the existing checkout contract.
+
+Coupon creation produces a review, not an immediate provider write. Approval
+creates a separate profile, verifies its saved terms and adds it through Sticky's
+single-profile assignment endpoint. Existing assignments are preserved and checked.
+Uncertain creation/attachment or mismatched read-back is held for reconciliation;
+created IDs are retained and another write is blocked. No automatic retries.
+Shared campaigns assigned to multiple local brands cannot receive a new
+brand-only coupon; separate campaign ownership is required.
+
+Existing campaign coupons can be listed, including externally created coupons.
+This release does not edit/delete existing profiles, support fixed-amount/BOGO
+discounts, bulk-reprice active subscriptions, or bypass provider checkout limits.
+
+## Private API contract
+
+Authentication: the existing owner Secure HttpOnly `__Host-admin` cookie. POSTs
+also require the configured admin `Origin` and current `X-CSRF-Token`. These are
+management APIs, not public browser storefront endpoints or per-brand staff roles.
+Never ship owner credentials or administrative sessions in a storefront.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/admin/brands/{brand_id}/prices` | Managed prices for this brand, with campaign IDs |
+| POST | `/api/admin/brands/{brand_id}/prices/{offering_id}/reviews` | Preview a price-only change |
+| GET | `/api/admin/brands/{brand_id}/coupons?campaign_id=195` | Current campaign coupon summaries |
+| POST | `/api/admin/brands/{brand_id}/coupons/reviews` | Preview a new coupon |
+| GET | `/api/admin/brands/{brand_id}/commerce/openapi.json` | Owner-authenticated, brand-specific OpenAPI specification |
+| POST | `/api/admin/apply` | Approve the returned review ID |
+
+Price request (decimal strings):
+
+```json
+{"price":"249.00","expected_price":"199.00"}
+```
+
+Coupon request (illustrative, not an instruction to create this coupon):
+
+```json
+{
+  "campaign_id":195,
+  "code":"WELCOME10",
+  "percent":10,
+  "applies_to_renewals":false,
+  "expires_on":"2026-12-01",
+  "timezone":"America/New_York",
+  "max_uses":100,
+  "max_uses_per_customer":1
+}
+```
+
+Both POST review endpoints return `id` and `preview`. Approval body:
+
+```json
+{"review_id":"RETURNED_REVIEW_ID","approve":true}
+```
+
+Repeat approval of an applied review returns its existing result. An interrupted
+write returns a reconciliation hold, not a new attempt. Configuration drift,
+stale expected prices and affected open payments block changes. Existing review
+expiry, refresh/discard and auditing remain in effect.
+
+Public checkout consumers still submit only `coupon_code` to their session quote
+endpoint. They cannot choose the discount or charge amount. Price replacements
+are followed only within the exact approved brand/campaign mapping; refreshing
+the publication invalidates its catalog cache. Existing sessions must refresh
+their quote if their selected offer changes.
+
+## Evidence and rollout
+
+- Full backend regression at the initial implementation: 527 tests passed.
+- Additional targeted prepaid and commerce checks cover full-term prices,
+  provider failures, brand isolation, stale reviews, coupon read-back and
+  public publication replacement chains.
+- All 14 selected commerce, brand and prepaid browser scenarios passed using
+  a local synthetic provider, including three new commerce scenarios.
+  Desktop/mobile screenshots inspected; no horizontal overflow.
+- Synthetic staging supports persisted coupon creation without network access;
+  real payment writes remain disabled there.
+- Initial read-only preflight found unfinished payment forms and unresolved
+  authorizations. Publication was held until the owner requested the CI fixes
+  and deployment. The verified release is recorded below.
+
+Provider contract: [Sticky REST API](https://developer-v2.sticky.io/), Create
+Coupon Profile and Assign Campaign Coupon Profile. Verified against its published
+Postman collection on 24 October 2026; new live coupon writes were not exercised.
+
+## CI follow-up — 24 October 2026
+
+GitHub's full run passed 531 backend checks and 138 of 140 browser scenarios.
+The failures were an obsolete two-item admin navigation expectation and a portal
+layout assertion reading detached elements across a full-shell redraw. The admin
+check now asserts the exact three primary screen labels; the portal check reads
+one DOM snapshot and requires all seven routes to remain visible and within the
+viewport. Both failed scenarios pass locally after correction. No application
+behavior or payment protections were changed to make these checks pass.
+
+The later full rerun also exposed a date-dependent portal fixture: its backend
+clock was fixed to 23 October while browser expiry used wall time. Browser QA now
+reads the offline server's clock and fixes Date to the same instant, leaving timers
+running. Production authentication and expiration rules are unchanged. Intake
+resume, the complete included-refill journey and branded navigation pass together.
+
+## Live release — 24 October 2026
+
+Published to the existing shared Fly app using immutable image
+`sha256:33f2fed43a58bf7adbaf2f584e2e2583188fb87706b22285eabf060ecde77021`.
+Open `/admin#commerce` with the existing owner login. All 140 browser scenarios
+passed locally, with no skipped or flaky results; the runtime backend had passed
+531 checks in GitHub. Subsequent corrections changed test fixtures only.
+
+Live health, runtime source hashes, admin asset delivery and anonymous rejection
+of all three commerce read endpoints were verified. The test-only endpoint is
+absent. An on-volume database backup passed SQLite integrity checking. Existing
+records across 13 protected tables, encryption keys, site publication and payment
+status counts were preserved. The restart does not make unfinished authorizations
+safe to retry; existing uncertainty holds remain. No payment, coupon, product or
+subscription write was performed as a release check. AWS remains a proposal.
+
+Final [GitHub CI run](https://github.com/gokulwlmd/laughing-buddha/actions/runs/40105425562) passed all 531 backend tests and all 140 browser scenarios for app/test commit `775142b8df88902ce2397682a036fd9388d0efa2`.

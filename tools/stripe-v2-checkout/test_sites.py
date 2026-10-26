@@ -19,6 +19,26 @@ class SiteTests(unittest.TestCase):
     provision = helpers.PurchaseOptionTests.provision
     save = helpers.PurchaseOptionTests.save
 
+    def test_wlmd_mapping_is_explicit_preserved_and_cannot_be_reassigned(self):
+        self.seed()
+        self.site['wlmd_site_id']='  wlmd-example-101  '
+        self.save('site',self.site)
+        saved=self.app.state.admin.get('site',self.site['id'])
+        self.assertEqual(saved['wlmd_site_id'],'wlmd-example-101')
+        self.site.pop('wlmd_site_id')
+        self.save('site',self.site)
+        self.assertEqual(self.app.state.admin.get('site',self.site['id'])['wlmd_site_id'],'wlmd-example-101')
+        response=self.post('reviews',{'kind':'site','data':dict(self.site,wlmd_site_id='another-tenant')})
+        self.assertEqual(response.status_code,409,response.text)
+
+    def test_wlmd_mapping_never_defaults_to_sticky_campaign(self):
+        self.seed();self.save('site',self.site)
+        self.assertNotIn('wlmd_site_id',self.app.state.admin.get('site',self.site['id']))
+        from sites import Site
+        from pydantic import ValidationError
+        for value in ['https://example.invalid','../other','a/b','a b']:
+            with self.assertRaises(ValidationError):Site.model_validate(dict(self.site,wlmd_site_id=value))
+
     def test_master_therapy_skeleton_records_exact_contract_with_starter_prices(self):
         from therapy_skeletons import weight_loss_skeleton
         skeleton = weight_loss_skeleton()

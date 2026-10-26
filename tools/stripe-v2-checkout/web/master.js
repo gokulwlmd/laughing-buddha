@@ -54,6 +54,7 @@ function masterOfferCard(value){
 function setMaster(data){for(const key of ['therapy_id','treatment_id','product_duration_months','product_id','fulfillment_product_id'])$('master-form').elements[key].disabled=false;editingPlanningMaster=null;$('master-add-offer').disabled=false;$('master-add-prepaid').disabled=false;const form=$('master-form');form.reset();for(const key of ['sku','name','product_duration_months','product_id','currency'])form.elements[key].value=data[key]??'';renderMasterCategories(data.category||'');setMasterTherapy(data.therapy_id||'',data.treatment_id||'');form.elements.fulfillment_product_id.value=data.fulfillment_product_id||2856;form.elements.enabled.checked=data.enabled!==false;form.elements.sku.readOnly=(state.masters||[]).some(m=>m.sku===data.sku);$('master-mode').textContent=form.elements.sku.readOnly?'Edit master SKU':'New master SKU';$('master-offer-editor').replaceChildren(...data.offers.map(masterOfferCard));loadRefillRules(data.sku);}
 function resetMaster(){setMaster({currency:'USD',enabled:true,offers:[{id:'standard',name:'',price:'',billing_models:[3]}]});}
 function renderMaster(){
+ renderCatalogReview();
  const masters=state.masters||[],assignments=state.assignments||[];
  renderMasterCategories();
  list('master-list',masters,m=>{if(m.planning_contract)return planningMasterCard(m);const e=card(m.name,m.sku+' · '+productDuration(m)+' · '+(m.category||'Uncategorized')+' · Revision '+m.revision+' · '+m.currency+' · '+(m.enabled?'Enabled':'Disabled'));for(const o of m.offers)e.append(element('p',masterPlanLabel(o,m.billing_terms)+' · '+o.price+' '+m.currency+(o.prepaid_cycles?' upfront':' per payment')));action(e,'Edit master preset',async()=>{await loadModels();setMaster(m);});const prepaidIndex=m.offers.findIndex(o=>o.prepaid_cycles);action(e,prepaidIndex<0?'Add prepaid plan':'Edit prepaid plan',async()=>{await loadModels();const value=prepaidIndex<0?prepaidDefault():null;if(value&&m.offers.length>=10)throw Error('A product can have up to 10 payment choices. Edit or remove an existing option first.');setMaster(m);if(value)addPrepaidPlan(value);else focusPurchase($('master-offer-editor').children[prepaidIndex]);});return e;},'No master SKUs yet. Load the agreed TIRZ-1M preset or define another SKU.');
@@ -126,13 +127,13 @@ async function loadRefillRules(sku){
   const rules=await api('master-refill-rules/'+encodeURIComponent(sku));if(generation!==refillLoadGeneration)return;
   panel.replaceChildren(element('summary','Member portal · intakes and refills'));
   const form=element('form');form.id='master-refill-form';
-  form.append(element('p','These settings apply only to '+sku+'. Included refill claims create the next verified $0 Sticky order, then request its check-in. Medical review and fulfillment are separate.','hint'));
+  form.append(element('p','These settings apply only to '+sku+'. Included refill claims create the next verified $0 Sticky order, and request a check-in only when required by this product. Medical review and fulfillment are separate.','hint'));
   const templateLabel=element('label','Product intake'),template=element('select');template.name='intake_template_id';
-  for(const [value,label] of [['','Not connected'],['weight-loss','Weight management · Semaglutide / Tirzepatide'],['sermorelin','Sermorelin'],['metformin','Metformin'],['pt-141','PT-141']]){const option=element('option',label);option.value=value;template.append(option);}
+  for(const [value,label] of [['','Not connected'],['weight-loss','Weight management · Semaglutide / Tirzepatide'],['sermorelin','Sermorelin'],['metformin','Metformin'],['pt-141','PT-141'],['hair-growth','Hair Growth'],['nad-plus','NAD+'],['glutathione','Glutathione'],['premature-ejaculation','Premature Ejaculation · Sertraline'],['performance-anxiety','Performance Anxiety'],['sleep','Sleep'],['skin-care','Skin Care'],['womens-sexual-health','Women’s Sexual Health'],['erectile-dysfunction','Erectile Dysfunction · 4-in-1 ED blend'],['hrt','HRT'],['trt','Testosterone'],['longevity','Longevity']]){const option=element('option',label);option.value=value;template.append(option);}
   template.value=rules.intake_template_id||'';templateLabel.append(template);form.append(templateLabel);
   const scheduleLabel=element('label','Check-in days after purchase'),schedule=element('input');schedule.name='check_in_days';schedule.placeholder='90, 180, 270';schedule.value=(rules.check_in_days||[]).join(', ');scheduleLabel.append(schedule);form.append(scheduleLabel);
-  form.append(element('p','For a 12-month plan, use 90, 180, 270. Each check-in has its own saved answers. These are mock forms until your medical intake API is connected. Saved changes apply to new care plans; existing plans keep their recorded schedule.','hint'));
-  for(const [key,label] of [['initial_intake_required','Require an intake at purchase'],['included_refills_enabled','Allow patients to claim included $0 refill orders'],['enabled','Allow refill requests'],['allow_early_requests','Allow early-refill requests for review'],['check_in_required','Require a refill check-in'],['test_requests_enabled','Allow test requests on payment-test products (no medication shipment)']]){
+  form.append(element('p','For required quarterly check-ins, use 90, 180, 270. Leave blank if this product requires no refill check-in; included deliveries follow the purchased schedule. Each check-in has its own saved answers. These are mock forms until your medical intake API is connected. Saved changes apply to new care plans; existing plans keep their recorded schedule.','hint'));
+  for(const [key,label] of [['initial_intake_required','Require an intake at purchase'],['included_refills_enabled','Allow patients to claim included $0 refill orders'],['enabled','Allow refill requests'],['allow_early_requests','Allow early-refill requests for review'],['allow_paid_early_renewal','Allow paid early subscription renewals'],['check_in_required','Require a refill check-in'],['test_requests_enabled','Allow test requests on payment-test products (no medication shipment)']]){
    const row=element('label',undefined,'checkbox'),input=element('input');input.type='checkbox';input.name=key;input.checked=rules[key];row.append(input,element('span',label));form.append(row);
   }
   for(const [key,label,max] of [['claim_window_days','Open included refill claims this many days before each shipment',30],['minimum_days','Minimum days after purchase before a request',730],['early_request_minimum_days','Minimum days after purchase for an early request',730],['early_request_cooldown_days','Days between early-refill requests',90],['request_window_days','Open requests this many days before the next included shipment',90]]){
@@ -145,11 +146,26 @@ async function loadRefillRules(sku){
    try{
     const offsets=schedule.value.trim()?schedule.value.split(',').map(value=>Number(value.trim())):[];
     if(offsets.some((day,index)=>!Number.isInteger(day)||day<1||day>730||(index>0&&day<=offsets[index-1])))throw Error('Enter distinct check-in days in increasing order, such as 90, 180, 270.');
-    const body={expected_revision:rules.revision,review_required:true,early_reason_required:true,intake_template_id:template.value,check_in_days:offsets};for(const key of ['enabled','check_in_required','test_requests_enabled','allow_early_requests','initial_intake_required','included_refills_enabled'])body[key]=form.elements[key].checked;for(const key of ['minimum_days','request_window_days','early_request_minimum_days','early_request_cooldown_days','claim_window_days'])body[key]=Number(form.elements[key].value);
+    const body={expected_revision:rules.revision,review_required:true,early_reason_required:true,intake_template_id:template.value,check_in_days:offsets};for(const key of ['enabled','check_in_required','test_requests_enabled','allow_early_requests','allow_paid_early_renewal','initial_intake_required','included_refills_enabled'])body[key]=form.elements[key].checked;for(const key of ['minimum_days','request_window_days','early_request_minimum_days','early_request_cooldown_days','claim_window_days'])body[key]=Number(form.elements[key].value);
     const response=await fetch('/api/admin/master-refill-rules/'+encodeURIComponent(sku),{method:'PUT',headers:{'Content-Type':'application/json','X-CSRF-Token':auth.csrfToken||''},body:JSON.stringify(body)});
     const value=await response.json();if(!response.ok)throw Error(typeof value.detail==='string'?value.detail:'Could not save refill settings.');
     rules.revision=value.revision;message('Refill settings saved for '+sku+'.');
    }catch(error){message(error.message,true,true);}finally{button.disabled=false;}
   });
  }catch(error){if(generation===refillLoadGeneration){panel.replaceChildren(element('summary','Member portal · refill requests'),element('p',error.message,'readiness-warning'));action(panel,'Retry',()=>loadRefillRules(sku));}}
+}
+
+async function renderCatalogReview(){
+ if($('catalog-review-panel'))return;
+ const panel=element('details');panel.id='catalog-review-panel';panel.append(element('summary','Catalog review · items needing clarification'));
+ $('master-list').before(panel);
+ try{
+  const data=await api('catalog-review');const items=data.items.filter(r=>r.status==='Needs clarification');
+  panel.firstChild.textContent='Catalog review · '+items.length+' disabled drafts needing clarification';
+  panel.append(element('p','These source records are saved for review. They cannot be selected for checkout until their questions are resolved.','hint'));
+  const search=element('input');search.type='search';search.placeholder='Search SKU, product or category';search.setAttribute('aria-label','Search catalog clarification drafts');panel.append(search);
+  const results=element('div');panel.append(results);
+  function show(){const q=search.value.toLowerCase();results.replaceChildren();for(const r of items.filter(r=>[r.sku,r.name,r.source_category].join(' ').toLowerCase().includes(q))){const row=card(r.name,r.sku+' · '+r.source_category+' · Sheet row '+r.source_row);row.append(element('p',r.question),element('p','Source: '+r.source_term+' · '+(r.source_form||'Form unspecified')+' · '+(r.source_package||'Package unspecified'),'hint'));results.append(row);}}
+  search.addEventListener('input',show);panel.addEventListener('toggle',()=>{if(panel.open&&!results.children.length)show();});
+ }catch(error){panel.append(element('p','Catalog review could not load. Reload to try again.','hint'));}
 }

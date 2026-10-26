@@ -1,11 +1,129 @@
 ---
 name: stickyio-stripe-checkout
-description: Build, verify and deploy Sticky.io Stripe Connect v2 checkouts with campaign/SKU URLs, server-calculated pricing, Stripe Elements, durable payment state and Fly.io hosting.
+description: Build, verify and deploy Sticky.io Stripe Connect v2 checkouts, shared post-purchase intake, and secure Sticky member password setup for the laughing-buddha platform.
 ---
 
 # Sticky Stripe Connect v2 checkout
 
+For new master therapies and their checkout selectors, follow the
+[base / -SUB purchase-pair rule](../stickyio-catalog-billing/SKILL.md#new-master-therapies-base-and--sub-pairs).
+Base means one-time upfront; `-SUB` means recurring upfront. Display both
+approved purchase types and test the exact selected SKU and renewal disclosure.
+Reference storefront behavior does not override this platform convention.
+
+## Sticky membership and post-purchase account setup
+
+For member login, password setup after purchase, or storefront-to-portal handoff,
+read [Sticky member passwords](../../../docs/STICKY_MEMBER_PASSWORDS.md) and
+[shared post-checkout intake](../../../docs/SHARED_POST_CHECKOUT_INTAKE.md).
+This is the native Sticky Members API, not the BigCommerce Membership Program
+or a third-party membership provider.
+
+The owner chose Sticky as the sole live membership/password provider. Keep
+`MEMBER_IDENTITY_PROVIDER=sticky` in the live configuration; do not fall back to
+local password authentication when Sticky rejects or cannot verify a login.
+Existing local patient IDs, site/order grants and intake drafts remain application
+records; Sticky identity alone never grants another site's patient data.
+
+- Let a new customer choose their Sticky password immediately after a verified
+  captured purchase, without an email activation step. Use the checkout bearer
+  with `GET` / `POST /api/v1/sites/{site}/sessions/{session}/account`; POST accepts
+  only the chosen password. Derive email, customer and order from the verified
+  receipt, never from caller-supplied identifiers. Preserve password whitespace.
+- Use `member_view`, then `member_create` only for a missing member, followed by
+  `member_update` using the initial temporary password returned for that exact
+  receipt. Omit `event_id` to request no membership notification. Keep provider
+  credentials, temporary passwords and member tokens on the backend.
+- Existing members authenticate with their Sticky password. A new purchase is
+  not permission to reset an existing account. Previously auto-created members
+  whose initial credential is unavailable need verified recovery; do not use
+  forgotten-password/reset APIs to bypass proof of ownership.
+- Preserve the durable setup journal. Hold uncertain creation for review; after
+  an uncertain password update, verify by login instead of blindly rewriting.
+  Encrypt bootstrap secrets, remove them after success, and retain the private
+  volume's `member-identity.key` with database backups. Never copy this key or
+  customer credentials into source, reports, browser storage or URLs.
+- Keep portal sessions site-bound, capped by Sticky's expiration and checked
+  against Sticky with the implemented maximum 30-second cache. Logout clears
+  local access and calls Sticky logout. Preserve per-order receipt checks for
+  multi-product purchases rather than importing orders by email alone.
+
+The reusable `member_portal/web/post-checkout.js` component offers password setup
+alongside intake on every storefront already loading it. Update this shared
+component rather than reproducing the flow in each Lovable project. Intake must
+remain usable if account setup fails. Returning members get a portal link.
+Implementation is in `member_portal/identity.py`, `member_portal/app.py`, the
+checkout engine's receipt routes and `demo/session_api.py` under
+`tools/stripe-v2-checkout`.
+
+Verify receipt and site isolation, returning-member password preservation,
+provider uncertainty/restart recovery, session expiry/revocation, no local auth
+fallback, and desktop/mobile intake continuity. Relevant checks are
+`test_sticky_membership.py`, `test_portal_onboarding.py`,
+`test_receipt_intake.py`, `test_site_session_api.py` and
+`qa/post-checkout-intake.spec.cjs`. Consult the release document for current
+image/test evidence. The 24 October 2026 release passed 466 backend tests and
+four shared-component browser checks; hosted provider selection and source
+hashes were verified. A fresh live member/password write was not exercised by
+that verification. Do not claim live end-to-end certification from mock tests
+or repeat a real payment/password change merely to validate a skill update.
+
+
 Use this skill for Sticky-managed Stripe payments, campaign/SKU checkout links, or updates to the existing Fly checkout. Read the [application guide](../../../tools/stripe-v2-checkout/README.md) and [Fly deployment guide](../../../tools/stripe-v2-checkout/FLY.md). For catalog exploration or synthetic billing tests, use [stickyio-catalog-billing](../stickyio-catalog-billing/SKILL.md).
+
+## Post-purchase flow (26 October 2026)
+
+Read [the current post-purchase contract](../../../docs/POST_PURCHASE_EXPERIENCE_2026-10-26.md).
+Health-intake GET and draft PATCH must work before identity verification. Enforce
+the identity requirement at final submission, in both initial and care-task paths.
+Never restore the old identity-first gate. The shared component handles this for
+all connected storefronts. Preserve versioned saved forms.
+
+Password setup returns a single-use, encrypted, site-bound portal handoff, consumed
+by the portal after removing the URL fragment. It never resets an existing Sticky
+password or puts a reusable member session/provider token in a URL. Keep its
+30-minute maximum, session-expiry check, atomic consumption and forced Sticky
+session validation. Do not delete unexpired handoffs during session cleanup.
+
+Post-purchase offers default off. An owner setting alone must never enable an
+unverified saved-card gateway. The card-on-file gateway allowlist requires explicit
+provider verification; the normal Stripe v2 checkout's success is insufficient.
+Keep the before-write journal, explicit displayed price/confirmation, exact-site
+and order ownership, independent order semantics, readback checks and no retry
+after an uncertain financial write. Current offers support one-time plans only.
+
+## Saved intake answers and included refill windows
+
+Read [the reuse/refill contract](../../../docs/INTAKE_REUSE_AND_REFILL_WINDOWS.md)
+when changing questionnaires or refill eligibility. Reuse only submitted,
+site/patient/grant-scoped answers via semantic keys and versions. Stable values
+may skip re-entry; changing health details require explicit confirmation. A
+checkout receipt alone cannot unlock cross-order answer history. Trusted ID/SSN
+status comes from the backend provider adapter, never a patient answer PATCH.
+The actual verification APIs are still unconnected. WLMD is the selected
+clinical integration; read [the WLMD contract](../../../docs/WLMD_INTEGRATION.md).
+Ask for each site's WLMD site ID, never infer it from the Sticky campaign ID.
+Reuse a trusted site/patient verification before invoking WLMD again. Keep
+provider credentials server-side and never persist SSN digits or raw ID images
+as reusable intake answers. The live SSN contract is confirmed: POST `/v1/site/{site}/order/{order}/identity_ssncheck`,
+JSON `last4` plus `user` identifying the calling system, and the encrypted
+`authtoken` header. Require the explicit JSON string `status: "success"`;
+HTTP 200/PHP errors are not verification. Do not send `ssn` to this route.
+The shared intake gate and account status still need implementation; other
+identity methods, failure/expiry and fallback contracts remain unconfirmed.
+
+The owner's current included-claim lead time is 20 days: 70/160/250 for the
+12-month quarterly-delivery plan, 70 for six months. Preserve actual unused
+prepaid cycles, required check-ins and uncertain-write protection; do not turn a
+single-shipment plan into a free refill. Keep unavailable refill actions visible,
+gray and disabled for plans with included cycles, with their date/reason/instructions.
+Single-shipment plans instead say included refills are not part of the plan.
+For an existing standard subscription, use the confirmed native early-renewal
+flow in [Native early renewals](../../../docs/NATIVE_EARLY_RENEWALS.md). Quote
+through Sticky recurring_total/calculate, show the price and following date,
+then advance the same subscription once. Never substitute a separate sale.
+Preserve the durable journal and read-only reconciliation after uncertainty.
+Do not infer a renewal amount from the first charge or a supply duration from billing frequency.
 
 ## Working implementation
 
@@ -28,6 +146,22 @@ Standard one-time and day-based self-recurring offers are implemented. Recurring
 7. Require response code 100 and read back `order_view`. Verify approved status, total, campaign, gateway, product, offer, model, quantity and recurring flag before recording completion. Sticky response 101 is currently held for additional API 3DS reconciliation; its completion endpoint is not implemented here. Timeouts and mismatches also hold the attempt. No automatic write retries.
 
 No separate Stripe private key is needed for this Sticky-managed flow. Gateway profiles contain OAuth/access/refresh tokens: never dump raw profiles or extract credentials. A production reconciliation service may need additional processor verification; the current harness relies on Sticky approval/read-back and browser confirmation, and does not independently retrieve PaymentIntents server-side.
+
+### Immediate capture configuration reuse (26 October 2026)
+
+See [same-authorization setup reuse](../../../docs/CAPTURE_SETUP_REUSE_2026-10-26.md).
+Authorization still forces a fresh full campaign read. A linked checkout may reuse
+only that exact authorization's sanitized campaign snapshot once for capture,
+bound to attempt, campaign, quote and intent, for at most 30 seconds from the
+campaign read's completion. This is the narrow exception to repeating the full
+campaign GET at capture; shared display caches cannot provide this permission.
+Keep selected offer/product, gateway profile, coupon and total reads live, plus
+local access/publication and fingerprint checks. Resume, restart, absent/expired
+permission, or a window exhausted during calculation require a full campaign
+read. Never extend the deadline or retry a financial write. External campaign-only
+edits may take up to this 30-second window to affect an already-authorized payment;
+do not claim immediate campaign-field freshness during reuse. Preserve the cap of
+128 entries and existing uncertain-payment journals and order readback checks.
 
 ## Durable state and hosting
 
@@ -140,3 +274,50 @@ Use Therapies, then Purchase options to create a duration preset and assign matc
 Published checkouts retain approved purchase-option snapshots. Preset edits mark them for reviewed republication; disabling a preset immediately blocks its published children. Every option/SKU pair has a separate private child link, so sharing a SKU cannot mix access to payment choices. Parent membership, live duration, private invitation, available billing and server quote checks still apply. All affected open payments block edits. Existing standalone and earlier manually configured multi-SKU links remain supported without automatic data conversion. Purchase-option records participate in stale-preview fingerprints.
 
 Keep clinical eligibility, dosing, refill approval and medication benefits separate from customer plan preference. Master payment choices must be named separately from duration purchase options in the admin. Automated checks use fake services; hosted verification must not impersonate the owner or create real orders. Test coverage is in test_purchase_options.py, test_plans.py and qa/therapy.spec.cjs.
+
+## WLMD identity before intake
+
+Use the confirmed live POST `/v1/site/{wlmd_site_id}/order/{owned_order}/identity_ssncheck`
+contract in `member_portal/wlmd.py`: backend `WLMD_AUTHTOKEN`, JSON `user` is the
+calling system `laughing-buddha`, `last4` is four ASCII digits. Only explicit JSON
+`status: "success"` verifies. Do not reuse the obsolete `ssn` body or PHP route.
+Never persist/log SSN digits or provider response messages. Do not repeat a live
+identity check for QA; use the offline fixtures. Enforce site and exact order
+ownership; receipt-only access must not disclose account-wide facts. Successful
+receipt assertions can be adopted after authenticated order ownership. Cache per
+site, patient and WLMD mapping, with no invented expiry; check status locally
+before calling WLMD. Intake gates and Account settings use the shared adapter;
+checkout frontends use the shared post-checkout component and session identity
+API. Do not equate identity verification with treatment approval. Crosscheck,
+ID-image and clinical questionnaire integrations still require their contracts.
+
+### ID photo alternative
+
+Owner confirmed SSN OR saved ID photo permits intake. The confirmed WLMD upload
+endpoint is POST `/v1/site/{wlmd_site_id}/order/{owned_order}/upload-file-s3` with
+backend authtoken and `user`, `upload_name: ID`, `file_name`, `file_ext`, base64
+`file_contents`. Require explicit success and validated `data.db_id`, `s3_key`,
+`orders_dictionary_key: FUT:ID`. Upload success is NOT identity verification or
+clinical approval. Reuse requires reuploading the saved photo for the new order;
+keep normalized photo/provider reference encrypted, with a private volume key,
+and enforce authenticated same-site/order grants. Never copy an ID, raw response,
+S3 URL/key or encryption key into GitHub/chat. No real ID upload in automated QA.
+The shared `wlmd-id-upload` element handles upload/camera preview and saved-photo
+reuse for portal and checkout; avoid per-site Lovable changes. Preserve bounded
+body/image sizes, metadata stripping, no automatic uncertain-upload retries,
+explicit rate-limited retry, and receipt-only isolation. See WLMD_INTEGRATION.md.
+
+Take photo uses the shared in-page camera with an ID-shaped crop guide and local
+image-quality/motion heuristics. Preserve explicit review/Use photo before upload,
+Retake/manual capture/file-upload fallbacks, and stream cleanup on every exit,
+visibility change, disconnect and late permission response. Auto capture is not
+identity verification. QA must use synthetic camera streams, never real ID photos;
+see qa/id-camera.spec.cjs. Physical device camera QA remains separate.
+
+WLMD upload `data.db_id` may be a positive number/decimal string, or empty before
+an intake-side order exists. For the empty-ID success form require positive integer
+file_size_bytes as well as explicit success, FUT:ID and a nonempty S3 key; store
+an optional internal ID and the encrypted dictionary reference. This is a confirmed
+order-dictionary attachment, not merely file storage. Use offline fixtures for QA.
+For a targeted repair, reconcile a saved encrypted success response to its exact
+original record rather than repeating uploads. Never bulk-retry patient uploads.

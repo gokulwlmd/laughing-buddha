@@ -2,6 +2,7 @@
 import copy
 from http.cookies import SimpleCookie
 import json
+from urllib.parse import urlsplit, parse_qsl
 from pathlib import Path
 import tempfile
 import unittest
@@ -41,7 +42,8 @@ class EngineTransport:
         cookies=json.loads(row['cookies'])
         headers={'Cookie':'; '.join(k+'='+v for k,v in cookies.items()),'Origin':PUBLIC_UPSTREAM,'X-CSRF-Token':row['csrf']}
         if row['attempt']:headers['X-Checkout-Attempt']=row['attempt']
-        params={'link_id':row['link_id']} if path.startswith('/api/') else None
+        params=dict(parse_qsl(urlsplit(path).query))
+        if path.startswith('/api/'):params['link_id']=row['link_id']
         with TestClient(self.backend,base_url=PUBLIC_UPSTREAM) as client:
             response=client.request(method,path,params=params,headers=headers,json=body)
         if path==self.fail_after:
@@ -244,6 +246,10 @@ class SessionApiTests(unittest.TestCase):
         self.assertTrue(result.json()['terms_consent_required'])
         self.assertIn('No automatic renewal',result.json()['payment_terms'])
         self.fake.recurring=True
+        # This scenario changes provider setup in-place. Let the bounded setup
+        # snapshot expire before exercising the new subscription's consent.
+        snapshots=self.engine.state.campaign_snapshots
+        now=snapshots.clock();snapshots.clock=lambda:now+121
         link=self.engine.state.admin.get('link',self.link_id)
         link['options']=['706:54537:3'];self.engine.state.admin.put('link',self.link_id,link)
         self.store.update(data['session_id'],phase='new')
@@ -309,6 +315,7 @@ class TransportTests(unittest.TestCase):
             def request(self,method,path,body,headers):
                 self.count+=1
                 self.headers=dict(headers)
+                self.path=path
                 raise OSError('unavailable')
             def close(self):pass
         broken=Broken()
@@ -318,3 +325,113 @@ class TransportTests(unittest.TestCase):
         self.assertEqual(broken.headers['Origin'],PUBLIC_UPSTREAM)
         self.assertNotIn('Fly-Client-IP',broken.headers)
         self.assertNotIn('Authorization',broken.headers)
+        for route in ('/api/post-checkout-journey','/api/post-checkout-journey?refresh=true'):
+            with patch('demo.session_api.http.client.HTTPSConnection',return_value=broken):
+                with self.assertRaises(UpstreamError):transport.call(row,'GET',route)
+            query=dict(parse_qsl(urlsplit(broken.path).query))
+            self.assertEqual(query['link_id'],row['link_id'])
+            self.assertEqual(query.get('refresh'), 'true' if '?' in route else None)
+        with self.assertRaises(ValueError):transport.call(row,'GET','/api/post-checkout-journey?redirect=evil')
+
+class AccountSessionTests(unittest.TestCase):
+    setUp = SessionApiTests.setUp
+    tearDown = SessionApiTests.tearDown
+    create = SessionApiTests.create
+    def test_journey_is_scoped_and_unpaid_receipt_cannot_read_it(self):
+        path,headers,_=self.create()
+        self.assertEqual(self.client.get(path+'/journey').status_code,401)
+        self.assertEqual(self.client.get(path.replace('payment-test','unknown-site')+'/journey',headers=headers).status_code,404)
+        self.assertEqual(self.client.get(path+'/journey',headers=headers).status_code,409)
+        seen=[]
+        def journey(row,refresh=False):
+            seen.append((row['id'],refresh))
+            return {'id':'fixture-order','product_name':'Semaglutide','intake_status':'draft','journey':{'stages':[]}}
+        self.engine.state.member_portal.receipt_journey=journey
+        response=self.client.get(path+'/journey?refresh=true',headers=headers)
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertTrue(seen[-1][1])
+        self.now+=86401
+        self.assertEqual(self.client.get(path+'/journey',headers=headers).status_code,410)
+
+    def test_account_requires_checkout_bearer_and_forwards_only_password(self):
+        path,headers,data=self.create()
+        self.assertEqual(self.client.get(path+'/account').status_code,401)
+        self.assertEqual(self.client.get(path.replace('payment-test','unknown-site')+'/account',headers=headers).status_code,404)
+        seen=[]
+        def account(row,password=None):
+            seen.append((row['id'],password))
+            return {'state':'set_password' if password is None else 'ready','provider':'sticky','site_id':'payment-test','portal_url':PUBLIC_UPSTREAM+'/portal/payment-test'}
+        self.engine.state.member_portal.receipt_account=account
+        self.assertEqual(self.client.get(path+'/account',headers=headers).json()['state'],'set_password')
+        result=self.client.post(path+'/account',headers=headers,json={'password':'synthetic-pass-123!'})
+        self.assertEqual(result.status_code,200,result.text)
+        self.assertEqual(seen[-1][1],'synthetic-pass-123!')
+        self.assertEqual(seen[0][0],seen[1][0])
+        invalid=self.client.post(path+'/account',headers=headers,json={'password':'DO_NOT_ECHO','customer_id':'override'})
+        self.assertEqual(invalid.status_code,422);self.assertNotIn('DO_NOT_ECHO',invalid.text)
+        self.now+=86401
+        self.assertEqual(self.client.get(path+'/account',headers=headers).status_code,410)
+
+class IdentitySessionTests(unittest.TestCase):
+    setUp = SessionApiTests.setUp
+    tearDown = SessionApiTests.tearDown
+    create = SessionApiTests.create
+
+    def test_identity_api_requires_receipt_and_forwards_only_last_four(self):
+        path,headers,data=self.create()
+        self.assertEqual(self.client.get(path+'/identity').status_code,401)
+        seen=[]
+        members=self.engine.state.member_portal
+        members.receipt_order=lambda row: ({'order_id':'fixture-order','site_id':'payment-test'},{'id':'receipt:fixture-order','_reuse_allowed':False})
+        members.identity_checks.status=lambda order,patient: {'status':'needed','required':True}
+        def verify(order,patient,body):
+            seen.append((order['order_id'],body.last4.get_secret_value()))
+            return {'status':'verified','required':True}
+        members.identity_checks.verify=verify
+        self.assertEqual(self.client.get(path+'/identity',headers=headers).json()['status'],'needed')
+        result=self.client.post(path+'/identity',headers=headers,json={'last4':'1234'})
+        self.assertEqual(result.status_code,200,result.text)
+        self.assertEqual(seen,[('fixture-order','1234')])
+        invalid=self.client.post(path+'/identity',headers=headers,json={'last4':'DO_NOT_ECHO','order_id':'override'})
+        self.assertEqual(invalid.status_code,422);self.assertNotIn('DO_NOT_ECHO',invalid.text)
+
+    def test_transport_preserves_only_identity_gate_contract(self):
+        from email.message import Message
+        class Response:
+            status=409;will_close=False;headers=Message()
+            def read(self): return json.dumps({'detail':{'code':'identity_verification_required','message':'ignored upstream text','private':'never forward'}}).encode()
+        class Connection:
+            def request(self,*args,**kwargs): pass
+            def getresponse(self): return Response()
+            def close(self): pass
+        transport=CheckoutTransport(PUBLIC_UPSTREAM)
+        row={'cookies':'{}','csrf':'x','attempt':'attempt','link_id':'choice-'+'a'*32}
+        with patch('demo.session_api.http.client.HTTPSConnection',return_value=Connection()):
+            with self.assertRaises(UpstreamError) as caught:
+                transport.call(row,'GET','/api/post-checkout-identity')
+        self.assertEqual(caught.exception.detail,{'code':'identity_verification_required','message':'Verify your identity to continue your intake.'})
+
+class IDPhotoSessionTests(unittest.TestCase):
+    setUp = SessionApiTests.setUp
+    tearDown = SessionApiTests.tearDown
+    create = SessionApiTests.create
+
+    def test_photo_and_reuse_are_receipt_owned_and_never_accept_provider_fields(self):
+        path,headers,data=self.create()
+        self.assertEqual(self.client.get(path+'/id-photo').status_code,401)
+        seen=[];members=self.engine.state.member_portal
+        members.receipt_order=lambda row: ({'order_id':'fixture-order','site_id':'payment-test'},{'id':'receipt:fixture-order','_reuse_allowed':False})
+        members.id_uploads.status=lambda order,patient: {'status':'needed','available':True,'order_attached':False}
+        def upload(order,patient,body=None):
+            seen.append((order['order_id'],body.file_contents.get_secret_value() if body else None))
+            return {'status':'uploaded','order_attached':True}
+        members.id_uploads.upload=upload
+        self.assertEqual(self.client.get(path+'/id-photo',headers=headers).status_code,200)
+        # Exceeds the ordinary 16 KB checkout body limit. Only ID routes allow it.
+        contents='A'*24000
+        self.assertEqual(self.client.post(path+'/id-photo',headers=headers,json={'file_contents':contents}).status_code,200)
+        self.assertEqual(self.client.post(path+'/id-photo/reuse',headers=headers,json={}).status_code,200)
+        self.assertEqual(seen,[('fixture-order',contents),('fixture-order',None)])
+        invalid=self.client.post(path+'/id-photo',headers=headers,json={'file_contents':'PRIVATE','site_id':'override'})
+        self.assertEqual(invalid.status_code,422);self.assertNotIn('PRIVATE',invalid.text)
+        self.assertEqual(self.client.post(path.replace('payment-test','unknown-site')+'/id-photo/reuse',headers=headers,json={}).status_code,404)

@@ -24,16 +24,19 @@ class DollarSticky(FakeSticky):
         self.omit_renewal_price = False
         self.currency = 'USD'
 
+    def offer(self):
+        offer = super().offer()
+        offer['billing_models'] = [{'id': self.model, 'name': 'Fixed schedule',
+                'days': 90 if self.cycles > 1 else 30 if self.renewal else 0, 'type': {'id': 1}}]
+        if self.cycles > 1:
+            offer.update(configuration(self.cycles, self.renewal))
+            offer['is_prepaid'] = 1
+        return offer
+
     def detail(self, path):
         result = super().detail(path)
         if '/campaigns/' in path:
             result.update(self.integration)
-            offer = result['offers'][0]
-            offer['billing_models'] = [{'id': self.model, 'name': 'Fixed schedule',
-                'days': 90 if self.cycles > 1 else 30 if self.renewal else 0, 'type': {'id': 1}}]
-            if self.cycles > 1:
-                offer.update(configuration(self.cycles, self.renewal))
-                offer['is_prepaid'] = 1
         elif '/products/' in path:
             result.update(price=self.price, is_shippable=self.shippable, taxable=self.taxable)
         elif '/profiles/' in path:

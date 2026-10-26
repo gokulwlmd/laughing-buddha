@@ -9,6 +9,7 @@ import json
 import secrets
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
+from external_fulfillment import fortifyhp_order_scope
 from .provider import ProviderError, ProviderRejected, ProviderUncertain
 from .care import stamp
 
@@ -62,7 +63,7 @@ class ClaimsManager:
         return dict(row) if row else None
 
     def task_state(self, row, plan, task):
-        rule = self.s.rule(row['sku'])
+        rule = self.s.rule(row['sku'], row['site_id'])
         result = {'available': False, 'status': 'unavailable', 'order_id': None, 'claim_id': None,
                   'created_at': None, 'opens_at': None, 'amount': '0.00', 'reason': '', 'simulated': False}
         if not rule.get('included_refills_enabled') or task['kind'] == 'initial':
@@ -76,7 +77,7 @@ class ClaimsManager:
             return result
         start = self.s.date(data['start_date'])
         opens = max(start + timedelta(days=int(rule.get('minimum_days', 0))),
-                    start + timedelta(days=task['day_offset'] - int(rule.get('claim_window_days', 10))))
+                    start + timedelta(days=task['day_offset'] - int(rule.get('claim_window_days', 20))))
         result['opens_at'] = opens.isoformat()
         saved = self.recorded(plan['id'], target)
         if saved and saved['status'] in ('processing', 'uncertain'):
@@ -90,7 +91,7 @@ class ClaimsManager:
             return result | {'status': 'claimed', 'order_id': child['order_id'],
                 'claim_id': saved['id'], 'created_at': stamp(saved['created']),
                 'simulated': bool(saved['simulated']),
-                'reason': 'Your included refill order is placed. Complete its check-in.'}
+                'reason': 'Your included refill order is placed.' + (' Complete its check-in.' if task['required'] else ' No refill check-in is required.')}
         if saved:
             return result | {'status': 'uncertain', 'claim_id': saved['id'],
                 'reason': 'We need to confirm the existing refill order. Please contact support.'}
@@ -107,8 +108,10 @@ class ClaimsManager:
         payment_test_only = bool(raw.get('test_order') or json.loads(parent['snapshot']).get('payment_test_only'))
         if payment_test_only and not rule.get('test_requests_enabled'):
             return result | {'reason': 'Claims are not enabled for this test order.'}
-        if line.get('is_shippable') is not False:
-            return result | {'reason': 'Please contact support to arrange this refill while fulfillment setup is completed.'}
+        external = (line.get('is_shippable') is True and raw.get('test_order') is False
+                    and fortifyhp_order_scope(raw.get('campaign_id'), raw.get('gateway_id'), line.get('sku')))
+        if line.get('is_shippable') is not False and not external:
+            return result | {'reason': 'Please contact support to arrange this refill.'}
         today = self.s.date(self.s.care.simulation(row)['effective_date'])
         if today >= start + timedelta(days=data['coverage_days']):
             return result | {'reason': 'This prepaid term has ended. Choose your next plan.'}
@@ -117,8 +120,18 @@ class ClaimsManager:
         with self.s.db() as db:
             initial = db.execute("SELECT status,simulated FROM member_care_intakes WHERE plan_id=? AND task_id='initial'", (plan['id'],)).fetchone()
             earlier = db.execute('SELECT task_id,status,simulated FROM member_claim_intakes WHERE plan_id=?', (plan['id'],)).fetchall()
+        first_form_kind = data.get('first_form_kind', 'initial')
+        if first_form_kind == 'none':
+            # No new questionnaire on this renewal; the original required intake
+            # still has to exist. A renewal payment is not an intake submission.
+            with self.s.db() as db:
+                initial = db.execute('''SELECT i.status,i.simulated FROM member_care_intakes i
+                    JOIN member_care_plans p ON p.id=i.plan_id
+                    WHERE p.site_id=? AND p.patient_id=? AND p.root_order_id=?
+                    AND p.term_order_id=? AND p.product_id=? AND i.task_id='initial' ''',
+                    (plan['site_id'], plan['patient_id'], plan['root_order_id'], plan['root_order_id'], plan['product_id'])).fetchone()
         if not initial or initial['status'] != 'submitted':
-            return result | {'status': 'locked', 'reason': 'Complete your initial health intake first.'}
+            return result | {'status': 'locked', 'reason': 'Complete your refill check-in first.' if first_form_kind == 'checkin' else 'Complete your initial health intake first.'}
         prior_days = [day for day in data['rule'].get('check_in_days', []) if day < task['day_offset']]
         complete = {r['task_id'] for r in earlier if r['status'] == 'submitted'}
         if data['rule'].get('check_in_required', True) and any('checkin-' + str(day) not in complete for day in prior_days):

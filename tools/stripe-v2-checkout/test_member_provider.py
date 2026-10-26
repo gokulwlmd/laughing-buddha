@@ -389,7 +389,7 @@ class IncludedCycleSticky(FakeSticky):
         if path == '/api/v1/order_view':
             if wrote and self.failure == 'readback': raise TimeoutError('secret readback detail')
             return deepcopy(self.orders[body['order_id'][0]])
-        details = {'/api/v2/campaigns/422': self.campaign, '/api/v2/products/7001': self.product,
+        details = {'/api/v2/campaigns/' + str(self.campaign['id']): self.campaign, '/api/v2/products/7001': self.product,
             '/api/v2/offers/7002': self.offer, '/api/v2/billing_models/4': self.billing_model,
             '/api/v2/providers/payment/profiles/' + str(self.gateway['id']): self.gateway,
             '/api/v2/shipping/2': self.shipping}

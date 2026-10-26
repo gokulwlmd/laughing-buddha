@@ -14,13 +14,17 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, required=True)
     parser.add_argument('--state-dir', type=Path, required=True)
     parser.add_argument('--care-plan', action='store_true')
+    parser.add_argument('--wellness-plan', action='store_true')
     args = parser.parse_args()
     if not 1024 <= args.port <= 65535:
         parser.error('Use an unprivileged port')
     app, fake, attempt = build_member_fixture(args.state_dir, origin=f'http://127.0.0.1:{args.port}')
     # This fixture is the sole source of order data. No network-capable Sticky
     # client is used. A shippable offline product exercises eligible UI actions.
-    if args.care_plan:
+    if args.wellness_plan:
+        from test_wellness_refills import configure_wellness_fixture
+        fake, _sku = configure_wellness_fixture(app)
+    elif args.care_plan:
         from test_member_care import configure_native_care_fixture
         fake = configure_native_care_fixture(app, months=12)
     else:
@@ -38,6 +42,16 @@ if __name__ == '__main__':
             'early_request_cooldown_days': 7, 'early_reason_required': True,
         })
 
+    @app.post('/__member_identity', include_in_schema=False)
+    def enable_identity():
+        from test_wlmd_identity import FakeIdentity
+        raw=app.state.admin.get('site','site-a');raw['wlmd_site_id']='qa-wlmd'
+        app.state.admin.put('site','site-a',raw)
+        app.state.member_portal.identity_checks.provider=FakeIdentity()
+        from test_id_uploads import FakeUpload
+        app.state.member_portal.id_uploads.provider=FakeUpload()
+        return {'enabled': True}
+
     @app.get('/__member_qa', include_in_schema=False)
     def proof():
         counts = {}
@@ -48,6 +62,6 @@ if __name__ == '__main__':
             'id': order['order_id'], 'total': order['order_total'],
             'next_cycle_date': order['products'][0].get('recurring_date'),
         } for order in getattr(fake, 'orders', {}).values()]
-        return {'calls': counts, 'native_orders': native_orders, 'shipping_state': fake.order.get('shipping_state'), 'subscription_state': fake.subscription.get('shipping', {}).get('state')}
+        return {'clock': app.state.member_portal.clock(), 'calls': counts, 'native_orders': native_orders, 'shipping_state': fake.order.get('shipping_state'), 'subscription_state': fake.subscription.get('shipping', {}).get('state')}
 
     uvicorn.run(app, host='127.0.0.1', port=args.port, log_level='warning', access_log=False, proxy_headers=False)

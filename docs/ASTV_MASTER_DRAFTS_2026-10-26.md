@@ -1,0 +1,25 @@
+# ASTV 5-pack master drafts
+
+The owner approved the four 5-pack durations identified in Sticky: `ASTV-5P-1M`, `ASTV-5P-3M`, `ASTV-5P-6M`, and `ASTV-5P-12M`. Preserve those exact names and add their exact `-SUB` counterparts under the existing `erectile-dysfunction` therapy. The treatment is Apomorphine / Sildenafil / Tadalafil / Vardenafil, displayed as “4-in-1 ED blend · 5-pack”. Full ingredient strengths remain unconfirmed.
+
+Sticky product IDs 56595, 56598, 56602, and 56606 respectively verified those SKUs on 26 October. Their starting prices are $69.99, $291, $450, and $900, copied as editable draft prices for both purchase types, not guaranteed brand selling prices. Source product IDs are evidence only, not automatically reused as campaign mappings.
+
+The owner asked to consult the workbook for shipment rules. The supplied WLMD Offering Catalog Master Oct 23 has only five ASTV rows (67–71). Row 69 explicitly describes `ASTV-5P-1M`: 5 packets, 30-day supply, one shipment per charge, zero included refills, no refill check-in. The other ASTV rows describe 10/20-pack monthly plans and 30/40-pack quarterly plans. There are no exact 5-pack 3/6/12-month rows. Neither the Sticky product descriptions nor their empty custom fields establish these missing delivery rules. Do not extrapolate quarterly or monthly delivery quantities from another SKU or billing interval.
+
+Eight master drafts, four purchase options, and one reusable template `master-therapy-astv-5pack` are created. Base SKUs charge once upfront; subscriptions charge upfront and renew after 30/90/180/360 days. The 1-month shipment count is one. Longer-term shipment counts and intervals remain null, with the missing source information recorded in the variant catalog. No refill policies are activated until the corresponding delivery and check-in rules are confirmed. Existing campaign-assignment guards block these planning drafts from publication. Existing ED templates are preserved.
+
+`import_astv_masters.py` uses running-release validators and an atomic additive database transaction, without application startup, provider calls, or restart. It adds only the ASTV treatment to the existing ED therapy and refuses collisions. Tests verify exact pairs, unresolved delivery values, publication guards, rollback, repeat-import idempotency, and preservation of previous records and edited prices. No patient records, credentials, or internal source costs belong in this record.
+
+Installed and read back on the shared Fly app `wlmd-stripe-test-0f89b1bb`: 22 new configuration records and one ED treatment-list update. The repeat import was a no-op. Comparing every prior configuration record with the private on-volume backup confirmed only the intended ED therapy changed. All three focused tests passed. No application restart, Sticky object mutation, site publication, payment, or fulfillment operation was performed.
+
+## Final decision: only finalized sheet rows
+
+The owner superseded the proposed monthly/quarterly longer-term schedules and requested only finalized sheet entries until clarification. For this approved 5-pack group, only `ASTV-5P-1M` and `ASTV-5P-1M-SUB` remain enabled and selectable. Both have one 30-day shipment of five packets, no included refill, no refill check-in, and an initial intake requirement. Only the subscription renews, after 30 days.
+
+The six longer-term masters and three purchase options are preserved but disabled. The reusable template contains only the one-month option. Longer-term shipment settings remain unset, with no runtime intake binding or refill policy. None of the proposed longer-term schedules was applied to the database. The additional 10/20/30/40-pack sheet entries were not in this four-plan approval and are not added by this change.
+
+`update_astv_refills.py` applies this final decision atomically to unassigned drafts, preserving prices and rejecting prior active mappings or changed schedules. The runtime adds the ED intake identifier and exact binding only for the approved one-month pair. Tests cover selection, unavailable longer-term bindings, transaction rollback, idempotency, and existing-record preservation.
+
+Sync status: the base Sticky products exist, but these Fly master recipes have no saved campaign/product/offer activation mapping. Existing Sticky offers, subscriptions and orders are unchanged. Client campaign publication and its provider validation remain separate work.
+
+Final release: `registry.fly.io/wlmd-stripe-test-0f89b1bb@sha256:de3c46f0ad17ca981186383d1a946bd853ca8aeb47be19454c1109ba8316d0f6`. The sheet-only migration was applied and a second invocation was a no-op. Hosted readback verified two enabled masters, six disabled masters, one selectable duration and two refill policies. The deployed runtime resolves only the one-month pair. All prior purchase/checkouts rows and unrelated configuration matched the private pre-update backup. Public health returned HTTP 200. The final focused suite passed 38 tests and admin JavaScript syntax validation passed. No live payment or provider order test ran.

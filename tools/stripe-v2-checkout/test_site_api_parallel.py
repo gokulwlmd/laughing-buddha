@@ -1,109 +1,79 @@
-"""Payment preparation overlaps reads, never overlaps a financial write."""
-import threading
+"""Payment uses the engine's verified route without a duplicate catalog request."""
 import unittest
-
+from unittest.mock import patch
 from demo.session_api import UpstreamError
-import test_site_session_api as session_fixtures
+import test_site_session_api as fixtures
+from app import Sticky
 
+class PaymentPreparationTests(unittest.TestCase):
+    setUp=fixtures.SessionApiTests.setUp
+    tearDown=fixtures.SessionApiTests.tearDown
+    create=fixtures.SessionApiTests.create
+    configured=fixtures.SessionApiTests.configured
+    quoted=fixtures.SessionApiTests.quoted
+    prepared=fixtures.SessionApiTests.prepared
 
-class ParallelPaymentReadsTests(unittest.TestCase):
-    setUp=session_fixtures.SessionApiTests.setUp
-    tearDown=session_fixtures.SessionApiTests.tearDown
-    create=session_fixtures.SessionApiTests.create
-    configured=session_fixtures.SessionApiTests.configured
-    quoted=session_fixtures.SessionApiTests.quoted
-    prepared=session_fixtures.SessionApiTests.prepared
-
-    def check_overlap(self,resume=False):
-        if resume:
-            path,headers,data,_=self.prepared()
-            quote_id=self.store.read(data['session_id'])['quote_id']
-        else:
-            path,headers,data,quote=self.quoted();quote_id=quote['quote_id']
-        original=self.transport.call
-        rendezvous=threading.Barrier(3);release_status=threading.Event();config_done=threading.Event()
-        completed=set();financial=[];row_objects=[];answers=[];errors=[];guard=threading.Lock()
-
-        def call(row,method,upstream_path,body=None,client_ip=None):
-            if method=='GET' and upstream_path in ('/api/config','/api/status'):
-                with guard:row_objects.append(row)
-                rendezvous.wait(3)  # Both GETs must have started together.
-                if upstream_path=='/api/status' and not release_status.wait(3):raise TimeoutError()
-                result=original(row,method,upstream_path,body,client_ip)
-                with guard:completed.add(upstream_path)
-                if upstream_path=='/api/config':config_done.set()
-                return result
-            if upstream_path in ('/api/authorize','/api/resume'):
-                with guard:financial.append((upstream_path,set(completed)))
-            return original(row,method,upstream_path,body,client_ip)
-        self.transport.call=call
-
-        def prepare():
-            try:answers.append(self.client.post(path+'/payment',headers=headers,json={'quote_id':quote_id,'accept_terms':False}))
-            except Exception as exc:errors.append(exc)
-        worker=threading.Thread(target=prepare);worker.start()
-        try:
-            rendezvous.wait(3)
-            self.assertTrue(config_done.wait(3))
-            self.assertEqual(financial,[])
-            self.assertEqual(completed,{'/api/config'})
-            self.assertEqual(len(row_objects),2)
-            self.assertIsNot(row_objects[0],row_objects[1])
-        finally:
-            release_status.set();worker.join(5)
-        self.assertFalse(worker.is_alive());self.assertEqual(errors,[])
-        self.assertEqual(answers[0].status_code,200,answers[0].text)
-        expected='/api/resume' if resume else '/api/authorize'
-        self.assertEqual(financial,[(expected,{'/api/config','/api/status'})])
+    def test_payment_uses_one_fresh_configuration_and_returned_key(self):
+        path,headers,_,quote=self.quoted()
+        self.fake.reads.clear();self.transport.calls.clear()
+        result=self.client.post(path+'/payment',headers=headers,json={'quote_id':quote['quote_id']})
+        self.assertEqual(result.status_code,200,result.text)
+        self.assertEqual(result.json()['publishable_key'],'pk_live_placeholder')
+        self.assertEqual([p for _,p,_,_ in self.transport.calls],['/api/status','/api/authorize'])
+        for p in ('/api/v2/campaigns/422','/api/v2/offers/706','/api/v2/products/54537','/api/v2/providers/payment/profiles/254'):
+            self.assertEqual(self.fake.reads.count(p),1,p)
         self.assertEqual(self.fake.count('/authorize_payment'),1)
 
-    def test_authorization_waits_for_both_concurrent_reads(self):
-        self.check_overlap()
+    def test_both_resume_routes_reuse_original_intent_without_duplicate_config(self):
+        path,headers,data,payment=self.prepared()
+        quote_id=self.store.read(data['session_id'])['quote_id']
+        for endpoint,body in (('/payment',{'quote_id':quote_id}),('/resume',{})):
+            self.transport.calls.clear();self.fake.reads.clear()
+            result=self.client.post(path+endpoint,headers=headers,json=body)
+            self.assertEqual(result.status_code,200,result.text)
+            self.assertEqual(result.json(),payment)
+            self.assertNotIn('/api/config',[p for _,p,_,_ in self.transport.calls])
+            self.assertEqual(self.fake.reads.count('/api/v2/campaigns/422'),1)
+        self.assertEqual(self.fake.count('/authorize_payment'),1)
 
-    def test_resume_waits_for_both_concurrent_reads_without_new_authorization(self):
-        self.check_overlap(resume=True)
-
-    def test_either_read_failure_prevents_authorization_and_waits_for_other_read(self):
-        original=self.transport.call
-        for failing in ('/api/config','/api/status'):
-            with self.subTest(failing=failing):
-                self.transport.call=original
-                path,headers,data,quote=self.quoted()
-                rendezvous=threading.Barrier(2);finished=set();financial=[];guard=threading.Lock()
-                def call(row,method,upstream_path,body=None,client_ip=None):
-                    if method=='GET' and upstream_path in ('/api/config','/api/status'):
-                        rendezvous.wait(3)
-                        try:
-                            if upstream_path==failing:raise UpstreamError()
-                            return original(row,method,upstream_path,body,client_ip)
-                        finally:
-                            with guard:finished.add(upstream_path)
-                    if upstream_path in ('/api/authorize','/api/resume'):financial.append(upstream_path)
-                    return original(row,method,upstream_path,body,client_ip)
-                self.transport.call=call
-                response=self.client.post(path+'/payment',headers=headers,json={'quote_id':quote['quote_id'],'accept_terms':False})
-                self.assertEqual(response.status_code,502,response.text)
-                self.assertEqual(finished,{'/api/config','/api/status'})
-                self.assertEqual(financial,[])
-                self.assertEqual(self.fake.count('/authorize_payment'),0)
-
-    def test_unavailable_config_prevents_authorization_after_both_reads_complete(self):
-        path,headers,data,quote=self.quoted();original=self.transport.call
-        rendezvous=threading.Barrier(2);finished=set();financial=[];guard=threading.Lock()
-        def call(row,method,upstream_path,body=None,client_ip=None):
-            if method=='GET' and upstream_path in ('/api/config','/api/status'):
-                rendezvous.wait(3)
-                result,cookies=original(row,method,upstream_path,body,client_ip)
-                if upstream_path=='/api/config':result['ready']=False
-                with guard:finished.add(upstream_path)
-                return result,cookies
-            if upstream_path in ('/api/authorize','/api/resume'):financial.append(upstream_path)
-            return original(row,method,upstream_path,body,client_ip)
-        self.transport.call=call
-        response=self.client.post(path+'/payment',headers=headers,json={'quote_id':quote['quote_id'],'accept_terms':False})
-        self.assertEqual(response.status_code,409,response.text)
-        self.assertEqual(finished,{'/api/config','/api/status'});self.assertEqual(financial,[])
+    def test_status_failure_stops_before_authorization(self):
+        path,headers,_,quote=self.quoted();self.transport.fail_before='/api/status'
+        r=self.client.post(path+'/payment',headers=headers,json={'quote_id':quote['quote_id']})
+        self.assertEqual(r.status_code,502)
         self.assertEqual(self.fake.count('/authorize_payment'),0)
 
+    def test_fresh_gateway_failure_still_prevents_authorization(self):
+        path,headers,_,quote=self.quoted();self.fake.link_gateway=999
+        r=self.client.post(path+'/payment',headers=headers,json={'quote_id':quote['quote_id']})
+        self.assertEqual(r.status_code,409,r.text)
+        self.assertEqual(self.fake.count('/authorize_payment'),0)
+
+    def test_missing_verified_key_is_held_and_never_reauthorized(self):
+        path,headers,data,quote=self.quoted();original=self.transport.call
+        def malformed(row,method,endpoint,body=None,client_ip=None):
+            result,cookies=original(row,method,endpoint,body,client_ip)
+            if endpoint=='/api/authorize':result.pop('publishableKey',None)
+            return result,cookies
+        self.transport.call=malformed
+        r=self.client.post(path+'/payment',headers=headers,json={'quote_id':quote['quote_id']})
+        self.assertEqual(r.status_code,502)
+        self.assertEqual(self.store.read(data['session_id'])['held'],'authorization_unknown')
+        self.assertEqual(self.fake.count('/authorize_payment'),1)
+        r=self.client.post(path+'/payment',headers=headers,json={'quote_id':quote['quote_id']})
+        self.assertEqual(r.status_code,409)
+        self.assertEqual(self.fake.count('/authorize_payment'),1)
+
+class SafeTimingTests(unittest.TestCase):
+    def test_logs_operation_and_time_without_payload_or_response(self):
+        for failure in (False,True):
+            with patch.object(Sticky,'_call',side_effect=RuntimeError('PRIVATE') if failure else None,return_value={'token':'PRIVATE'}):
+                with self.assertLogs('uvicorn.error',level='INFO') as logs:
+                    try:Sticky().call('POST','/api/v1/new_order',{'email':'PRIVATE','transactionId':'PRIVATE'})
+                    except RuntimeError:pass
+                text=' '.join(logs.output)
+                self.assertIn('operation=create_order',text)
+                self.assertIn('duration_ms=',text)
+                self.assertNotIn('PRIVATE',text)
+                self.assertIn('outcome='+('error' if failure else 'response'),text)
 
 if __name__=='__main__':unittest.main()

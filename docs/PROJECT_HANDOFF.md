@@ -2,6 +2,10 @@
 
 Laughing Buddha contains WLMD Core, a FastAPI and SQLite checkout administration application in `tools/stripe-v2-checkout`. Resume here and in [the decision record](DECISIONS.md). This handoff carries the product decisions from the earlier “Set up laughing-buddha” conversation, retrieved on 22 October 2026, without copying credentials, private invitations, payment receipts or customer records.
 
+For the latest Fortify final-price latency change, read
+[checkout price performance](CHECKOUT_PRICE_PERFORMANCE.md). Campaign setup can
+be reused briefly for quotes; financial writes still force fresh validation.
+
 ## Repository and protected live service
 
 Repository: `gokulwlmd/laughing-buddha`. The starting checkout was clean at `f109e5151b840687d9a0731d8611acf73048b979`. The Sites and Checkout Templates implementation was still unimplemented in that starting commit.
@@ -485,3 +489,254 @@ processes stayed running and healthy. Public checkout/database untouched.
 No real provider transaction was performed for this design change. User chose
 automated checks rather than signing into the real-data portal for inspection.
 Read PORTAL_DESIGN_REFRESH.md and member-portal-preview.json for exact scope.
+
+
+## Sticky-owned member passwords (24 October 2026)
+
+The owner selected Sticky as the sole live membership/password provider, with
+password setup immediately after a verified purchase and no membership email
+request. See [the contract, migration and boundaries](STICKY_MEMBER_PASSWORDS.md).
+The shared post-checkout component carries the form across sites. Existing
+Sticky passwords are never overwritten by a new receipt. Site-scoped patient
+records, order grants and clinical drafts stay in this application.
+
+
+## 24 October 2026 — intake reuse and earlier included refills
+
+The owner approved reusing stable answers and verified identity facts, with
+explicit confirmation for changing health information. The included-refill
+window opens 20 days before supply ends (70/160/250 for 90-day supplies in a
+12-month plan); no additional free cycles are created. Unavailable refills must
+stay visible, grayed out with dates and full instructions. Every order now
+links to its refill options; paid plan choices remain separate checkout actions.
+
+See [the implementation and provider contract](INTAKE_REUSE_AND_REFILL_WINDOWS.md).
+Existing site/patient/order grants protect answer reuse. Submitted snapshots
+remain immutable and guest receipts do not expose other-order health history.
+The real ID/SSN verification APIs are still needed; only the trusted backend
+adapter hook is implemented. No clinical review or identity verification is
+fabricated.
+
+This release is live on the shared Fly app. Hosted code hashes and policy
+migration were verified; 473 backend tests and 10 targeted browser scenarios
+passed. Existing orders, patients, app, machine and volume were preserved.
+
+
+### Refill screen clarity — 24 October 2026
+
+The owner approved separating monthly paid renewals from prepaid included
+refills. Single-shipment plans now state that included refills are not part of
+the plan, without a misleading free-claim button. Prepaid plans retain visible,
+disabled claims, opening dates and instructions. Nonrenewing prepaid cycles do
+not imply a future paid renewal. Medication titles remove redundant duration
+and subscription suffixes.
+
+Manage subscription goes directly to existing controls. Get next supply early
+uses explicitly one-time, same-site/product plans, explains the unchanged
+subscription schedule and sends the patient to checkout to review and pay.
+It does not force-bill, reschedule a renewal, cancel, or create an extra recurring
+subscription. The store API now includes SKU and explicit recurring metadata;
+subscription responses include billing interval and prepaid renewal metadata.
+Renewal dates come from Sticky. Renewal amount is unavailable in the current
+adapter, and the UI says so rather than guessing from discounted initial totals.
+
+Validation: 67 affected backend tests; 25 unique portal browser scenarios
+passed across the full run and targeted reruns. The full run had 23 passes and
+one outdated monthly fixture failure, corrected and rerun successfully; the
+final four-case check covers monthly, paused, six-month nonrenewing prepaid,
+and twelve-month upcoming refills. Mobile and desktop screenshots inspected.
+No live payment, refill, subscription or identity writes were performed.
+
+Live release verified: health 200, unauthenticated portal 401, hosted JavaScript,
+CSS and backend hashes match. Existing checkout and patient counts are unchanged.
+Immutable image and validation details are in `tools/stripe-v2-checkout/deployment.json`.
+
+
+### Native early renewal supersedes the separate-purchase shortcut
+
+24 October 2026: the owner asked to implement the intended subscription behavior.
+For active standard monthly/90-day subscriptions, Request refill sooner now
+quotes Sticky's recurring total and explicitly confirms the charge plus next
+payment date, then advances that same subscription with a native child order.
+The previous one-time-purchase shortcut is removed from subscription cards.
+The old statement that the recurring price is unavailable is superseded by the
+verified recurring_total/calculate integration. Included prepaid cycles remain
+on their own $0-claim path. See [Native early renewals](NATIVE_EARLY_RENEWALS.md)
+for API contracts, policy rollout, durable uncertainty handling and limitations.
+No live payment or renewal was performed during development.
+
+Release verified 24 October 2026 on the existing shared Fly app: image
+`sha256:c2711bff95fa3ebbe7462ae72f4dadcfd27f9a1c1c1feba835ca5f4e4978bbd9`.
+118 member backend tests, 48 targeted tests (overlapping renewal coverage), and
+26 portal browser scenarios passed. Hosted source hashes match; health returned
+200 and unauthenticated member data returned 401. Saved checkout/patient counts
+were unchanged. Ten existing FortifyHP 1/3-month SKU policies were enabled.
+Read-only live recurring pricing included the continuing discount; no live
+charge, subscription advance or included-refill claim was submitted as QA.
+
+## WLMD identity/intake integration — contract pending
+
+The owner selected WLMD for identity checks, intake, order stages and later
+clinical services. Site setup now accepts a separate `wlmd_site_id`; mapping
+preservation and accidental reassignment protection are implemented locally.
+See [WLMD integration](WLMD_INTEGRATION.md) for the provided endpoint and exact
+missing contract details. No WLMD credentials were configured in the live app.
+FortifyHP's WLMD ID, base URL/authentication, sanitized result examples, `user`
+semantics and check/image flow remain requested. Identity gating is not activated
+and no live identity request or patient-data transfer was performed. Do not
+confuse this foundation with the deployed native-refill release above.
+
+WLMD configuration update, 24 October 2026: owner confirmed live origin
+`https://api.whitelabelmd.com` (do not use stage-api) and FortifyHP WLMD ID `288`.
+The existing FortifyHP site record now contains that mapping. The complete
+`authtoken` header value is stored as encrypted Fly secret `WLMD_AUTHTOKEN`,
+with origin in `WLMD_API_URL`; no credential is stored in this repository.
+Site setup UI/model deployed in image
+`sha256:d0c61ff881e0faf50c3219ca411f953dc571ef7d71a3abcc70f1720dddc77175`.
+31 site/Fortify backend tests and one site browser scenario passed; deployed
+source hashes match and saved checkout/patient counts are unchanged.
+No identity request or patient-data transfer was performed. The Postman route
+`/v1/site/{site}/order/{order}/identity_ssncheck` differs from the supplied PHP
+route `/v1/site/{site}/identity-check/{order}`. Current route/body and response
+semantics still require confirmation. Credentials are configured, not yet
+authenticated against the identity endpoint. Shared intake remains unchanged.
+
+WLMD authorized test update: the supplied identity routes did not produce a
+verification result on the configured live origin. One returned non-JSON; the
+PHP-shaped route returned an error 404 from RoutingMiddleware.php. No patient
+was marked verified. Await the full resolved Postman api_url/base path before
+another identity request. See WLMD_INTEGRATION.md; test personal data is omitted.
+
+WLMD correction: live hostname is confirmed. The Postman-shaped POST SSN
+route returns a PHP TypeError (HTTP 200, not JSON), rather than a verification
+result. OPTIONS independently raises a routing error and is not evidence that
+the POST route is missing. Resolve the handler/body contract (`ssn` versus
+`last4`/`user`) with the WLMD developer; do not keep asking for the hostname.
+No verified fact was saved. Sanitized evidence is in WLMD_INTEGRATION.md.
+
+WLMD blocker resolved for SSN: owner clarified `last4` (not `ssn`) and that
+`user` identifies our system. Authorized live POST to the Postman-shaped
+identity_ssncheck route with system identifier `laughing-buddha` returned JSON
+`status: "success"` in about 6 seconds. Credential authentication and this SSN
+contract are now verified. Use the explicit JSON success string, never HTTP 200
+alone. No local verified fact was created by the standalone test. Next work is
+the shared server adapter, site/patient status persistence and intake gate/UI;
+crosscheck/ID-image and failure/expiry semantics remain separate unconfirmed
+contracts. Do not repeat the earlier malformed requests. Sanitized details are
+in WLMD_INTEGRATION.md; no request personal data or raw message was retained.
+
+## Current: WLMD identity gate and account settings — 24 October 2026
+
+The confirmed SSN adapter and intake gate are implemented for the shared app.
+Account settings has a branded verification card with status/date and a secure
+last-four input. The shared post-purchase component verifies inline and resumes
+intake. Successful verification is cached within the site and WLMD mapping;
+verified receipt assertions join the patient account only after exact order
+ownership is authenticated. Raw digits and provider messages are never saved.
+Initial/refill intakes enforce the gate; existing intake drafts, payments and
+subscriptions are preserved. Missing credentials do not bypass mapped sites.
+See WLMD_INTEGRATION.md for API routes, cache/security boundaries and QA evidence.
+The real clinical questionnaire provider remains separate and pending its API.
+
+Release deployed and verified on the existing shared Fly app in image
+`sha256:ae2496fd8f355659e8f82809e7d15db98f5eebbc3bf550b83f13a8112c2f8675`.
+Hosted JS/CSS/backend hashes match, health is 200, unauthenticated identity
+access is 401, and existing checkout/patient counts are unchanged.
+
+## Latest: ID photo as an alternative to SSN — 24 October 2026
+
+Owner supplied the WLMD upload success contract and confirmed either SSN OR ID
+photo is sufficient before intake. Upload/take-photo with preview is shared by
+Account settings and post-checkout intake. A successful upload is shown as an ID
+photo on file, never as provider-verified identity. Encrypted photos and upload
+references are kept on the shared backend so future owned orders can use the same
+WLMD upload endpoint with the new order ID. Signed-in patients’ next intakes reuse
+the saved photo automatically; receipt-only access cannot read another order’s ID.
+Keep the private `member-id-uploads.key` with database backups and out of GitHub.
+See WLMD_INTEGRATION.md for endpoint contracts, access boundaries and QA scope.
+
+ID-photo release deployed and verified on the shared Fly app in image
+`sha256:88be27833d80fe84e8f1bc5390b4089aa92a0d999e637d746fdb871b5b58f380`.
+Hosted source hashes and private-key permissions match; health is 200 and
+unauthenticated photo access is 401. Existing checkout/patient counts remain
+unchanged. Backend batches (46, 47, 8 and 7; overlapping) and 10 targeted
+browser scenarios passed. No real ID or payment was submitted in release QA.
+
+## Guided ID camera — 24 October 2026
+
+The shared ID component now opens a real in-page camera instead of a file picker
+for Take photo. An ID-sized guide, local steady-image auto capture, manual fallback,
+and review with Use photo / Retake work in portal and post-checkout intake.
+Only explicit Use photo uploads; encrypted storage and future-order reuse are
+unchanged. See WLMD_INTEGRATION.md for camera behavior and QA limitations.
+
+Deployed and verified in image
+`sha256:68e77c5bacab823739b50573edd76e7836d99be8db80028da6b7368720a95320`.
+All 11 targeted browser scenarios pass; hosted asset hashes match, health is 200,
+and existing checkout/patient counts are unchanged. No real photo, identity check
+or payment was submitted. Physical phone-camera testing remains unverified.
+
+## WLMD upload response correction — 24 October 2026
+
+WLMD may confirm an upload to S3 and the order dictionary before an intake-side
+order exists; its internal database ID is then empty. Other successful responses
+use numeric or decimal-string IDs. The old validator incorrectly rejected these
+valid success forms. The adapter now handles both while requiring explicit
+success, FUT:ID, a nonempty storage key, and positive file size for empty-ID
+responses. Regression tests cover validation, saved-photo recovery and intake
+access. Upload success does not establish identity or clinical approval.
+
+Deployed in image
+`sha256:5d26df6482ab1fbcf063eabda08eddf0730aad68f7ca94bba831d29ef4e5d874`.
+All 18 affected backend tests pass. Live source hashes and health are verified;
+checkout/patient counts are preserved. The reported patient's exact upload record
+was reconciled from an encrypted provider success response, and its intake gate
+passes. Diagnosis included targeted retries; final reconciliation made no further
+upload. The temporary encrypted response was removed. No payment was submitted.
+
+
+## 24 October 2026 — brand commerce and AWS migration plan
+
+Built the owner-only Prices & coupons screen and brand-scoped price/coupon
+review APIs, with a private per-brand OpenAPI contract. Coupons support percent,
+expiry/timezone, usage limits and initial-only or continuing renewal applicability.
+Approved price edits preserve existing subscriptions and propagate exact approved
+replacement choices to public site APIs. Read-back, CSRF, tenant/campaign scope,
+review history and uncertain-write holds remain enforced. Synthetic staging can
+exercise coupon creation without contacting a provider.
+
+Validation: initial full backend run 527 passed; subsequent focused checks cover
+the final additions. All 14 selected commerce, brand and prepaid browser checks
+passed. See BRAND_COMMERCE.md for endpoints, boundaries and rollout status.
+The live Fly worker was not restarted: preflight found unfinished payment forms
+and unresolved authorizations. No live catalog or financial writes were performed.
+This is implemented source, not a claim of live deployment.
+
+The owner next requested an enterprise AWS migration plan. Confirmed: no AWS
+account yet, client-owned portal subdomains with DNS instructions, production
+approval by owner/designated leads. AWS_PLATFORM_PLAN.md proposes separate
+staging/production accounts, ECS Fargate, RDS PostgreSQL, private S3/KMS,
+CloudFront SaaS domains, durable payment state and GitHub OIDC releases. It
+includes migration/rollback gates and owner setup inputs. No AWS infrastructure,
+DNS or data migration has been applied. Full spreadsheet catalog import remains
+unapproved and paused; preserve the separate review prototypes.
+
+## 24 October 2026 — commerce published and CI fixtures corrected
+
+Owner requested fixing CI and publishing the commerce work. The initial failure
+was a stale two-item navigation expectation and detached DOM layout measurements.
+A later rerun exposed backend/browser clock skew after a fixed-date test session
+expired. QA now checks the exact three primary admin screens, snapshots layout
+atomically, and aligns browser Date to the offline backend clock without stopping
+timers or changing production session rules. The final full local browser run
+passed all 140 scenarios, with no skips or flaky results. Runtime backend code
+previously passed all 531 GitHub checks.
+
+Prices & coupons is now live at `/admin#commerce` on the shared Fly app. The tested
+image, protected-route checks and state-preservation evidence are recorded in
+BRAND_COMMERCE.md and deployment.json. All existing records and persistent keys
+were preserved, and no financial/provider mutation was performed for QA. AWS
+setup remains unprovisioned and the spreadsheet catalog proposal remains paused.
+
+Final GitHub CI run 40105425562 is green: 531 backend and 140 browser scenarios.
+Validated source: `775142b8df88902ce2397682a036fd9388d0efa2`. The following release-record commit changes documentation and deployment metadata only.
