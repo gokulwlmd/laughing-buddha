@@ -5,6 +5,9 @@ and performs fulfillment. This capability does not mark an order prescribed,
 shipped, or clinically approved, and does not place any refill order itself.
 """
 import re
+import json
+from pathlib import Path
+from functools import lru_cache
 from decimal import Decimal, InvalidOperation
 
 from prepaid import cycles_for, renewal_for
@@ -13,9 +16,22 @@ FORTIFYHP_ACKNOWLEDGEMENT = 'fortifyhp-external-sticky-order-fulfillment-2026-10
 FORTIFYHP_PREPAID_SKU = re.compile(r'(SEMA|TIRZ|SERM|METFORM|PT141)-(6|12)M(-SUB)?')
 
 
+@lru_cache(maxsize=1)
+def rollout_products():
+    path = Path(__file__).with_name('fortifyhp_rollout_catalog.json')
+    return {p['sku']: p for p in json.loads(path.read_text())['products']} if path.exists() else {}
+
+
+def rollout_product(sku):
+    return rollout_products().get(str(sku).removesuffix('-SUB'))
+
+
 # Owner requested this exact new plan on FortifyHP, 26 October 2026.
 # Other wellness master drafts are not implicitly enabled for fulfillment.
 def fortifyhp_prepaid_terms(sku):
+    planned = rollout_product(sku)
+    if planned and planned['shipment_count'] > 1:
+        return planned['shipment_count'], str(sku).endswith('-SUB')
     if sku == 'NAD-INJ-12M-SUB':
         return 4, True
     match = FORTIFYHP_PREPAID_SKU.fullmatch(str(sku))
@@ -63,7 +79,9 @@ def fortifyhp_prepaid_supported(campaign, product, offer):
         if len(models) != 1:
             return False
         model = models[0]
-        return (int(model.get('id') or 0) == 4 and int(model.get('days') or 0) == 90
+        planned = rollout_product(product.get('sku', ''))
+        interval = planned['shipment_interval_days'] if planned else 90
+        return (int(model.get('id') or 0) == {30: 3, 90: 4}.get(interval) and int(model.get('days') or 0) == interval
                 and int((model.get('type') or {}).get('id') or 0) == 1
                 and Decimal(str(model.get('discount') or 0)) == 0)
     except (ValueError, TypeError, InvalidOperation, KeyError):

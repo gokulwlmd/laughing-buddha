@@ -56,11 +56,11 @@ class NadSetupTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'Reconcile'):self.nad.apply()
         self.assertEqual(len(self.fake.products),before)
 
-    def test_scope_does_not_enable_other_wellness_plans(self):
+    def test_scope_preserves_unmatched_terms_and_held_plans(self):
         fake=FortifyCatalog();fake.product['sku']=SKU
         self.assertTrue(fortifyhp_prepaid_supported(fake.campaign,fake.product,fake.offer))
         self.assertTrue(fortifyhp_order_scope(195,269,SKU))
-        for sku in ('NAD-INJ-12M','NAD-INJ-6M-SUB','GLUTA-12M-SUB'):
+        for sku in ('NAD-INJ-12M','NAD-INJ-6M-SUB','ASTV-5P-12M-SUB'):
             fake.product['sku']=sku
             self.assertFalse(fortifyhp_prepaid_supported(fake.campaign,fake.product,fake.offer))
         self.assertFalse(fortifyhp_order_scope(422,269,SKU))

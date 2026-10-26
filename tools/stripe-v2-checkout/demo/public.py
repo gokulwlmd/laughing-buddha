@@ -69,6 +69,10 @@ class Therapy(BaseModel):
 class PublishedPlan(Plan):
     therapy_id: str
     therapy_name: str
+    sku: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    family_id: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    treatment_id: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    format: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class PublishedCatalog(Catalog):
@@ -158,23 +162,30 @@ def map_site_catalog(site, read_publication, checkout_origin=LIVE_ORIGIN):
             recurring = bool(option['renewal'] if 'renewal' in option else option.get('recurring'))
             days = (option.get('renewalDays') or option.get('days')) if recurring else None
             count = int(option.get('prepaidCycles') or 1)
-            if (days is not None and days != months*30) or count != {1:1,3:1,6:2,12:4}[months]:
+            setup = entry.get('productSetup') or {}
+            interval = setup.get('shipment_interval_days') or (90 if count > 1 else months*30)
+            shipments = setup.get('shipment_days') if setup else [n*90 for n in range(count)]
+            if (days is not None and days != months*30 or not isinstance(interval,int)
+                    or count != (setup.get('shipment_count') if setup else {1:1,3:1,6:2,12:4}[months])
+                    or shipments != [n*interval for n in range(count)] or count*interval != months*30
+                    or (count > 1 and option.get('days') != interval)):
                 raise ValueError('Unexpected renewal or shipment schedule')
-            if count > 1 and option.get('days') != 90:
-                raise ValueError('Included shipments must be 90 days apart')
+            identity = entry.get('storefrontIdentity') or {}
+            if identity and (identity.get('sku') != approved.sku or identity.get('treatment_id') != entry['treatmentId']):
+                raise ValueError('Published product identity changed')
             price_value = Decimal(str(option.get('upfrontPrice') or option['basePrice']))
             if not price_value.is_finite() or price_value <= 0 or price_value != price_value.quantize(Decimal('.01')):
                 raise ValueError('Invalid price')
             price = f'{price_value:.2f}'
-            medication = names[entry['treatmentId']]
+            medication = identity.get('medication') or names[entry['treatmentId']]
             terms = f'Pay ${price} upfront. '+(f'Renews every {days} days.' if recurring else 'One-time purchase. No automatic renewal.')
             if count > 1:
-                terms += f' Includes {count} shipments, 90 days apart, with no additional product charges.'
+                terms += f' Includes {count} shipments, {interval} days apart, with no additional product charges.'
             pid = approved.sku.lower()
             plans.append(PublishedPlan(plan_id=pid,name=f'{medication} — {months}-month plan',medication=medication,
                 therapy_id=therapy.therapy_id,therapy_name=therapy.name,duration_months=months,
                 purchase_type='subscription' if recurring else 'once',price=price,renewal_days=days,
-                shipment_days=[n*90 for n in range(count)],terms=terms))
+                shipment_days=shipments,terms=terms,**{k:identity.get(k) for k in ('sku','family_id','treatment_id','format')}))
             identity = therapy.published_plan_id+'\0'+approved.sku+('\0'+approved.purchase_option_id if approved.purchase_option_id else '')
             child_id = 'choice-'+hashlib.sha256(identity.encode()).hexdigest()[:32]
             routes[pid] = checkout_origin+'/c/'+child_id+'?'+urlencode({'selection':approved.selection})

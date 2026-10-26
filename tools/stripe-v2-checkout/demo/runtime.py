@@ -103,7 +103,9 @@ def install_site_api(engine, manifest_path=None, transport=None):
                 or plan.get('site_id')!=configured.portal_site_id or plan.get('visibility')!='public'
                 or plan.get('payment_test_only')):
             raise ValueError('Site publication membership changed')
-        return admin.plan_options(plan,brand,therapy)
+        from publication_snapshot import read_snapshot
+        saved=read_snapshot(admin,plan)
+        return saved if saved is not None else admin.plan_options(plan,brand,therapy)
 
     facade=create_public_app(origin=cfg.public_url,manifest_loader=manifest,read_publication=read_catalog,
         session_store=store,transport=transport,warm_catalog=True,include_payment_test=False,

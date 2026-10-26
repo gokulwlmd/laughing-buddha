@@ -15,7 +15,7 @@ class StrictManifest(BaseModel):
 
 
 class ApprovedPlan(StrictManifest):
-    sku: str = Field(pattern=r'^[A-Za-z0-9_-]{1,80}$')
+    sku: str = Field(pattern=r'^[A-Za-z0-9_.%+-]{1,80}$')
     selection: str = Field(pattern=r'^[1-9][0-9]*:[1-9][0-9]*:[1-9][0-9]*$')
     purchase_option_id: str = Field(default='', pattern=r'^[A-Za-z0-9_-]{0,100}$')
 
@@ -25,7 +25,7 @@ class TherapyPublication(StrictManifest):
     name: str = Field(min_length=1, max_length=100)
     source_plan_id: str = Field(pattern=r'^[A-Za-z0-9_-]{1,100}$')
     published_plan_id: str = Field(pattern=r'^[A-Za-z0-9_-]{1,100}$')
-    plans: list[ApprovedPlan] = Field(min_length=1, max_length=100)
+    plans: list[ApprovedPlan] = Field(min_length=1, max_length=1000)
 
 
 class SitePublication(StrictManifest):

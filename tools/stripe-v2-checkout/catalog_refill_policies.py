@@ -69,6 +69,11 @@ def source_binding(sku):
         if sku in (p['sku'], p['sku'] + '-SUB'):
             return {'template_id': p['therapy_id'], 'product_name': p['name'],
                     'duration_months': p['duration_months'], 'check_in_required': p['check_in_required']}
+    from external_fulfillment import rollout_product
+    p = rollout_product(sku)
+    if p:
+        return {'template_id': p['therapy_id'], 'product_name': p['medication'],
+                'duration_months': p['duration_months'], 'check_in_required': p['check_in_required']}
     return None
 
 

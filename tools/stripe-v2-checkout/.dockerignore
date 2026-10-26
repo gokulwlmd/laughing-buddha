@@ -55,3 +55,7 @@
 !patient_demo/provider.py
 
 !member_portal/weight_loss_questions.json
+
+!fortifyhp_rollout.py
+!fortifyhp_rollout_catalog.json
+!publication_snapshot.py

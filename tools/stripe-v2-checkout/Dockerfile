@@ -7,7 +7,7 @@ ENV PYTHONUNBUFFERED=1 \
     CHECKOUT_AUTHORIZATION_VERIFIED=1
 
 WORKDIR /app
-COPY --chown=10001:10001 commerce_admin.py ./
+COPY --chown=10001:10001 commerce_admin.py publication_snapshot.py fortifyhp_rollout.py fortifyhp_rollout_catalog.json ./
 COPY --chown=10001:10001 catalog_refill_policies.py wellness_master_catalog.json additional_master_catalog.json next_master_catalog.json ed_combination_catalog.json ed_advanced_catalog.json ed_sublingual_catalog.json skin_topical_catalog.json dhea_master_catalog.json dhea_preg_catalog.json remaining_master_catalog.json ./
 COPY requirements.txt ./
 RUN --mount=type=secret,id=build_ca_bundle \
