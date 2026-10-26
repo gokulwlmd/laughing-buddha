@@ -18,7 +18,7 @@ class RefillRules(BaseModel):
     early_request_minimum_days: int = Field(default=0, ge=0, le=730, strict=True)
     early_request_cooldown_days: int = Field(default=7, ge=1, le=90, strict=True)
     early_reason_required: Literal[True] = True
-    intake_template_id: Literal['', 'weight-loss', 'sermorelin', 'metformin', 'pt-141', 'hair-growth', 'nad-plus', 'glutathione'] = ''
+    intake_template_id: Literal['', 'weight-loss', 'sermorelin', 'metformin', 'pt-141', 'hair-growth', 'nad-plus', 'glutathione', 'premature-ejaculation'] = ''
     initial_intake_required: bool = True
     check_in_days: list[StrictInt] = Field(default_factory=list, max_length=24)
     included_refills_enabled: bool = False
