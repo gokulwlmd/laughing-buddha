@@ -29,7 +29,7 @@ class Treatment(Form):
 class Therapy(Form):
     id:str=Field(pattern=r'^[a-z0-9][a-z0-9-]{0,60}$')
     name:str=Field(min_length=1,max_length=100)
-    treatments:list[Treatment]=Field(min_length=1,max_length=20)
+    treatments:list[Treatment]=Field(min_length=1,max_length=256)
     enabled:bool=True
     @field_validator('treatments')
     @classmethod

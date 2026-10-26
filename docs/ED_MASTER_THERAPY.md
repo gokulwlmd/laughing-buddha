@@ -105,3 +105,12 @@ the executable validator. New recipes must fail validation for missing `-SUB`
 counterparts, recurring base SKUs, nonrecurring `-SUB` SKUs, or mismatched
 product identity and delivery rules. Existing legacy subscriptions are outside
 this new-recipe rule and must not be rewritten automatically.
+
+## 26 October: original template extended with sublingual variants
+
+The original `master-therapy-ed` draft now also contains Sildenafil 100 mg,
+Tadalafil 5 mg daily, Tadalafil 20 mg and Vardenafil 25 mg sublingual tablets.
+All 1/3/6/12-month terms have exact base and `-SUB` pairs. This adds 32 SKUs
+inside the same template: 208 choices across 16 plan groups, preserving the
+original 176 choices and their prices. See
+[the source, delivery rules and verification](ED_SUBLINGUAL_EXTENSION_2026-10-26.md).

@@ -65,7 +65,7 @@ def prepare(existing, catalog=None):
             for recurring in (False, True):
                 sku = p['sku'] + ('-SUB' if recurring else '')
                 purchase = 'Subscription' if recurring else 'One-time'
-                master = dict(sku=sku, name=f"{name} · {p['duration_months']}-month plan · {purchase}",
+                master = dict(sku=sku, name=f"{p['name']} · {p['duration_months']}-month plan · {purchase}",
                     category=family['therapy_name'], therapy_id=tid, treatment_id=p['treatment_id'],
                     product_duration_months=p['duration_months'], currency='USD', enabled=True,
                     planning_contract=dict(charge='full_term_upfront', term_months=p['duration_months'],

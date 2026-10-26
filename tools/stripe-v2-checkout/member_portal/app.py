@@ -1,3 +1,4 @@
+from typing import Union
 """Member APIs: explicit order grants, real Sticky state, and local care requests.
 
 This module never creates a charge, shipment, prescription, or simulated order.
@@ -432,8 +433,35 @@ class MemberService:
             return result
         # Existing identity is never overwritten. The provider only uses the
         # temporary secret it created for this exact receipt, or authenticates.
-        self.enroll(site_id, order, password, 'checkout_receipt')
-        return result | {'state': 'ready'}
+        auth = self.enroll(site_id, order, password, 'checkout_receipt')
+        # A single-use, site-bound handoff keeps the Sticky token and password
+        # server-side. The browser never puts a reusable session in a URL.
+        token = secrets.token_urlsafe(32)
+        expires = self.clock() + 1800
+        with self.db() as db:
+            db.execute('INSERT INTO member_identity_sessions VALUES(?,?,?)',
+                (digest('handoff:' + token), self.identity.encrypt(encoded({'purpose': 'portal_handoff', 'site_id': site_id, 'auth': auth})), expires))
+        return result | {'state': 'ready', 'portal_handoff': token, 'handoff_expires_at': stamp(expires)}
+
+    def consume_handoff(self, site_id, token):
+        if not self.identity or not isinstance(token, str) or not 20 <= len(token) <= 100:
+            raise HTTPException(401, 'Please sign in to your member portal.')
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT * FROM member_identity_sessions WHERE session_hash=?', (digest('handoff:' + token),)).fetchone()
+            if not row or row['checked'] <= self.clock():
+                raise HTTPException(401, 'This sign-in link expired. Sign in with the password you just created.')
+            payload = json.loads(self.identity.decrypt(row['secret']))
+            if payload.get('purpose') != 'portal_handoff' or payload.get('site_id') != site_id:
+                raise HTTPException(401, 'This sign-in link belongs to another site.')
+            auth = payload['auth']
+            session = db.execute('SELECT * FROM member_sessions WHERE token_hash=? AND site_id=? AND expires>?',
+                (digest(auth['access_token']), site_id, self.clock())).fetchone()
+            if not session:
+                raise HTTPException(401, 'Please sign in again.')
+            db.execute('DELETE FROM member_identity_sessions WHERE session_hash=?', (digest('handoff:' + token),))
+        self.identity.check_session(digest(auth['access_token']), force=True)
+        return auth
 
     def site(self, site_id):
         site = self.admin.get('site', site_id)
@@ -985,6 +1013,8 @@ class MemberService:
         return {key: public[key] for key in ('id', 'product_name', 'intake_status', 'journey')}
 
     def modify_initial(self, order, body, patient, submit=False):
+        if submit:
+            self.identity_checks.require(order, patient)
         site_id, order_id = order["site_id"], order["order_id"]
         self.adopt_receipt_intake(order, patient)
         if self.care.configured(order) and self.care.ensure(order):
@@ -1019,7 +1049,6 @@ class MemberService:
         return self.intake_public(row, order)
 
     def intake(self, order, patient):
-        self.identity_checks.require(order, patient)
         with self.db() as db:
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT * FROM member_intakes WHERE site_id=? AND order_id=? AND patient_id=?', (order['site_id'], order['order_id'], patient['id'])).fetchone()
@@ -1200,6 +1229,11 @@ class MemberService:
                 'portal_url': self.cfg.public_url + '/portal/' + site_id,
                 'intake_provider_connected': False,
                 'submission_message': 'Your answers have been saved in your account.'}
+
+        @router.post('/auth/handoff', response_model=AuthResult)
+        def handoff(site_id: str, body: ClaimInvite, req: Request):
+            self.site(site_id); self.origin(req)
+            return self.consume_handoff(site_id, body.invite_token)
 
         @router.post('/auth/login', response_model=AuthResult)
         def login(site_id: str, body: Login, req: Request):

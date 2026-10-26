@@ -163,19 +163,19 @@ class StickyIdentity:
         if expires <= self.service.clock():
             raise HTTPException(401, 'Your member session expired. Please sign in again.')
         with self.service.db() as db:
-            db.execute('DELETE FROM member_identity_sessions WHERE session_hash NOT IN (SELECT token_hash FROM member_sessions)')
+            db.execute('DELETE FROM member_identity_sessions WHERE session_hash NOT IN (SELECT token_hash FROM member_sessions) AND checked<=?', (self.service.clock(),))
             db.execute('INSERT INTO member_identity_sessions VALUES(?,?,?)',
                        (session_hash, self.encrypt(member['member_token']), self.service.clock()))
             db.execute('UPDATE member_sessions SET expires=MIN(expires,?) WHERE token_hash=?', (expires, session_hash))
         return expires
 
-    def check_session(self, session_hash):
+    def check_session(self, session_hash, force=False):
         with self.lock_for(session_hash):
             with self.service.db() as db:
                 row = db.execute('SELECT * FROM member_identity_sessions WHERE session_hash=?', (session_hash,)).fetchone()
             if not row:
                 raise HTTPException(401, 'Please sign in with your Sticky member password.')
-            if self.service.clock() - row['checked'] < 30:
+            if not force and self.service.clock() - row['checked'] < 30:
                 return
             result = self.call('member_check_session', {'token': self.decrypt(row['secret'])})
             if str(result.get('response_code')) != '100':

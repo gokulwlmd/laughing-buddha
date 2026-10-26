@@ -39,8 +39,8 @@ class IdentityTests(unittest.TestCase):
         self.configure()
         for method, suffix, body in [('GET','',None),('PATCH','',{'revision':0,'answers':{}}),('POST','/submit',{'revision':0})]:
             response=self.client.request(method,self.base+'/intakes/9001'+suffix,json=body,headers=self.patient_headers)
-            self.assertEqual(response.status_code,409,response.text)
-            self.assertEqual(response.json()['detail']['code'],'identity_verification_required')
+            self.assertEqual(response.status_code,409 if method=='POST' else 200,response.text)
+            if method=='POST':self.assertEqual(response.json()['detail']['code'],'identity_verification_required')
         self.assertEqual(self.provider.calls,0)
         self.assertEqual(self.verify().status_code,200)
         self.assertEqual(self.verify().json()['status'],'verified')
@@ -116,7 +116,8 @@ class IdentityTests(unittest.TestCase):
         order=self.service.order_record('site-a','9001')
         with self.service.db() as db:
             patient={'id':db.execute("SELECT patient_id FROM member_grants WHERE order_id='9001'").fetchone()[0]}
-        with self.assertRaises(HTTPException) as caught: self.service.care.intake(order,patient,'initial')
+        from patient_demo.app import IntakeSubmit
+        with self.assertRaises(HTTPException) as caught: self.service.care.modify(order,patient,'initial',IntakeSubmit(revision=0),True)
         self.assertEqual(caught.exception.detail['code'],'identity_verification_required')
         self.verify()
         with self.service.db() as db:

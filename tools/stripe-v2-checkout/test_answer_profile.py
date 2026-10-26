@@ -25,9 +25,10 @@ class AnswerProfileTests(unittest.TestCase):
         self.service.modify_initial(self.order, IntakePatch(revision=form['revision'], answers=answers), self.patient)
         if submit:
             self.service.modify_initial(self.order, IntakeSubmit(revision=1), self.patient, True)
-        other = dict(self.order, order_id='9002')
+        other = dict(self.order, order_id='9002', snapshot=json.dumps(dict(json.loads(self.order['snapshot']), root_order_id='9002', term_order_id='9002')))
         with self.service.db() as db:
             db.execute('INSERT INTO member_orders SELECT site_id,?,customer_id,attempt_id,therapy_id,sku,snapshot,payload,synced FROM member_orders WHERE order_id=?', ('9002', '9001'))
+            db.execute('UPDATE member_orders SET snapshot=? WHERE order_id=?', (other['snapshot'], '9002'))
             db.execute('INSERT INTO member_grants SELECT site_id,?,patient_id,created,source FROM member_grants WHERE order_id=?', ('9002', '9001'))
         return other
 

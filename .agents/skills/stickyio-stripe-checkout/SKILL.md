@@ -71,6 +71,27 @@ or repeat a real payment/password change merely to validate a skill update.
 
 Use this skill for Sticky-managed Stripe payments, campaign/SKU checkout links, or updates to the existing Fly checkout. Read the [application guide](../../../tools/stripe-v2-checkout/README.md) and [Fly deployment guide](../../../tools/stripe-v2-checkout/FLY.md). For catalog exploration or synthetic billing tests, use [stickyio-catalog-billing](../stickyio-catalog-billing/SKILL.md).
 
+## Post-purchase flow (26 October 2026)
+
+Read [the current post-purchase contract](../../../docs/POST_PURCHASE_EXPERIENCE_2026-10-26.md).
+Health-intake GET and draft PATCH must work before identity verification. Enforce
+the identity requirement at final submission, in both initial and care-task paths.
+Never restore the old identity-first gate. The shared component handles this for
+all connected storefronts. Preserve versioned saved forms.
+
+Password setup returns a single-use, encrypted, site-bound portal handoff, consumed
+by the portal after removing the URL fragment. It never resets an existing Sticky
+password or puts a reusable member session/provider token in a URL. Keep its
+30-minute maximum, session-expiry check, atomic consumption and forced Sticky
+session validation. Do not delete unexpired handoffs during session cleanup.
+
+Post-purchase offers default off. An owner setting alone must never enable an
+unverified saved-card gateway. The card-on-file gateway allowlist requires explicit
+provider verification; the normal Stripe v2 checkout's success is insufficient.
+Keep the before-write journal, explicit displayed price/confirmation, exact-site
+and order ownership, independent order semantics, readback checks and no retry
+after an uncertain financial write. Current offers support one-time plans only.
+
 ## Saved intake answers and included refill windows
 
 Read [the reuse/refill contract](../../../docs/INTAKE_REUSE_AND_REFILL_WINDOWS.md)

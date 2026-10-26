@@ -37,7 +37,7 @@ class PhotoTests(unittest.TestCase):
 
     def test_upload_alternative_and_encryption(self):
         self.configure();raw=photo()
-        self.assertEqual(self.client.get(self.base+'/intakes/9001',headers=self.patient_headers).status_code,409)
+        self.assertEqual(self.client.post(self.base+'/intakes/9001/submit',json={'revision':0},headers=self.patient_headers).status_code,409)
         result=self.client.post(self.path,headers=self.patient_headers,json={'file_contents':raw})
         self.assertEqual(result.status_code,200,result.text);self.assertTrue(result.json()['order_attached'])
         self.assertNotIn('s3_key',result.text)
@@ -82,7 +82,7 @@ class PhotoTests(unittest.TestCase):
         self.assertEqual(self.client.get(self.path,headers=self.patient_headers).json()['status'],'needs_review')
         self.assertEqual(self.client.post(self.path+'/reuse',headers=self.patient_headers).status_code,429)
         self.assertEqual(len(self.fake_upload.calls),1)
-        self.assertEqual(self.client.get(self.base+'/intakes/9001',headers=self.patient_headers).status_code,409)
+        self.assertEqual(self.client.post(self.base+'/intakes/9001/submit',json={'revision':0},headers=self.patient_headers).status_code,409)
         now=self.service.clock();self.service.clock=lambda:now+31
         self.fake_upload.result='confirmed-reference'
         response=self.client.post(self.path+'/reuse',headers=self.patient_headers)

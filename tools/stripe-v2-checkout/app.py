@@ -697,6 +697,19 @@ def create_app(settings=None, sticky=None):
     @app.post('/api/portal-enrollment')
     def portal_enrollment(body: CaptureRequest, req: Request):
         return members.receipt_invite(member_receipt(req))
+    from member_portal.upsells import PostPurchaseOffers, BuyOffer
+    postpurchase = PostPurchaseOffers(members)
+    postpurchase.attach_admin(app)
+
+    @app.get('/api/post-checkout-offers')
+    def receipt_offers(req: Request, placement: str = 'thank_you'):
+        return postpurchase.offers(member_receipt(req, mutation=False), placement)
+
+    @app.post('/api/post-checkout-offers')
+    @serialized
+    def buy_receipt_offer(body: BuyOffer, req: Request):
+        return postpurchase.buy(member_receipt(req), body, req.client.host if req.client else '127.0.0.1')
+
     from patient_demo.app import IntakePatch, IntakeSubmit
 
     from member_portal.app import ReceiptEnrollment

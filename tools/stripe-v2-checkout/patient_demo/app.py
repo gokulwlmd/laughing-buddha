@@ -151,6 +151,8 @@ class IntakeQuestion(BaseModel):
     required: bool
     options: list[QuestionOption] | None = None
     show_if: QuestionCondition | None = None
+    show_when: dict | None = None
+    help: str | None = None
     sample: AnswerValue | None = None
     reuse_key: str | None = None
     reuse_version: str | None = None
@@ -298,9 +300,27 @@ def token_digest(value):
     return hashlib.sha256(value.encode()).hexdigest()
 
 
+def matches_condition(condition, answers):
+    if 'all' in condition:
+        return all(matches_condition(c, answers) for c in condition['all'])
+    if 'any' in condition:
+        return any(matches_condition(c, answers) for c in condition['any'])
+    actual = answers.get(condition.get('question_id'))
+    operator, expected = condition.get('operator'), condition.get('value')
+    if operator == 'isEmpty': return actual in (None, '', [])
+    if actual in (None, '', []): return False
+    if operator == 'isFilled': return True
+    if operator == 'equals': return actual == expected
+    if operator == 'notEquals': return actual != expected
+    if operator == 'contains': return expected in actual
+    if operator == 'notContains': return expected not in actual
+    return False
+
+
 def visible(question, answers):
     condition = question.get('show_if')
-    return not condition or answers.get(condition['question_id']) == condition['equals']
+    return (not condition or answers.get(condition['question_id']) == condition['equals']) and (
+        not question.get('show_when') or matches_condition(question['show_when'], answers))
 
 
 def clean_answers(template, incoming):

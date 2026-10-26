@@ -1,5 +1,8 @@
 """Explicit SKU bindings for mock intake/check-in content, not clinical rules."""
 from copy import deepcopy
+import os
+import json
+from pathlib import Path
 from patient_demo.provider import get_template as initial_template, question, YES_NO
 
 PRODUCTS = {
@@ -28,7 +31,7 @@ def get_template(template_id, *, sku, kind='initial'):
         raise ValueError('No mock intake is assigned to this product')
     name = binding['product_name']
     if kind == 'initial':
-        if template_id in ('hair-growth', 'nad-plus', 'glutathione', 'premature-ejaculation', 'performance-anxiety', 'sleep', 'skin-care', 'womens-sexual-health'):
+        if template_id in ('hair-growth', 'nad-plus', 'glutathione', 'premature-ejaculation', 'performance-anxiety', 'sleep', 'skin-care', 'womens-sexual-health', 'erectile-dysfunction', 'hrt', 'trt', 'longevity'):
             from patient_demo.provider import COMMON
             result = {'sections': [
                 {'id': 'goals', 'title': 'Your treatment', 'description': 'Tell us what brought you here.'},
@@ -38,6 +41,8 @@ def get_template(template_id, *, sku, kind='initial'):
                     question('previous_treatment', 'goals', f'Have you used {name} before?', 'single_choice', 'no', options=YES_NO),
                     question('previous_treatment_details', 'goals', 'Tell us about your previous treatment and experience.',
                         show_if={'question_id': 'previous_treatment', 'equals': 'yes'}), *deepcopy(COMMON)]}
+        elif template_id == 'weight-loss' and os.environ.get('WEIGHT_LOSS_INTAKE_SOURCE') == 'coreage':
+            result = json.loads((Path(__file__).parent / 'weight_loss_questions.json').read_text())
         else:
             result = initial_template(template_id)
         result['questions'] = [q for q in result['questions'] if q['id'] != 'demo_confirmation']
@@ -87,7 +92,7 @@ def get_template(template_id, *, sku, kind='initial'):
                          sample='MOCK TEST: End-to-end portal verification only.', required=False),
             ],
         }
-    result.update(id=f'{template_id}-{sku}-{kind}-mock', version='mock-care-1',
+    result.update(id=f'{template_id}-{sku}-{kind}-mock', version='coreage-reference-2026-10-26' if result.get('source_url') else 'mock-care-1',
                   title=f'{name} '+('health intake' if kind == 'initial' else 'check-in'),
                   demo=True, mock=True, sku=sku, product_name=name, kind=kind,
                   description='Mock questions for testing this care journey. The medical intake provider is not connected; these answers are not sent to clinicians.')

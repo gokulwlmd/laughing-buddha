@@ -1,5 +1,15 @@
 # FortifyHP NAD+ annual subscription test
 
+## Subsequent owner clarification
+
+Site deployments must show both one-time and subscription for each finalized
+paired plan. The subscription-only test below is historical scope, not the
+deployment default. FortifyHP still needs the exact `NAD-INJ-12M` one-time master
+mapped and published alongside `NAD-INJ-12M-SUB`. Preserve the existing subscription
+and its prices. One-time means the full 12-month term upfront, four quarterly
+deliveries, three included refills, and no renewal. This documentation update
+does not change live provider objects or the published API.
+
 The owner selected only the 12-month NAD+ injectable subscription for FortifyHP testing. Other wellness drafts remain unpublished for this site. No new app, AWS migration, separate refill SKU, or changes to existing subscriptions were requested.
 
 ## Published configuration

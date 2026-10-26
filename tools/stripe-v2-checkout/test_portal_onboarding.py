@@ -54,7 +54,7 @@ class OnboardingTests(unittest.TestCase):
         payload['customer']['id'] = 'different-sticky-customer'
         with self.service.db() as db:
             columns = list(order)
-            values = dict(order, order_id='9002', customer_id='different-sticky-customer', payload=json.dumps(payload))
+            values = dict(order, snapshot=json.dumps(dict(json.loads(order['snapshot']), root_order_id='9002', term_order_id='9002')), order_id='9002', customer_id='different-sticky-customer', payload=json.dumps(payload))
             db.execute('INSERT INTO member_orders (' + ','.join(columns) + ') VALUES (' + ','.join('?' for _ in columns) + ')', tuple(values[k] for k in columns))
         order = self.service.order_record('site-a', '9002')
         invitation = self.service.issue_invite('site-a', order)

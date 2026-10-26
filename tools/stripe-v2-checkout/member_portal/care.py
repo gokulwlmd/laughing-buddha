@@ -486,7 +486,6 @@ class CareManager:
         return response
 
     def intake(self, row, patient, task_id, create=True):
-        self.s.identity_checks.require(row, patient)
         plan = self.ensure(row)
         if not plan or plan['patient_id'] != patient['id']:
             raise HTTPException(409, 'The original paid care schedule needs verification before this intake can open')
@@ -536,6 +535,8 @@ class CareManager:
             'template': json.loads(record['template']), 'reused_fields': [q['id'] for q in json.loads(record['template'])['questions'] if q.get('reuse_status') in ('stable', 'verified')], 'provider_connected': False, 'simulated': bool(record['simulated'])}
 
     def modify(self, row, patient, task_id, body, submit=False):
+        if submit:
+            self.s.identity_checks.require(row, patient)
         plan, task, record = self.intake(row, patient, task_id)
         if not task['can_submit']:
             raise HTTPException(409, 'This check-in is submitted or outside its available care window')

@@ -37,6 +37,13 @@
 !wellness_master_catalog.json
 !additional_master_catalog.json
 !next_master_catalog.json
+!ed_combination_catalog.json
+!ed_advanced_catalog.json
+!ed_sublingual_catalog.json
+!skin_topical_catalog.json
+!dhea_master_catalog.json
+!dhea_preg_catalog.json
+!remaining_master_catalog.json
 !dollar_testing.py
 !member_portal/
 !member_portal/*.py
@@ -46,3 +53,5 @@
 !patient_demo/__init__.py
 !patient_demo/app.py
 !patient_demo/provider.py
+
+!member_portal/weight_loss_questions.json

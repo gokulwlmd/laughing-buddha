@@ -2,6 +2,7 @@
 import copy
 from http.cookies import SimpleCookie
 import json
+from urllib.parse import urlsplit, parse_qsl
 from pathlib import Path
 import tempfile
 import unittest
@@ -41,7 +42,8 @@ class EngineTransport:
         cookies=json.loads(row['cookies'])
         headers={'Cookie':'; '.join(k+'='+v for k,v in cookies.items()),'Origin':PUBLIC_UPSTREAM,'X-CSRF-Token':row['csrf']}
         if row['attempt']:headers['X-Checkout-Attempt']=row['attempt']
-        params={'link_id':row['link_id']} if path.startswith('/api/') else None
+        params=dict(parse_qsl(urlsplit(path).query))
+        if path.startswith('/api/'):params['link_id']=row['link_id']
         with TestClient(self.backend,base_url=PUBLIC_UPSTREAM) as client:
             response=client.request(method,path,params=params,headers=headers,json=body)
         if path==self.fail_after:
@@ -313,6 +315,7 @@ class TransportTests(unittest.TestCase):
             def request(self,method,path,body,headers):
                 self.count+=1
                 self.headers=dict(headers)
+                self.path=path
                 raise OSError('unavailable')
             def close(self):pass
         broken=Broken()
@@ -322,11 +325,34 @@ class TransportTests(unittest.TestCase):
         self.assertEqual(broken.headers['Origin'],PUBLIC_UPSTREAM)
         self.assertNotIn('Fly-Client-IP',broken.headers)
         self.assertNotIn('Authorization',broken.headers)
+        for route in ('/api/post-checkout-journey','/api/post-checkout-journey?refresh=true'):
+            with patch('demo.session_api.http.client.HTTPSConnection',return_value=broken):
+                with self.assertRaises(UpstreamError):transport.call(row,'GET',route)
+            query=dict(parse_qsl(urlsplit(broken.path).query))
+            self.assertEqual(query['link_id'],row['link_id'])
+            self.assertEqual(query.get('refresh'), 'true' if '?' in route else None)
+        with self.assertRaises(ValueError):transport.call(row,'GET','/api/post-checkout-journey?redirect=evil')
 
 class AccountSessionTests(unittest.TestCase):
     setUp = SessionApiTests.setUp
     tearDown = SessionApiTests.tearDown
     create = SessionApiTests.create
+    def test_journey_is_scoped_and_unpaid_receipt_cannot_read_it(self):
+        path,headers,_=self.create()
+        self.assertEqual(self.client.get(path+'/journey').status_code,401)
+        self.assertEqual(self.client.get(path.replace('payment-test','unknown-site')+'/journey',headers=headers).status_code,404)
+        self.assertEqual(self.client.get(path+'/journey',headers=headers).status_code,409)
+        seen=[]
+        def journey(row,refresh=False):
+            seen.append((row['id'],refresh))
+            return {'id':'fixture-order','product_name':'Semaglutide','intake_status':'draft','journey':{'stages':[]}}
+        self.engine.state.member_portal.receipt_journey=journey
+        response=self.client.get(path+'/journey?refresh=true',headers=headers)
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertTrue(seen[-1][1])
+        self.now+=86401
+        self.assertEqual(self.client.get(path+'/journey',headers=headers).status_code,410)
+
     def test_account_requires_checkout_bearer_and_forwards_only_password(self):
         path,headers,data=self.create()
         self.assertEqual(self.client.get(path+'/account').status_code,401)
