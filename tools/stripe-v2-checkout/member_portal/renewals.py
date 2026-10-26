@@ -185,6 +185,8 @@ class RenewalsManager:
         return {'expected_campaign': self.s.site(row['site_id'])[0]['campaign_id'], 'expected_customer_id': row['customer_id']}
 
     def gate(self, row):
+        if hasattr(self.s, 'upgrades') and self.s.upgrades.busy_subscription(row['site_id'], json.loads(row['payload'])['products'][0].get('subscription_id')):
+            return 'A replacement checkout exists for this subscription. Open Refills to review it.'
         rule = self.s.rule(row['sku'], row['site_id'])
         if not rule.get('enabled') or not rule.get('allow_paid_early_renewal'):
             return 'Early paid renewal is not enabled for this plan. Contact your care team for help.'

@@ -695,4 +695,7 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
         except UpstreamError as exc:
             raise translated(exc)
 
+    # Internal callers retain the same authentication, validation and durable payment state.
+    app.state.session_operations = {'create': create, 'configuration': configuration, 'quote': quote,
+        'payment': payment, 'complete': complete, 'resume': resume, 'status': status}
     app.include_router(router)

@@ -28,7 +28,7 @@ async function patientCopy(page){await expect(page.locator('main')).not.toContai
 async function readable(page){
   const details=await page.locator('.page-head p,.welcome-card p,.small-note,.section-description,.field>label,.field legend,.choice,.modal p,.care-task-date,.care-refill-state,.order-progress-note,.order-progress-copy p,.order-progress-copy h4').evaluateAll(nodes=>nodes.filter(node=>node.getClientRects().length&&node.textContent.trim()).map(node=>({text:node.textContent.trim().slice(0,70),size:parseFloat(getComputedStyle(node).fontSize)})));
   for(const item of details)expect(item.size,JSON.stringify(item)).toBeGreaterThanOrEqual(16);
-  const buttons=await page.locator('.btn-primary:visible').evaluateAll(nodes=>nodes.map(node=>{
+  const buttons=await page.evaluate(()=>[...document.querySelectorAll('.btn-primary')].filter(node=>node.getClientRects().length&&getComputedStyle(node).visibility!=='hidden').map(node=>{
     const {width,height}=node.getBoundingClientRect();return {width,height};
   }));
   for(const box of buttons){expect(box.height).toBeGreaterThanOrEqual(48);expect(box.width).toBeGreaterThanOrEqual(48);}
@@ -586,6 +586,7 @@ test.describe('Source-defined wellness refills',()=>{
 });
 
 test('MEMBER-32 one-time purchase offers next supply without pretending to be a subscription',async({page,member},info)=>{
+  await page.route('**/api/v1/sites/site-a/portal/orders/9001/upgrade',route=>route.fulfill({json:{eligible:true,opens_at:'2026-10-01',included_remaining:0}}));
   await page.route('**/api/v1/sites/site-a/portal/orders',async route=>{
     const response=await route.fetch(),data=await response.json();
     data.orders=data.orders.map(order=>({...order,sku:'SEMA-1M',product_name:'Semaglutide / 1 months / One-time',plan_name:'1-month one-time plan',subscriptions:[],intake_status:'submitted',care_plan:{coverage_days:30,tasks:[{id:'initial',kind:'initial',day_offset:0,status:'submitted',intake_status:'submitted',can_open:true}]}}));
@@ -601,9 +602,9 @@ test('MEMBER-32 one-time purchase offers next supply without pretending to be a 
   await expect(card).not.toContainText('Monthly subscription');
   await expect(card.getByRole('button',{name:'Manage subscription',exact:true})).toHaveCount(0);
   await expect(card.locator('.supply-payment button')).toHaveCount(2);
-  await expect(card.getByRole('link',{name:'Continue to checkout'})).toHaveAttribute('href',member.origin+'/c/one-time');
+  await expect(card.getByRole('button',{name:'Continue to checkout'})).toHaveAttribute('data-plan','once');
   await card.locator('.supply-payment').getByRole('button',{name:/^Subscription/}).click();
-  await expect(card.getByRole('link',{name:'Continue to checkout'})).toHaveAttribute('href',member.origin+'/c/subscription');
+  await expect(card.getByRole('button',{name:'Continue to checkout'})).toHaveAttribute('data-plan','subscription');
   for(const width of [1440,390]){await page.setViewportSize({width,height:1000});await reflow(page,width);await page.screenshot({path:info.outputPath('one-time-refill-'+width+'.png'),fullPage:true});}
   await orders(page);await expect(page.locator('.care-journey')).toContainText('Your health form is complete.');
   await proof(page,member);
@@ -673,6 +674,7 @@ test('MEMBER-35 delayed catalog response is discarded after logout',async({page,
 
 
 test('MEMBER-36 refill picker selects exact medication term and payment with mobile reflow',async({page,member},info)=>{
+  await page.route('**/api/v1/sites/site-a/portal/orders/9001/upgrade',route=>route.fulfill({json:{eligible:true,opens_at:'2026-10-01',included_remaining:0}}));
   await page.route('**/api/v1/sites/site-a/portal/orders',async route=>{
     const response=await route.fetch(),data=await response.json();
     data.orders=data.orders.map(order=>({...order,sku:'SEMA-1M',product_name:'Semaglutide',subscriptions:[],intake_status:'submitted',care_plan:{coverage_days:30,tasks:[]}}));
@@ -684,17 +686,17 @@ test('MEMBER-36 refill picker selects exact medication term and payment with mob
   plans.push({...plans[0],plan_id:'other-site-therapy',therapy_id:'other',sku:'TIRZ-1M',checkout_url:member.origin+'/c/wrong-therapy'});
   await page.route('**/api/v1/sites/site-a/portal/store*',route=>route.fulfill({json:{plans}}));
   await enroll(page,member);await page.getByRole('button',{name:'Refills',exact:true}).click();
-  const card=page.locator('[data-refill-order="9001"]'),link=card.getByRole('link',{name:'Continue to checkout'});
+  const card=page.locator('[data-refill-order="9001"]'),link=card.getByRole('button',{name:'Continue to checkout'});
   await expect(card.locator('.supply-medications button')).toHaveCount(2);
   await expect(card.locator('.supply-durations button')).toHaveCount(4);
-  await expect(link).toHaveAttribute('href',member.origin+'/c/SEMA-1-false');
+  await expect(link).toHaveAttribute('data-plan','SEMA-1-false');
   for(const sku of ['TIRZ','SEMA']){
     await card.locator('.supply-medications').getByRole('button',{name:sku==='SEMA'?/Semaglutide/:/Tirzepatide/}).click();
     for(const months of [1,3,6,12]){
       await card.locator('.supply-durations').getByRole('button',{name:new RegExp('^'+months+' month')}).click();
       for(const recurring of [true,false]){
         await card.locator('.supply-payment').getByRole('button',{name:recurring?/^Subscription/:/^One-time purchase/}).click();
-        await expect(link).toHaveAttribute('href',member.origin+`/c/${sku}-${months}-${recurring}`);
+        await expect(link).toHaveAttribute('data-plan',`${sku}-${months}-${recurring}`);
         await expect(card.locator('.supply-summary')).toContainText('$'+((sku==='SEMA'?199:299)*months+(recurring?10:0)).toLocaleString('en-US',{minimumFractionDigits:2}));
         await expect(card.locator('.supply-payment [aria-pressed="true"]')).toHaveCount(1);
       }
@@ -705,4 +707,34 @@ test('MEMBER-36 refill picker selects exact medication term and payment with mob
   await expect(card.locator('.supply-choice:focus')).toHaveCount(1);
   for(const width of [1440,390,320]){await page.setViewportSize({width,height:1000});await reflow(page,width);await page.screenshot({path:info.outputPath('refill-picker-'+width+'.png'),fullPage:true});}
   await proof(page,member);
+});
+
+for(const width of [1440,390,320])test(`MEMBER-37 inline portal checkout at ${width}px completes without leaving account`,async({page,member},info)=>{
+  await page.setViewportSize({width,height:1000});let phase='new',completes=0,quoteBody;
+  const plan={plan_id:'choice-test',sku:'SEMA-1M',therapy_id:'weight-loss',product_name:'Semaglutide',plan_name:'1-month one-time plan',total:'199.00',currency:'USD',recurring:false,checkout_url:member.origin+'/c/example'};
+  await page.route('**/portal/store*',r=>r.fulfill({json:{plans:[plan]}}));
+  await page.route('**/portal/orders/9001/upgrade',r=>r.fulfill({json:r.request().method()==='POST'?{id:'upgrade-test',status:'open'}:{eligible:true,included_remaining:0}}));
+  await page.route('**/portal/upgrades/upgrade-test/*',async r=>{
+    const op=r.request().url().split('/').at(-1);
+    const values={status:{status:phase},configuration:{countries:[{code:'US',name:'United States'}],shipping:[{id:1,name:'Free shipping'}]},quote:{quote_id:'quote-test',amount:199,currency:'USD',payment_terms:'Pay $1.99 once. No renewal.'},payment:{publishable_key:'pk_test_fixture',client_secret:'pi_fixture_secret_fixture',payment_intent_id:'pi_fixture',amount:199,currency:'USD'},complete:{status:'captured',order_id:'9001',replacement_complete:true}};
+    if(op==='quote')quoteBody=r.request().postDataJSON();if(op==='payment')phase='awaiting_card';if(op==='complete'){phase='captured';completes++;}
+    await r.fulfill({json:values[op]||{}});
+  });
+  await page.route('https://js.stripe.com/v3/',r=>r.fulfill({contentType:'application/javascript',body:`window.Stripe=()=>({elements:()=>({create:()=>({on:(event,fn)=>{window.cardReady=fn},mount:node=>{node.innerHTML='<label>Test card form</label><input aria-label="Test card form" value="Synthetic Stripe fixture">';window.cardReady();},destroy:()=>{}})}),confirmPayment:async()=>({paymentIntent:{id:'pi_fixture',status:'requires_capture'}})});`}));
+  await enroll(page,member);await page.getByRole('button',{name:'Refills',exact:true}).click();await page.getByRole('button',{name:'Continue to checkout',exact:true}).click();
+  const checkout=page.locator('wlmd-portal-checkout');await expect(checkout.getByRole('heading',{name:'Your next plan'})).toBeVisible();
+  await checkout.getByLabel('Phone',{exact:true}).fill('2025550100');await checkout.getByLabel('Street address').fill('1 Test Way');await checkout.getByLabel('City',{exact:true}).fill('San Francisco');await checkout.getByLabel('State',{exact:true}).selectOption('CA');await checkout.getByLabel('ZIP code').fill('94105');
+  await checkout.getByRole('button',{name:'Continue to payment'}).click();await expect(checkout).toContainText('$1.99 due today');expect(quoteBody.contact.region).toBe('CA');
+  await checkout.getByRole('button',{name:'Open secure card form'}).click();await expect(checkout.getByRole('alert')).toContainText('confirm the payment terms');
+  await checkout.getByRole('checkbox').check();await checkout.getByRole('button',{name:'Open secure card form'}).click();await expect(checkout.getByLabel('Test card form')).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  const paymentBox=await checkout.boundingBox();expect(paymentBox.y).toBe(0);expect(paymentBox.height).toBe(1000);
+  await page.screenshot({path:info.outputPath('portal-payment-'+width+'.png')});
+  await checkout.getByRole('button',{name:'Pay $1.99',exact:true}).click();await expect(checkout.getByRole('heading',{name:'Payment received'})).toBeVisible();expect(completes).toBe(1);expect(page.url()).toContain('/portal/site-a');
+  await checkout.getByRole('button',{name:'View my care plan'}).click();await expect(checkout).toHaveCount(0);await expect(page.locator('.shell')).not.toHaveAttribute('inert','');
+});
+
+test('MEMBER-38 locked upgrades explain the date and never open checkout',async({page,member})=>{
+  await page.route('**/portal/orders/9001/upgrade',r=>r.fulfill({json:{eligible:false,opens_at:'2026-11-05',included_remaining:0,reason:'You can choose your next plan from 2026-11-05, 20 days before your current supply ends.'}}));
+  await enroll(page,member);await page.getByRole('button',{name:'Refills',exact:true}).click();await expect(page.getByRole('button',{name:'Choose next plan',exact:true})).toBeDisabled();await expect(page.locator('main')).toContainText('Nov 5');await expect(page.getByRole('button',{name:'Continue to checkout'})).toHaveCount(0);
 });

@@ -1,5 +1,6 @@
 (() => {
   'use strict';
+  const returnLocation=new URL(location.href);for(const key of ['payment_intent','payment_intent_client_secret','redirect_status'])returnLocation.searchParams.delete(key);if(returnLocation.href!==location.href)history.replaceState(null,'',returnLocation.pathname+returnLocation.search+returnLocation.hash);
   const icons = {
     leaf: '<path d="M19 4c-7-1-13 2-13 8a6 6 0 0 0 6 6c6 0 8-7 7-14Z"/><path d="M5 21 15 10M10 15v-5m0 5h5"/>',
     home: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z"/>',
@@ -113,6 +114,7 @@
       const opener=[...root.querySelectorAll('[data-action]')].find(node=>Object.entries(modalOpener).every(([key,value])=>node.dataset[key]===value));
       opener?.focus({preventScroll:true});
     }
+    if(document.querySelector('wlmd-portal-checkout'))root.querySelector('.shell')?.setAttribute('inert','');
     modalWasOpen=Boolean(state.modal);
   }
   function compactOrder(order){return `<div class="order-row"><div class="product-icon">${icon('bottle',25)}</div><div class="order-detail"><h3>${esc(productTitle(order))}</h3><div class="order-meta">${esc(adminMode?order.plan_name:planSummary(order))}<br>${esc(order.number||order.id)} · ${safeDate(order.created_at)}</div>${status(textStatus(order.payment_status),['paid','captured','approved'].includes(order.payment_status)?'good':'neutral')}</div><div class="order-side"><span class="order-price">${money(order)}</span><button class="text-button" data-action="order-detail" data-order="${esc(order.id)}">View order</button></div></div>`;}
@@ -327,10 +329,28 @@
     if(!order.tracking_number&&!order.shipping_date&&!['shipped','delivered'].includes(order.fulfillment_status))return '';
     return `<section class="shipment-card" data-shipment-order="${esc(order.id)}" aria-labelledby="shipment-title-${esc(order.id)}"><div class="shipment-icon">${icon('box',27)}</div><div><h3 id="shipment-title-${esc(order.id)}">${order.fulfillment_status==='delivered'?'Your delivery':'Shipment details'}</h3><dl class="shipment-facts">${order.tracking_number?`<div><dt>Tracking number</dt><dd class="tracking-number">${esc(order.tracking_number)}</dd></div>`:'<div><dt>Tracking</dt><dd>Your tracking number will appear here when available.</dd></div>'}${order.shipping_date?`<div><dt>Shipped on</dt><dd><time datetime="${esc(order.shipping_date)}">${safeDate(order.shipping_date)}</time></dd></div>`:''}</dl></div></section>`;
   }
+  const upgradePolicies=new Map();
+  async function loadUpgradePolicies(){
+    const siteId=state.siteId,token=state.token;
+    await Promise.all(careOrders().map(async order=>{try{const result=await request(endpoint('/orders/'+encodeURIComponent(order.id)+'/upgrade',siteId),{},{token});if(state.siteId!==siteId||state.token!==token)return;upgradePolicies.set(order.id,result);}catch(error){if(state.siteId===siteId&&state.token===token)upgradePolicies.set(order.id,{eligible:false,reason:error.message});}}));
+    if(state.view==='refills'&&state.siteId===siteId&&state.token===token)renderCatalogUpdate();
+  }
+  async function openPortalCheckout(order,plan,existing){
+    const token=state.token,siteId=state.siteId;
+    const saved=existing||await request(endpoint('/orders/'+encodeURIComponent(order.id)+'/upgrade'),{method:'POST',body:JSON.stringify({plan_id:plan.plan_id})});
+    if(state.token!==token||state.siteId!==siteId)return;
+    const checkout=document.createElement('wlmd-portal-checkout');
+    const close=()=>{document.querySelector('.shell')?.removeAttribute('inert');document.body.classList.remove('portal-checkout-open');void loadUpgradePolicies();};
+    document.body.append(checkout);document.querySelector('.shell')?.setAttribute('inert','');document.body.classList.add('portal-checkout-open');
+    checkout.configure({patient:state.patient,address:order.shipping_address||{},states:usStates,plan:plan||{},replaces:Boolean(refillSubscription(order)),
+      api:(operation,body)=>{if(state.token!==token||state.siteId!==siteId)throw new Error('Please sign in again.');return request(endpoint('/upgrades/'+encodeURIComponent(saved.id)+'/'+operation,siteId),body===undefined?{}:{method:'POST',body:JSON.stringify(body)},{token});},
+      close,abandoned:()=>{close();upgradePolicies.delete(order.id);void loadUpgradePolicies();},complete:async result=>{close();await refreshData();if(result.order_id){state.view='orders';render();}else await navigate('refills');}});
+  }
   function refillPlanOptions(order){
-    const subscription=refillSubscription(order)?.subscription,ongoing=subscription&&subscription.prepaid_renews!==false&&['active','held','unknown'].includes(subscription.status);
-    // Existing subscriptions renew through the native confirmed renewal API.
-    if(ongoing)return '';
+    const policy=upgradePolicies.get(order.id);
+    if(!policy)return '<p class="small-note" role="status">Checking your next-plan date…</p>';
+    if(policy.checkout)return `<section class="refill-locked"><h3>${policy.checkout.status==='complete'?'Your new plan is in your account':'Your plan checkout'}</h3><p>${policy.checkout.status==='complete'?'Open Orders & plans to view your new order.':'Resume your existing checkout to confirm its status before starting another payment.'}</p>${policy.checkout.status==='complete'?'':button('Resume checkout','resume-upgrade','btn-primary',`data-order="${esc(order.id)}"`)}</section>`;
+    if(!policy.eligible)return `<section class="refill-locked"><h3>Your next plan</h3><p>${esc(policy.reason)}</p>${policy.opens_at?`<p>Available from <strong>${safeDate(policy.opens_at)}</strong></p>`:''}<button class="btn btn-secondary" disabled>Choose next plan</button></section>`;
     const load=storeLoad(order.therapy_id);
     if(!load||load.loading)return '<p class="small-note" role="status">Loading your next-supply options… Your order and care forms are ready to use.</p>';
     if(load.error)return `<p class="small-note">${esc(load.error)}</p>${button('Retry refill options','retry-refill-plans','btn-secondary',`data-therapy="${esc(order.therapy_id)}"`)}`;
@@ -349,7 +369,7 @@
       <fieldset><legend><span>1</span> Choose medication</legend><div class="supply-medications">${medications.map((name,index)=>{const plan=choose(plans.filter(item=>treatmentKey(item)===name));return choiceButton(plan,medication(plan),name===orderKey?'Your current medication':'',name===treatmentKey(selected),'med-'+index);}).join('')}</div></fieldset>
       <fieldset><legend><span>2</span> Choose your plan length</legend><div class="supply-durations">${durations.map((duration,index)=>{const plan=choose(sameMedication.filter(item=>term(item)===duration));return choiceButton(plan,/^\d+$/.test(duration)?`${duration} ${duration==='1'?'month':'months'}`:duration,money(plan)+' upfront',duration===term(selected),'term-'+index);}).join('')}</div></fieldset>
       <fieldset><legend><span>3</span> Choose payment option</legend><div class="supply-payment">${[false,true,null].map((mode,index)=>{const plan=modePlans.find(item=>item.recurring===mode);return plan?choiceButton(plan,mode===false?'One-time purchase':mode===true?'Subscription':plan.plan_name,mode===false?'Pay once. No automatic renewal.':mode===true?'Renews automatically. Full plan price per renewal.':'Review payment terms at checkout.',selected.plan_id===plan.plan_id,'mode-'+index):'';}).join('')}</div></fieldset>
-      <div class="supply-summary"><div><span class="small-note">${esc(medication(selected))} · ${esc(term(selected))}${/^\d+$/.test(term(selected))?' month'+(term(selected)==='1'?'':'s'):''} · ${selected.recurring===true?'Subscription':selected.recurring===false?'One-time purchase':'Plan'}</span><strong>${money(selected)} <small>upfront</small></strong></div><a class="btn btn-primary" href="${esc(safeCheckoutUrl(selected.checkout_url))}">Continue to checkout ${icon('arrow',16)}</a></div><p class="small-note supply-footnote">Final total and ${selected.recurring?'renewal terms':'payment details'} are confirmed at checkout. ${treatmentKey(selected)!==orderKey?'A medication change requires medical review.':'Treatment remains subject to medical approval.'}</p></section>`;
+      <div class="supply-summary"><div><span class="small-note">${esc(medication(selected))} · ${esc(term(selected))}${/^\d+$/.test(term(selected))?' month'+(term(selected)==='1'?'':'s'):''} · ${selected.recurring===true?'Subscription':selected.recurring===false?'One-time purchase':'Plan'}</span><strong>${money(selected)} <small>upfront</small></strong></div>${button('Continue to checkout','portal-upgrade','btn-primary',`data-order="${esc(order.id)}" data-plan="${esc(selected.plan_id)}"`)}</div><p class="small-note supply-footnote">Final total and ${selected.recurring?'renewal terms':'payment details'} are confirmed at checkout. ${treatmentKey(selected)!==orderKey?'A medication change requires medical review.':'Treatment remains subject to medical approval.'}</p></section>`;
   }
 
   function renderRefills(){
@@ -368,10 +388,10 @@
     else if(native&&next){title='Your next included refill';copy='Already paid for · $0 due when you claim. Your opening date and next steps are below.';}
     else if(native&&tasks.length){title='All included refills claimed';copy='You can review your included refill orders below.';}
     else if(tasks.length){task=tasks.find(item=>item.refill?.eligible)||tasks.find(item=>item.can_open&&item.status!=='submitted')||tasks.find(item=>item.status!=='submitted')||tasks.at(-1);if(task.refill?.eligible){title='Request a refill review';copy='Your health check-in is complete. Request a review for this treatment; no payment or shipment is created.';action=button('Request refill review','request-refill','btn-primary',`data-order="${esc(order.id)}" data-task="${esc(task.id)}"`);}else if(task.can_open&&task.status!=='submitted'){title='Your health check-in is next';copy='Complete the check-in for this treatment to see its next refill step.';action=button(task.status==='draft'?'Continue check-in':'Complete check-in','open-care-task','btn-primary',`data-order="${esc(order.id)}" data-task="${esc(task.id)}"`);}else{title='Your next refill review';copy=task.refill?.reason||(task.opens_at?`Health check-in available ${safeDate(task.opens_at)}.`:'Your next eligible date will appear here.');}}
-    else if(order.care_plan||refillSubscription(order)){if(!refillSubscription(order)){title='Ready for your next supply?';copy='This plan includes one delivery. Choose another paid plan when you’re ready.';}}
+    else if(order.care_plan||refillSubscription(order)){if(!refillSubscription(order)){title='Ready for your next supply?';copy='This plan includes one delivery. Your next-plan options open 20 days before this supply ends.';}}
     else{title=order.refill?.eligible?'You can request a refill':'Your refill options';copy=order.refill?.reason||'This plan has no included refill cycles.';if(order.refill?.eligible)action=button('Request a refill','request-refill','btn-primary',`data-order="${esc(order.id)}"`);}
     const lockedReason=pending?'We are confirming your existing claim. Check its status before trying again.':needsCheckIn?'Complete the check-in for your last claimed refill first.':native&&remaining>0?(next?.claim?.reason||'Complete your required intake and return when this refill opens.'):native&&tasks.length?'You have used all the included refills in this plan.':'No included refill is currently available for this order. Your next supply is a paid purchase or subscription renewal.';
-    const locked=native&&tasks.length>0&&!available?`<section class="refill-locked" aria-label="Included refill availability"><button type="button" class="btn btn-secondary" disabled aria-describedby="refill-lock-${esc(order.id)}">Claim included refill</button><div id="refill-lock-${esc(order.id)}"><p>${esc(lockedReason)}</p>${native&&remaining>0?`${next?.claim?.opens_at?`<p><strong>Claim window opens: ${safeDate(next.claim.opens_at)}</strong></p>`:''}<ol><li>${tasks.some(task=>task.kind==='check_in')?'Complete your initial health intake and any earlier refill check-in.':'Complete your initial health intake.'}</li><li>Return on or after the opening date to claim your included refill for $0.</li>${next?.kind==='included_shipment'?'<li>No refill check-in is required for this plan.</li>':'<li>Complete the short check-in that opens after your claim.</li>'}</ol>`:'<p>Choose a paid supply below, or view your treatment order to manage your subscription. Buying another plan does not cancel an existing subscription.</p>'}</div></section>`:'';
+    const locked=native&&tasks.length>0&&!available?`<section class="refill-locked" aria-label="Included refill availability"><button type="button" class="btn btn-secondary" disabled aria-describedby="refill-lock-${esc(order.id)}">Claim included refill</button><div id="refill-lock-${esc(order.id)}"><p>${esc(lockedReason)}</p>${native&&remaining>0?`${next?.claim?.opens_at?`<p><strong>Claim window opens: ${safeDate(next.claim.opens_at)}</strong></p>`:''}<ol><li>${tasks.some(task=>task.kind==='check_in')?'Complete your initial health intake and any earlier refill check-in.':'Complete your initial health intake.'}</li><li>Return on or after the opening date to claim your included refill for $0.</li>${next?.kind==='included_shipment'?'<li>No refill check-in is required for this plan.</li>':'<li>Complete the short check-in that opens after your claim.</li>'}</ol>`:'<p>Choose a paid supply below, or view your treatment order to manage your subscription. If you change plans, your previous subscription stops after the new payment succeeds.</p>'}</div></section>`:'';
     return `<article class="card refill-plan" data-refill-order="${esc(order.id)}"><div class="refill-plan-heading"><div class="product-icon">${icon('bottle',27)}</div><div><p class="eyebrow">${esc(order.therapy_name)}</p><h2>${esc(productTitle(order))}</h2><p class="small-note">${esc(refillSubscription(order)&&order.care_plan?.coverage_days===30?'Monthly subscription · 30-day supply':planSummary(order))} · Order ${esc(order.number||order.id)}</p></div></div>${native&&tasks.length?`<div class="refill-counts"><div><strong>${remaining}</strong><span>included ${remaining===1?'refill':'refills'} remaining</span></div><div><strong>${claimed.length} of ${tasks.length}</strong><span>claimed for this plan</span></div></div>`:''}${title?`<section class="refill-next-step"><h3>${esc(title)}</h3><p>${esc(copy)}</p>${action?`<div class="action-row">${action}</div>`:''}</section>`:''}${locked}${renewalSummary(order)}${!tasks.length&&!refillSubscription(order)?'<p class="refill-inclusion-note"><strong>Included refills: Not included in this plan</strong><br>Each new supply requires a payment.</p>':''}${native&&tasks.length?`<details class="refill-schedule"><summary>View this treatment’s refill schedule</summary>${careTimeline(order)}</details>`:''}<div class="action-row">${button('View order details','order-detail','text-button',`data-order="${esc(order.id)}"`)}</div>${!available&&!pending&&!needsCheckIn?refillPlanOptions(order):''}</article>`;
   }
   function applyNotifications(result){state.notifications=result.notifications||[];state.unreadCount=Number(result.unread_count)||0;state.notificationsError='';}
@@ -447,7 +467,7 @@
       else if(adminMode){const [overview,testing]=await Promise.all([request(adminEndpoint('/overview',siteId)+query(),{},context),request(`/api/admin/sites/${encodeURIComponent(siteId)}/checkout-testing`,{},context).catch(error=>({error:error.message}))]);if(current!==generation)return;state.overview=overview;state.orders=overview.orders||[];state.refills=overview.refills||[];state.checkoutTesting=testing.error?null:testing;state.testingError=testing.error||'';}
       else{const[orders,refills,notifications]=await Promise.all([request(endpoint('/orders',siteId),{},context),request(endpoint('/refills',siteId),{},context),request(endpoint('/notifications',siteId),{},context).catch(error=>({error:error.message}))]);if(current!==generation)return;state.orders=orders.orders||[];state.refills=refills.requests||[];if(notifications.error)state.notificationsError=notifications.error;else applyNotifications(notifications);}
     }catch(error){if(current!==generation)return;state.error=error.message;}
-    if(current===generation){state.loading=false;render();if(!adminMode&&state.view==='refills'){void loadRefillPrices();loadRefillPlans();}}
+    if(current===generation){state.loading=false;render();if(!adminMode&&state.view==='refills'){void loadRefillPrices();loadRefillPlans();void loadUpgradePolicies();}}
   }
   async function loadOwnerSites(){
     const response=await request('/api/admin/portal/sites');state.sites=response.sites||[];
@@ -476,6 +496,7 @@
     state.busy=false;render();
   }
   async function logout(){
+    document.querySelector('wlmd-portal-checkout')?.remove();document.body.classList.remove('portal-checkout-open');upgradePolicies.clear();
     if(!await flushIntake())return;
     try{await request(adminMode?'/api/admin/logout':endpoint('/auth/logout'),{method:'POST',body:'{}'});}catch(error){state.error=error.message;render();return;}
     storeLoads.clear();storeExpanded=false;storeLimit=12;state.storePlans=[];state.storeChoices={};renewalPreviews.clear();
@@ -490,7 +511,7 @@
     else if(view==='messages'&&!adminMode){state.loading=true;render();const dirty=state.messageDraft!==state.messageDraftSaved;try{const[result,draft]=await Promise.all([request(endpoint('/messages',siteId),{},context),dirty?Promise.resolve(null):request(endpoint('/messages/draft',siteId),{},context).catch(error=>({error:error.message}))]);if(current!==generation)return;state.messages=result.messages||[];state.messagingProviderConnected=result.provider_connected===true;if(draft?.error)state.draftError=draft.error;else if(draft){state.messageDraft=draft.body||'';state.messageDraftSaved=state.messageDraft;state.messageDraftRevision=draft.revision;state.messageDraftLoaded=true;state.draftError='';}}catch(error){if(current!==generation)return;state.error=error.message;}state.loading=false;render();}
     else if(view==='notifications'&&!adminMode){state.loading=true;render();try{const result=await request(endpoint('/notifications',siteId),{},context);if(current!==generation)return;applyNotifications(result);}catch(error){if(current!==generation)return;state.notificationsError=error.message;}state.loading=false;render();}
     else if(view==='intake'&&!adminMode){state.intake=null;state.taskId=null;render();}
-    else if(adminMode)await refreshData();else{render();if(view==='refills'){void loadRefillPrices();loadRefillPlans();}}
+    else if(adminMode)await refreshData();else{render();if(view==='refills'){void loadRefillPrices();loadRefillPlans();void loadUpgradePolicies();}}
     focusSection();
   }
   async function openIntake(orderId,taskId=null){
@@ -601,6 +622,7 @@
     if(action==='browse-plans'){storeExpanded=true;void loadStore('',true);render();}
     if(action==='more-plans'){storeLimit+=12;render();}
     if(action==='retry-refill-plans')void loadStore(target.dataset.therapy,true);
+    if(action==='portal-upgrade'||action==='resume-upgrade'){const order=state.orders.find(item=>item.id===target.dataset.order),plan=state.storePlans.find(item=>item.plan_id===target.dataset.plan);if(order){target.disabled=true;try{await openPortalCheckout(order,plan,action==='resume-upgrade'?upgradePolicies.get(order.id)?.checkout:null);}catch(error){state.error=error.message;render();}finally{target.disabled=false;}}return;}
     if(action==='select-refill-plan'){const plan=state.storePlans.find(item=>item.plan_id===target.dataset.plan);if(!plan)return;const focusId=target.id;state.storeChoices[target.dataset.group]=plan.plan_id;render();document.getElementById(focusId)?.focus({preventScroll:true});}
     if(action==='refresh'){state.error='';await refreshData();}
     if(action==='sync-orders')await syncOrders();

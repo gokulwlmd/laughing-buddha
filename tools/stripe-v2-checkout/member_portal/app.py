@@ -387,6 +387,8 @@ class MemberService:
         self.claims = ClaimsManager(self)
         from .renewals import RenewalsManager
         self.renewals = RenewalsManager(self)
+        from .upgrades import Upgrades
+        self.upgrades = Upgrades(self)
         self._store_cache = {}
 
     def db(self):
@@ -1359,6 +1361,8 @@ class MemberService:
                 raise HTTPException(404, 'Subscription not found in this order')
             with self.db() as db:
                 db.execute('BEGIN IMMEDIATE')
+                if self.upgrades.busy_subscription(site_id, subscription_id):
+                    raise HTTPException(409, 'This subscription has a replacement checkout. Open Refills to review it.')
                 previous = db.execute('SELECT * FROM member_actions WHERE site_id=? AND patient_id=? AND client_request_id=?', (site_id, patient['id'], body.client_request_id)).fetchone()
                 if previous:
                     if (previous['order_id'], previous['subscription_id'], previous['action']) != (order_id, subscription_id, action):
@@ -1414,6 +1418,8 @@ class MemberService:
             action = 'subscription_address:' + digest(encoded(address))
             with self.db() as db:
                 db.execute('BEGIN IMMEDIATE')
+                if self.upgrades.busy_subscription(site_id, subscription_id):
+                    raise HTTPException(409, 'This subscription has a replacement checkout. Open Refills to review it.')
                 previous = db.execute('SELECT * FROM member_actions WHERE site_id=? AND patient_id=? AND client_request_id=?', (site_id, patient['id'], body.client_request_id)).fetchone()
                 if previous:
                     if (previous['order_id'], previous['subscription_id'], previous['action']) != (order_id, subscription_id, action):
@@ -1719,6 +1725,7 @@ class MemberService:
         self.care.attach(router, owner, auth)
         self.claims.attach(router, auth)
         self.renewals.attach(router, auth)
+        self.upgrades.attach(app, router, auth)
         app.include_router(router)
         app.include_router(owner)
 
@@ -1730,7 +1737,7 @@ class MemberService:
 
         @app.get('/portal-assets/{name}', include_in_schema=False)
         def asset(name: str):
-            if name not in ('post-checkout.js', 'id-upload.js', 'portal.js', 'portal.css', 'red-hat-display-latin-v1.woff2', 'red-hat-display-OFL.txt'):
+            if name not in ('post-checkout.js', 'id-upload.js', 'portal-checkout.js', 'portal.js', 'portal.css', 'red-hat-display-latin-v1.woff2', 'red-hat-display-OFL.txt'):
                 raise HTTPException(404, 'Asset not found')
             return FileResponse(HERE / 'web' / name, headers={'Access-Control-Allow-Origin': '*'} if name == 'id-upload.js' else None)
 
