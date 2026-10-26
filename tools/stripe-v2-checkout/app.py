@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -40,6 +41,31 @@ class NoRedirect(urlrequest.HTTPRedirectHandler):
 
 class Sticky:
     def call(self, method, path, body=None):
+        # Fixed operation labels only: never log request bodies, identifiers,
+        # credentials, customer data or provider error text.
+        operation = next((label for suffix, label in (
+            ('/authorize_payment', 'authorize'), ('/new_order', 'create_order'),
+            ('/order_view', 'verify_order'), ('/order_total/calculate', 'calculate_total'),
+        ) if path.endswith(suffix)), None)
+        if operation is None and method == 'GET':
+            operation = next((label for prefix, label in (
+                ('/api/v2/campaigns/', 'campaign'), ('/api/v2/offers/', 'offer'),
+                ('/api/v2/products/', 'product'),
+                ('/api/v2/providers/payment/profiles/', 'gateway'),
+            ) if path.startswith(prefix)), None)
+        started = time.monotonic()
+        outcome = 'error'
+        try:
+            result = self._call(method, path, body)
+            outcome = 'response'
+            return result
+        finally:
+            if operation:
+                logging.getLogger('uvicorn.error').info(
+                    'sticky_timing operation=%s duration_ms=%.1f outcome=%s',
+                    operation, (time.monotonic() - started) * 1000, outcome)
+
+    def _call(self, method, path, body=None):
         if not path.startswith('/api/') or '?' in path:
             raise StickyError('Unexpected API path')
         username = os.environ.get('STICKY_API_USERNAME')
@@ -503,8 +529,15 @@ def create_app(settings=None, sticky=None):
     def serialized(fn):
         @wraps(fn)
         def locked(*args, **kwargs):
+            started = time.monotonic()
             with ROUTE_LOCK:
-                return fn(*args, **kwargs)
+                acquired = time.monotonic()
+                try:
+                    return fn(*args, **kwargs)
+                finally:
+                    logging.getLogger('uvicorn.error').info(
+                        'checkout_timing operation=%s wait_ms=%.1f duration_ms=%.1f',
+                        fn.__name__, (acquired-started)*1000, (time.monotonic()-acquired)*1000)
         return locked
 
     @app.post('/api/new-purchase')
@@ -588,7 +621,8 @@ def create_app(settings=None, sticky=None):
         if not isinstance(intent, str) or intent != token.split('_secret_')[0]:
             raise StickyError('Sticky returned inconsistent payment identifiers. The attempt is held for review.')
         store.claim('authorization_pending', 'awaiting_card', key, intent_id=intent)
-        cached[key] = {'clientSecret': token, 'intentId': intent, 'amount':q['amount'], 'currency':q['currency']}
+        cached[key] = {'clientSecret': token, 'intentId': intent, 'amount':q['amount'], 'currency':q['currency'],
+                       'publishableKey': c['publishableKey']}
         return cached[key]
 
     @app.post('/api/resume')
@@ -604,7 +638,7 @@ def create_app(settings=None, sticky=None):
         c=catalog(req, legacy=q.get('catalogVersion',1)!=2)
         if c['fingerprint']!=q['fingerprint'] or c['blockedReason']:
             raise HTTPException(409, 'The payment configuration changed. Please contact support before continuing.')
-        return cached[key] | {'contact':json.loads(row['contact']),'option':q['option']} | {k:q[k] for k in ('coupon','renewalPrice','discountAmount','subtotalAmount') if k in q}
+        return cached[key] | {'publishableKey':c['publishableKey'],'contact':json.loads(row['contact']),'option':q['option']} | {k:q[k] for k in ('coupon','renewalPrice','discountAmount','subtotalAmount') if k in q}
 
     @app.post('/api/capture')
     @serialized

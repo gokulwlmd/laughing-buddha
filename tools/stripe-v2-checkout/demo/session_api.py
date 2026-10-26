@@ -7,7 +7,6 @@ credentials, card data, processor secrets or automatic financial retries.
 import hashlib
 import hmac
 from collections import OrderedDict
-from concurrent.futures import ThreadPoolExecutor
 import http.client
 import ipaddress
 from http.cookies import SimpleCookie
@@ -500,22 +499,16 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
             if not row['publishable_key']:raise HTTPException(409,'Load session configuration first')
             store.claim(row['id'],'authorize')
             try:
-                # Return the public key for the exact current payment route. A
-                # route change after quoting is still rejected by the engine.
-                # These independent reads can overlap; neither a new intent nor
-                # a resume may start until both replies have been verified.
-                with ThreadPoolExecutor(max_workers=2) as reads:
-                    config_future=reads.submit(call,dict(row),'GET','/api/config',None,req)
-                    status_future=reads.submit(upstream_status,dict(row),req)
-                    cfg=config_future.result()
-                    current=status_future.result()
-                if not cfg['ready']:raise UpstreamError(409,'The payment route is unavailable')
-                public_key=cfg['publishableKey']
+                # The engine already revalidates the live configuration and
+                # price. Use the key from that exact validation, rather than
+                # loading the same remote catalog a second time beforehand.
+                current=upstream_status(row,req)
                 row=store.read(row['id'])
                 if current['status']=='awaiting_card':
                     value=call(row,'POST','/api/resume',{},req)
                 else:
                     value=call(row,'POST','/api/authorize',{'quote_id':body.quote_id,'recurring_consent':body.accept_terms},req)
+                public_key=value.get('publishableKey')
                 result=payment_result(row,value,public_key)
             except UpstreamError as exc:
                 definite=exc.status in (400,401,403,404,409,410,422,429)
@@ -531,11 +524,10 @@ def install_session_api(app,site_check,catalog_loader,store,transport,origin,all
             row=store.read(row['id'])
             if row['held']=='capture_unknown' or row['busy']:raise HTTPException(409,'Check payment status; its result needs review')
             try:
-                cfg=call(row,'GET','/api/config',req=req)
                 value=call(row,'POST','/api/resume',{},req)
-                result=payment_result(row,value,cfg['publishableKey'])
+                result=payment_result(row,value,value.get('publishableKey'))
             except UpstreamError as exc:raise translated(exc)
-            store.update(row['id'],phase='awaiting_card',publishable_key=cfg['publishableKey'],held=None)
+            store.update(row['id'],phase='awaiting_card',publishable_key=value['publishableKey'],held=None)
             return result
 
     @router.post('/{session_id}/complete',response_model=SessionStatus,summary='Finish the Sticky order after Stripe confirms authorization')
