@@ -48,7 +48,7 @@ for(const width of [1440,390])test(`saved details skip re-entry and health answe
  await expect(page.getByText('Please answer this question.')).toBeVisible();
  await page.getByRole('button',{name:'Still correct'}).click();
  await expect.poll(()=>state.draft().answers.allergies).toBe('no');
- await page.getByText('Change saved answer',{exact:true}).click();
+ await page.locator('summary[aria-label^="Change saved answer:"]').click();
  await page.getByRole('spinbutton').fill('69');
  await expect.poll(()=>state.draft().answers.height).toBe(69);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -217,7 +217,7 @@ for(const scenario of ['partial','expired'])test(`${scenario} account handoff pr
  const state=await setupCart(page,{failSecondAccount:scenario==='partial',expiredHandoff:scenario==='expired'});
  await saveCartPassword(page);
  if(scenario==='partial')await expect(page.getByRole('alert')).toContainText('Connecting this product failed');
- else await expect(page.getByText('use your password to open your member portal.',{exact:false})).toBeVisible();
+ else await expect(page.getByRole('heading',{name:'Your portal password is saved'})).toBeVisible();
  await page.getByRole('button',{name:'Open member portal',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Member portal destination'})).toBeVisible();
  const hash=new URLSearchParams(new URL(page.url()).hash.slice(1));
@@ -234,8 +234,8 @@ for(const width of [1440,390,320])test(`CoreAge short steps and checkout reuse a
  const state=await setup(page,{template:form,answers});
  await expect(page.getByRole('button',{name:'Back to order',exact:true})).toBeVisible();
  await expect(page.getByRole('heading',{name:'Confirm your details'})).toBeVisible();
- await expect(page.getByText('From your checkout',{exact:false})).toHaveCount(5);
- await page.getByText('Change saved answer',{exact:true}).first().click();
+ await expect(page.getByText('From your checkout',{exact:true})).toHaveCount(1);
+ await page.locator('summary[aria-label^="Change saved answer:"]').first().click();
  await expect(page.getByRole('combobox',{name:'State where you live'})).toHaveValue('California (CA)');
  await page.getByRole('combobox',{name:'State where you live'}).selectOption('New York (NY)');
  await expect.poll(()=>state.draft().answers.ca_196).toBe('New York (NY)');
