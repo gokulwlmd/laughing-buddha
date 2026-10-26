@@ -48,10 +48,11 @@ class QuoteSpeedTests(unittest.TestCase):
         self.assertEqual(self.client.post(path+'/quote',headers=headers,json=body).status_code,422)
         self.assertEqual(self.fake.count('/authorize_payment'),0)
 
-    def test_capture_rechecks_campaign_after_authorization(self):
+    def test_capture_rechecks_campaign_after_authorization_window(self):
+        clock=[100];self.engine.state.capture_campaigns.clock=lambda:clock[0]
         path,headers,_,q=self.quoted()
         payment=self.client.post(path+'/payment',headers=headers,json={'quote_id':q['quote_id']}).json()
-        self.fake.confirmed.add(payment['payment_intent_id']);self.fake.tax_provider=88
+        self.fake.confirmed.add(payment['payment_intent_id']);self.fake.tax_provider=88;clock[0]=131
         r=self.client.post(path+'/complete',headers=headers,json={'payment_intent_id':payment['payment_intent_id']})
         self.assertEqual(r.status_code,409,r.text)
         self.assertEqual(self.fake.count('/new_order'),0)

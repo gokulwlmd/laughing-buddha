@@ -66,6 +66,44 @@ class CampaignSnapshots:
             return copy.deepcopy(value)
 
 
+class AuthorizationCampaignReuse:
+    """One-use campaign setup from THIS authorization, never a shared display cache.
+
+    Only configuration is retained. Prices, offers, gateway profile and calculated
+    total must still be fetched at capture. External campaign-only edits can take
+    up to 30 seconds to affect an already-authorized payment; stale/missing tickets
+    require the full campaign read. No persistence or renewal of the deadline.
+    """
+    def __init__(self, ttl=30, limit=128, clock=time.monotonic):
+        self.ttl, self.limit, self.clock = ttl, limit, clock
+        self.entries = OrderedDict()
+        self.guard = threading.Lock()
+
+    def remember(self, attempt, campaign, quote_id, intent, snapshot, checked_at):
+        with self.guard:
+            now = self.clock()
+            for key, value in list(self.entries.items()):
+                if value[0] <= now:
+                    self.entries.pop(key, None)
+            if checked_at + self.ttl <= now:
+                return
+            self.entries[attempt] = (checked_at + self.ttl, campaign, quote_id, intent, copy.deepcopy(snapshot))
+            self.entries.move_to_end(attempt)
+            while len(self.entries) > self.limit:
+                self.entries.popitem(last=False)
+
+    def consume(self, attempt, campaign, quote_id, intent):
+        with self.guard:
+            value = self.entries.pop(attempt, None)
+            if value and value[0] > self.clock() and value[1:4] == (campaign, quote_id, intent):
+                return {'snapshot': copy.deepcopy(value[4]), 'expires': value[0]}
+        return None
+
+    def discard(self, attempt):
+        with self.guard:
+            self.entries.pop(attempt, None)
+
+
 class RoutingHints:
     """Bounded nonsecret IDs only, to schedule fresh independent reads together."""
     def __init__(self, ttl=120, limit=256, clock=time.monotonic):

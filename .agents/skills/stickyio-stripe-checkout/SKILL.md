@@ -147,6 +147,22 @@ Standard one-time and day-based self-recurring offers are implemented. Recurring
 
 No separate Stripe private key is needed for this Sticky-managed flow. Gateway profiles contain OAuth/access/refresh tokens: never dump raw profiles or extract credentials. A production reconciliation service may need additional processor verification; the current harness relies on Sticky approval/read-back and browser confirmation, and does not independently retrieve PaymentIntents server-side.
 
+### Immediate capture configuration reuse (26 October 2026)
+
+See [same-authorization setup reuse](../../../docs/CAPTURE_SETUP_REUSE_2026-10-26.md).
+Authorization still forces a fresh full campaign read. A linked checkout may reuse
+only that exact authorization's sanitized campaign snapshot once for capture,
+bound to attempt, campaign, quote and intent, for at most 30 seconds from the
+campaign read's completion. This is the narrow exception to repeating the full
+campaign GET at capture; shared display caches cannot provide this permission.
+Keep selected offer/product, gateway profile, coupon and total reads live, plus
+local access/publication and fingerprint checks. Resume, restart, absent/expired
+permission, or a window exhausted during calculation require a full campaign
+read. Never extend the deadline or retry a financial write. External campaign-only
+edits may take up to this 30-second window to affect an already-authorized payment;
+do not claim immediate campaign-field freshness during reuse. Preserve the cap of
+128 entries and existing uncertain-payment journals and order readback checks.
+
 ## Durable state and hosting
 
 Keep `/data` and its invitation, legacy `purchase` table and new `checkouts` table. The migration preserves the original receipt/uncertain attempt. Campaign/SKU URLs are reusable checkout entry points. Existing attempt cookies retain their receipt; new visitors receive their own fresh attempt, including on the original $2 URL. After completion, the explicit “Start another purchase” action calls POST /api/new-purchase with previous_attempt_id to create a separate attempt and set its secure cookie. Never reset the old row, contact or intent. The purchase_successors table gives each completed attempt at most one successor, so double clicks/replayed requests return the same new attempt. Pending or uncertain payments cannot start a successor. X-Checkout-Attempt pins API requests to the current purchase; stale tabs must reload instead of acting on a new purchase. Repeated capture returns the stored receipt; pending states cannot be reset through the API. One machine/worker is required because secrets are process-local.

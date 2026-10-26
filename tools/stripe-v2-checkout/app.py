@@ -13,7 +13,7 @@ import sqlite3
 import threading
 import time
 from functools import wraps
-from catalog import CatalogError, CouponError, CampaignSnapshots, RoutingHints, resolve, quote
+from catalog import CatalogError, CouponError, CampaignSnapshots, AuthorizationCampaignReuse, RoutingHints, resolve, quote
 from prepaid import order_terms_match
 from admin import Admin, branding as brand_presentation
 from dataclasses import dataclass
@@ -268,12 +268,14 @@ def create_app(settings=None, sticky=None):
     cached = {}  # Client secrets remain in memory, never in source, DB, or logs.
     routing_hints = RoutingHints()
     campaign_snapshots = CampaignSnapshots(api)
+    capture_campaigns = AuthorizationCampaignReuse()
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.store = store
     app.state.settings = cfg
     app.state.invite = invite
     app.state.routing_hints = routing_hints
     app.state.campaign_snapshots = campaign_snapshots
+    app.state.capture_campaigns = capture_campaigns
     admin = Admin(store,cfg,api,invite,ROUTE_LOCK)
     if cfg.synthetic:
         from synthetic import seed_demo
@@ -342,15 +344,22 @@ def create_app(settings=None, sticky=None):
             raise HTTPException(409, 'This tab refers to another purchase. Reload the checkout before continuing.')
         return key, row
 
-    def catalog(req, legacy=False, preview=False):
+    def catalog(req, legacy=False, preview=False, campaign_snapshot=None, remember_campaign=None):
         if req.query_params.get('link_id'):
             link, brand = admin.link_access(req)
             allowed = None if legacy else link['options']
             cache_key = (*context(req), tuple(sorted(allowed or [])))
             campaign, sku = context(req)
+            def read_campaign(fresh):
+                if campaign_snapshot is not None:
+                    return campaign_snapshot
+                value = campaign_snapshots.read(campaign, fresh=fresh)
+                if fresh and remember_campaign is not None:
+                    remember_campaign.update(snapshot=value, checked_at=capture_campaigns.clock())
+                return value
             def read_catalog(fresh):
                 return resolve(api, campaign, sku, allowed_keys=allowed, gateway_hint=routing_hints.get(cache_key) if allowed else None,
-                               campaign_loader=(lambda: campaign_snapshots.read(campaign, fresh=fresh)) if allowed else None,
+                               campaign_loader=(lambda: read_campaign(fresh)) if allowed else None,
                                fresh_offers=bool(allowed))
             try:
                 c = read_catalog(fresh=not preview)
@@ -602,7 +611,8 @@ def create_app(settings=None, sticky=None):
         if q['option']['recurring'] and not body.recurring_consent:
             raise HTTPException(422, 'Accept the displayed recurring billing terms to continue')
         contact = json.loads(row['contact'])
-        c = catalog(req, legacy=q.get('catalogVersion',1)!=2)
+        verified_campaign = {}
+        c = catalog(req, legacy=q.get('catalogVersion',1)!=2, remember_campaign=verified_campaign)
         if q.get('option',{}).get('dollarTest'):
             if not dollar_test_available(admin,req,c):
                 raise HTTPException(409, '$1 testing was disabled. Review a fresh total before paying.')
@@ -621,6 +631,9 @@ def create_app(settings=None, sticky=None):
         if not isinstance(intent, str) or intent != token.split('_secret_')[0]:
             raise StickyError('Sticky returned inconsistent payment identifiers. The attempt is held for review.')
         store.claim('authorization_pending', 'awaiting_card', key, intent_id=intent)
+        if verified_campaign:
+            capture_campaigns.remember(key, q['campaignId'], q['id'], intent,
+                                       verified_campaign['snapshot'], verified_campaign['checked_at'])
         cached[key] = {'clientSecret': token, 'intentId': intent, 'amount':q['amount'], 'currency':q['currency'],
                        'publishableKey': c['publishableKey']}
         return cached[key]
@@ -634,6 +647,7 @@ def create_app(settings=None, sticky=None):
         key, row = session(req)
         if row['status'] != 'awaiting_card' or key not in cached:
             raise HTTPException(409, 'This payment needs review before continuing. Please contact support; do not start another payment.')
+        capture_campaigns.discard(key)  # A resumed form requires full capture validation.
         q=json.loads(row['quote'])
         c=catalog(req, legacy=q.get('catalogVersion',1)!=2)
         if c['fingerprint']!=q['fingerprint'] or c['blockedReason']:
@@ -652,9 +666,17 @@ def create_app(settings=None, sticky=None):
             return {'status':'captured','orderId':row['order_id'],'amount':q['amount']}
         if row['status'] != 'awaiting_card' or not row.get('intent_id'):
             raise HTTPException(409, 'No capturable payment is available. Check its status before retrying.')
-        c = catalog(req, legacy=q.get('catalogVersion',1)!=2)
-        if q.get('option',{}).get('dollarTest'):c = test_catalog(c)
-        current = quote(api,c,q['selection'],q['shippingId'],json.loads(row['contact']),q.get('coupon',{}).get('code','')) if not c['blockedReason'] else None
+        # Reuse only this authorization's recent campaign setup once. All
+        # selected offer/product/gateway/price reads below remain live.
+        setup = capture_campaigns.consume(key, q.get('campaignId'), q.get('id'), row['intent_id'])
+        def capture_quote(snapshot=None):
+            c = catalog(req, legacy=q.get('catalogVersion',1)!=2, campaign_snapshot=snapshot)
+            if q.get('option',{}).get('dollarTest'):c = test_catalog(c)
+            return quote(api,c,q['selection'],q['shippingId'],json.loads(row['contact']),q.get('coupon',{}).get('code','')) if not c['blockedReason'] else None
+        current = capture_quote(setup['snapshot'] if setup else None)
+        # Slow downstream reads must not extend the authorization setup window.
+        if setup and capture_campaigns.clock() >= setup['expires']:
+            current = capture_quote()
         if not current or any(current.get(k) != q.get(k) for k in ('fingerprint','amount','currency','option','coupon','renewalPrice')):
             raise HTTPException(409, 'Campaign configuration or price changed; reconcile this authorization before capture')
         if not store.claim('awaiting_card', 'capture_pending', key):
