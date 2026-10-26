@@ -839,7 +839,14 @@ class MemberService:
         with self.db() as db:
             intake = db.execute('SELECT status FROM member_intakes WHERE site_id=? AND order_id=?', (row['site_id'], row['order_id'])).fetchone()
         subscriptions = []
-        if line.get('subscription_id'):
+        # Sticky assigns internal subscription IDs to one-time sales too.
+        # Preserve real active/held and prepaid cycles, but do not present a
+        # verified single purchase as an inactive monthly subscription.
+        purchased = snapshot.get('quote_option') or {}
+        single_purchase = (not line.get('prepaid') and line.get('is_recurring') is False
+            and line.get('billing_status') == 'inactive'
+            and (purchased.get('recurring') is False or str(line.get('billing_model_id')) == '2'))
+        if line.get('subscription_id') and not single_purchase:
             actions = ['pause'] if line.get('billing_status') == 'active' else ['resume'] if line.get('billing_status') == 'held' else []
             subscriptions.append({'id': str(line['subscription_id']), 'product_id': str(line['product_id']), 'status': line.get('billing_status', 'unknown'),
                                   'next_billing_date': line.get('next_billing_date'), 'next_cycle_date': line.get('next_cycle_date'), 'billing_interval_days': line.get('billing_interval_days'), 'actions': actions,
@@ -1144,7 +1151,8 @@ class MemberService:
                     except Exception:
                         continue
                     currency = entry.get('currency')
-                    if not total.is_finite() or total <= 0 or not isinstance(currency, str) or not re.fullmatch('[A-Z]{3}', currency):
+                    currency = currency.upper() if isinstance(currency, str) else ''
+                    if not total.is_finite() or total <= 0 or not re.fullmatch('[A-Z]{3}', currency):
                         continue
                     selection = {'sku': entry['sku'], 'option': option['key'], 'purchase_option_id': entry.get('purchaseOptionId', '')}
                     unique = digest(encoded({'checkout': plan['id'], **selection}))[:24]

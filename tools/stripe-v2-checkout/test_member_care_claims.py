@@ -79,7 +79,7 @@ class MemberClaimCareTests(care_fixtures.MemberCareTests):
         def options(p, brand, therapy):
             calls.append(p['id'])
             return {'therapy': 'Weight Loss', 'entries': [{'available': True, 'name': 'Semaglutide',
-                'sku': self.sku, 'durationMonths': 12, 'currency': 'USD', 'purchaseOptionId': 'annual',
+                'sku': self.sku, 'durationMonths': 12, 'currency': 'usd', 'purchaseOptionId': 'annual',
                 'options': [{'key': '7002:7001:4', 'prepaidCycles': 4, 'upfrontPrice': '1494.00', 'renewal': True, 'basePrice': '373.50'},
                             {'key': 'bad', 'basePrice': '0.00'}, {'key': 'nan', 'basePrice': 'NaN'},
                             {'key': 'blocked', 'basePrice': '100', 'blockedReason': 'Unavailable'}]}]}
@@ -90,6 +90,7 @@ class MemberClaimCareTests(care_fixtures.MemberCareTests):
         products = response.json()['plans']
         self.assertEqual(len(products), 1)
         self.assertEqual(products[0]['total'], '1494.00')
+        self.assertEqual(products[0]['currency'], 'USD')
         self.assertEqual(products[0]['sku'], self.sku)
         self.assertIs(products[0]['recurring'], True)
         self.assertTrue(products[0]['checkout_url'].startswith('https://checkout.example.invalid/plans/plan-a/choose?'))

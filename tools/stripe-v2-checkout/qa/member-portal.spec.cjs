@@ -584,3 +584,27 @@ test.describe('Source-defined wellness refills',()=>{
     await admin.close();
   });
 });
+
+test('MEMBER-32 one-time purchase offers next supply without pretending to be a subscription',async({page,member},info)=>{
+  await page.route('**/api/v1/sites/site-a/portal/orders',async route=>{
+    const response=await route.fetch(),data=await response.json();
+    data.orders=data.orders.map(order=>({...order,sku:'SEMA-1M',product_name:'Semaglutide / 1 months / One-time',plan_name:'1-month one-time plan',subscriptions:[],intake_status:'submitted',care_plan:{coverage_days:30,tasks:[{id:'initial',kind:'initial',day_offset:0,status:'submitted',intake_status:'submitted',can_open:true}]}}));
+    await route.fulfill({response,json:data});
+  });
+  await page.route('**/api/v1/sites/site-a/portal/store',route=>route.fulfill({json:{plans:[
+    {plan_id:'once',sku:'SEMA-1M',therapy_id:'weight-loss',product_name:'Semaglutide',plan_name:'1-month one-time plan',total:'199.00',currency:'USD',recurring:false,checkout_url:member.origin+'/c/one-time'},
+    {plan_id:'subscription',sku:'SEMA-1M-SUB',therapy_id:'weight-loss',product_name:'Semaglutide',plan_name:'1-month subscription',total:'199.00',currency:'USD',recurring:true,checkout_url:member.origin+'/c/subscription'}]}}));
+  await enroll(page,member);await page.getByRole('button',{name:'Refills',exact:true}).click();
+  const card=page.locator('[data-refill-order="9001"]');
+  await expect(card).toContainText('Buy your next supply');
+  await expect(card).toContainText('Included refills: Not included in this plan');
+  await expect(card).not.toContainText('Monthly subscription');
+  await expect(card.getByRole('button',{name:'Manage subscription',exact:true})).toHaveCount(0);
+  await expect(card.locator('select option')).toHaveCount(2);
+  await expect(card.getByRole('link',{name:'Review & checkout'})).toHaveAttribute('href',member.origin+'/c/one-time');
+  await card.locator('select').selectOption('subscription');
+  await expect(card.getByRole('link',{name:'Review & checkout'})).toHaveAttribute('href',member.origin+'/c/subscription');
+  for(const width of [1440,390]){await page.setViewportSize({width,height:1000});await reflow(page,width);await page.screenshot({path:info.outputPath('one-time-refill-'+width+'.png'),fullPage:true});}
+  await orders(page);await expect(page.locator('.care-journey')).toContainText('Your health form is complete.');
+  await proof(page,member);
+});
