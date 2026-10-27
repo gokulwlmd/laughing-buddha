@@ -1,5 +1,9 @@
 # WLMD Core
 
+> **Developer handoff — 28 October 2026:** Start with the [current platform handoff](docs/DEVELOPER_HANDOFF_2026-10-28.md), [prioritized help needed](docs/DEVELOPER_HELP_BACKLOG.md), and [post-checkout SDK plan](docs/POST_CHECKOUT_SDK_PLAN.md).
+>
+> The summary below describes the older default-branch implementation. The newer shared checkout/member platform is deployed, but GitHub branches and live source still require alignment. The handoff records that gap explicitly; this documentation update does not merge feature PRs or deploy application code.
+
 Master SKU catalog, branded campaign setup, and Sticky.io Stripe Connect v2 checkout administration.
 
 The current application lives in [`tools/stripe-v2-checkout`](tools/stripe-v2-checkout). It uses FastAPI, SQLite, and a browser-based admin panel, with Stripe Elements handling card entry. It is deployed on Fly.io.
